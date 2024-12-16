@@ -1,13 +1,25 @@
-.PHONY: init test dev start check setup env
+.PHONY: init dev test env setup check staging production pm2-status pm2-stop pm2-restart pm2-logs
 
-# 実行権限の付与とnpm scriptsのセットアップ
-init:
-	@echo "=== Setting up permissions ==="
-	chmod u+x src/env/init.sh src/env/check.sh src/env/fix_ssh_permissions.sh
-	@echo "=== Setting up environment variables ==="
-	make env
+# 初期セットアップ（全ての準備を一括実行）
+init: permissions env setup
+	@echo "\n=== Initial setup completed ==="
 
-# 開発サーバーの起動
+# 実行権限の付与
+permissions:
+	@echo "=== Setting up file permissions ==="
+	chmod u+x src/scripts/setup.sh src/scripts/check-env.sh src/scripts/fix_ssh_permissions.sh
+
+# 開発環境のセットアップ（依存関係のインストールなど）
+setup:
+	@echo "=== Setting up development environment ==="
+	./src/scripts/setup.sh
+
+# 環境のバージョンチェック
+check:
+	@echo "=== Checking environment versions ==="
+	./src/scripts/check-env.sh
+
+# 開発サーバーの起動（ローカル開発用）
 dev:
 	nodemon src/app.js
 
@@ -15,16 +27,30 @@ dev:
 test:
 	npm test
 
-# ステージ及び、本番サーバーの起動
-start:
-	node src/app.js
+# ステージング環境の起動（PM2）
+staging:
+	npm run staging
 
-# 環境のバージョンチェック
-check:
-	@echo "=== Checking Environment ==="
-	./src/env/check.sh
+# 本番環境の起動（PM2）
+production:
+	npm run production
 
-# 開発環境のセットアップ
-setup:
-	@echo "=== Setting up Development Environment ==="
-	./src/env/init.sh
+# PM2プロセスの状態確認
+pm2-status:
+	@echo "=== Checking PM2 Status ==="
+	pm2 status
+
+# PM2プロセスの停止
+pm2-stop:
+	@echo "=== Stopping PM2 Processes ==="
+	pm2 stop all
+
+# PM2プロセスの再起動
+pm2-restart:
+	@echo "=== Restarting PM2 Processes ==="
+	pm2 restart all
+
+# PM2ログの表示
+pm2-logs:
+	@echo "=== Showing PM2 Logs ==="
+	pm2 logs

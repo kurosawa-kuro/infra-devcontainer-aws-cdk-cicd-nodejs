@@ -2,13 +2,16 @@
   "name": "node-api-project",
   "version": "1.0.0",
   "description": "",
-  "main": "src/index.js",
+  "main": "src/app.js",
   "scripts": {
-    "dev": "nodemon src/index.js",
+    "dev": "nodemon src/app.js",
     "test": "jest",
-    "start": "node src/index.js"
+    "start": "node src/app.js",
+    "staging": "pm2 start ecosystem.config.js --env staging",
+    "production": "pm2 start ecosystem.config.js --env production"
   },
   "dependencies": {
-    "express": "^4.21.2"
+    "express": "^4.21.2",
+    "pm2": "^5.3.1"
   }
 }
