@@ -21,7 +21,7 @@ check:
 
 # 開発サーバーの起動（ローカル開発用）
 dev:
-	nodemon src/app.js
+	npx nodemon src/app.js
 
 # テストの実行
 test:
@@ -38,22 +38,22 @@ production:
 # PM2プロセスの状態確認
 pm2-status:
 	@echo "=== Checking PM2 Status ==="
-	pm2 status
+	npx pm2 status
 
 # PM2プロセスの停止
 pm2-stop:
 	@echo "=== Stopping PM2 Processes ==="
-	pm2 stop all
+	npx pm2 stop all
 
 # PM2プロセスの再起動
 pm2-restart:
 	@echo "=== Restarting PM2 Processes ==="
-	pm2 restart all
+	npx pm2 restart all
 
 # PM2ログの表示
 pm2-logs:
 	@echo "=== Showing PM2 Logs ==="
-	pm2 logs
+	npx pm2 logs
 
 # Prismaスタジオの起動
 db-studio:

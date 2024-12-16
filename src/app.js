@@ -13,7 +13,7 @@ class Application {
   constructor() {
     this.app = express();
     this.prisma = new PrismaClient();
-    this.port = process.env.PORT || 3001;
+    this.port = process.env.PORT || 3000;
     
     // S3クライアントの初期化を条件付きで行う
     if (this.isS3Configured()) {
@@ -35,7 +35,7 @@ class Application {
            process.env.AWS_BUCKET_NAME;
   }
 
-  // アップローダーの設定
+  // アップロー��ーの設定
   createUploader() {
     if (this.isS3Configured()) {
       return multer({
@@ -86,7 +86,7 @@ class Application {
 
   // ミドルウェアの設定
   setupMiddleware() {
-    // ロギング設定
+    // ��ギング設定
     const logFormat = ':remote-addr - :remote-user [:date[clf]] ":method :url HTTP/:http-version" :status :res[content-length] ":referrer" ":user-agent" :response-time ms';
     this.app.use(morgan(logFormat));
 
@@ -170,12 +170,13 @@ class Application {
       this.setupRoutes();
       this.setupErrorHandler();
 
-      // テスト環境では自動起動しない
       if (process.env.NODE_ENV !== 'test') {
-        this.app.listen(this.port, () => {
+        const host = '0.0.0.0';
+        this.app.listen(this.port, host, () => {
           console.log('\n=== Server URLs ===');
           console.log(`Local:   http://localhost:${this.port}`);
-          console.log(`Network: http://127.0.0.1:${this.port}`);
+          console.log(`Public:  http://${process.env.EC2_PUBLIC_IP || 'YOUR_EC2_PUBLIC_IP'}:${this.port}`);
+          console.log(`Private: http://${process.env.EC2_PRIVATE_IP || 'YOUR_EC2_PRIVATE_IP'}:${this.port}`);
         });
       }
     } catch (err) {
