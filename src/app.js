@@ -119,11 +119,14 @@ class Application {
       this.setupRoutes();
       this.setupErrorHandler();
 
-      this.app.listen(this.port, () => {
-        console.log('\n=== Server URLs ===');
-        console.log(`Local:   http://localhost:${this.port}`);
-        console.log(`Network: http://127.0.0.1:${this.port}`);
-      });
+      // テスト環境では自動起動しない
+      if (process.env.NODE_ENV !== 'test') {
+        this.app.listen(this.port, () => {
+          console.log('\n=== Server URLs ===');
+          console.log(`Local:   http://localhost:${this.port}`);
+          console.log(`Network: http://127.0.0.1:${this.port}`);
+        });
+      }
     } catch (err) {
       console.error('Application startup error:', err);
       process.exit(1);

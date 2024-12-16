@@ -5,7 +5,7 @@
   "main": "src/app.js",
   "scripts": {
     "dev": "nodemon src/app.js",
-    "test": "jest",
+    "test": "NODE_ENV=test jest --runInBand --forceExit --detectOpenHandles",
     "start": "node src/app.js",
     "staging": "pm2 start ecosystem.config.js --env staging",
     "production": "pm2 start ecosystem.config.js --env production",
@@ -34,6 +34,8 @@
     "testEnvironment": "node",
     "testMatch": [
       "**/tests/**/*.test.js"
-    ]
+    ],
+    "setupFilesAfterEnv": ["./src/tests/setup.js"],
+    "testTimeout": 10000
   }
 }
