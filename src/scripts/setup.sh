@@ -16,3 +16,6 @@ cd /workspaces/infra-devcontainer-aws-cdk-cicd-nodejs
 rm -rf node_modules
 rm -rf package-lock.json
 npm install
+
+echo -e "\n=== Installing Test Dependencies ==="
+npm install --save-dev jest supertest
