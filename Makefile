@@ -21,7 +21,7 @@ check:
 
 # 開発サーバーの起動（ローカル開発用）
 dev:
-	npx nodemon src/app.js
+	npm run dev
 
 # テストの実行
 test:
