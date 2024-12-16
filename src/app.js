@@ -6,6 +6,7 @@ const multer = require('multer');
 const { PrismaClient } = require('@prisma/client');
 const { S3Client } = require('@aws-sdk/client-s3');
 const multerS3 = require('multer-s3');
+const fs = require('fs');
 require('dotenv').config();
 
 class Application {
@@ -13,36 +14,74 @@ class Application {
     this.app = express();
     this.prisma = new PrismaClient();
     this.port = process.env.PORT || 3001;
-    this.s3 = new S3Client({
-      region: process.env.AWS_REGION,
-      credentials: {
-        accessKeyId: process.env.AWS_ACCESS_KEY_ID,
-        secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY
-      }
-    });
+    
+    // S3クライアントの初期化を条件付きで行う
+    if (this.isS3Configured()) {
+      this.s3 = new S3Client({
+        region: process.env.AWS_REGION,
+        credentials: {
+          accessKeyId: process.env.AWS_ACCESS_KEY_ID,
+          secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY
+        }
+      });
+    }
   }
 
-  // S3アップローダーの設定
+  // S3の設定が完了しているか確認
+  isS3Configured() {
+    return process.env.AWS_REGION && 
+           process.env.AWS_ACCESS_KEY_ID && 
+           process.env.AWS_SECRET_ACCESS_KEY &&
+           process.env.AWS_BUCKET_NAME;
+  }
+
+  // アップローダーの設定
   createUploader() {
-    return multer({
-      storage: multerS3({
-        s3: this.s3,
-        bucket: process.env.AWS_BUCKET_NAME,
-        contentType: multerS3.AUTO_CONTENT_TYPE,
-        metadata: (req, file, cb) => cb(null, { fieldName: file.fieldname }),
-        key: (req, file, cb) => {
-          const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
-          cb(null, uniqueSuffix + path.extname(file.originalname));
+    if (this.isS3Configured()) {
+      return multer({
+        storage: multerS3({
+          s3: this.s3,
+          bucket: process.env.AWS_BUCKET_NAME,
+          contentType: multerS3.AUTO_CONTENT_TYPE,
+          metadata: (req, file, cb) => cb(null, { fieldName: file.fieldname }),
+          key: (req, file, cb) => {
+            const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+            cb(null, uniqueSuffix + path.extname(file.originalname));
+          }
+        }),
+        limits: { fileSize: 5 * 1024 * 1024 }, // 5MB
+        fileFilter: (req, file, cb) => {
+          const allowedTypes = ['image/jpeg', 'image/png', 'image/gif'];
+          allowedTypes.includes(file.mimetype) 
+            ? cb(null, true)
+            : cb(new Error('画像形式はJPEG、PNG、GIFのみ対応しています'));
         }
-      }),
-      limits: { fileSize: 5 * 1024 * 1024 }, // 5MB
-      fileFilter: (req, file, cb) => {
-        const allowedTypes = ['image/jpeg', 'image/png', 'image/gif'];
-        allowedTypes.includes(file.mimetype) 
-          ? cb(null, true)
-          : cb(new Error('画像形式はJPEG、PNG、GIFのみ対応しています'));
+      });
+    } else {
+      // S3が設定されていない場合はローカルストレージを使用
+      console.log('Warning: S3 is not configured. Using local storage for uploads.');
+      const uploadDir = path.join(__dirname, '..', 'uploads');
+      if (!fs.existsSync(uploadDir)) {
+        fs.mkdirSync(uploadDir, { recursive: true });
       }
-    });
+      
+      return multer({
+        storage: multer.diskStorage({
+          destination: (req, file, cb) => cb(null, uploadDir),
+          filename: (req, file, cb) => {
+            const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+            cb(null, uniqueSuffix + path.extname(file.originalname));
+          }
+        }),
+        limits: { fileSize: 5 * 1024 * 1024 }, // 5MB
+        fileFilter: (req, file, cb) => {
+          const allowedTypes = ['image/jpeg', 'image/png', 'image/gif'];
+          allowedTypes.includes(file.mimetype) 
+            ? cb(null, true)
+            : cb(new Error('画像形式はJPEG、PNG、GIFのみ対応しています'));
+        }
+      });
+    }
   }
 
   // ミドルウェアの設定
@@ -82,22 +121,34 @@ class Application {
       res.render('index', { microposts });
     }));
 
-    // 投稿作成
+    // 投稿作成を修正
     this.app.post('/microposts', upload.single('image'), asyncHandler(async (req, res) => {
       const { title } = req.body;
       if (!title?.trim()) {
         return res.status(400).json({ error: '投稿内容を入力してください' });
       }
 
+      let imageUrl = null;
+      if (req.file) {
+        imageUrl = this.isS3Configured() 
+          ? req.file.location 
+          : `/uploads/${req.file.filename}`;  // ローカルファイルの場合のパス
+      }
+
       await this.prisma.micropost.create({
         data: { 
           title: title.trim(),
-          imageUrl: req.file?.location
+          imageUrl
         }
       });
 
       res.redirect('/');
     }));
+
+    // ローカルアップロードの場合、静的ファイルを提供
+    if (!this.isS3Configured()) {
+      this.app.use('/uploads', express.static(path.join(__dirname, '..', 'uploads')));
+    }
   }
 
   // エラーハンドラーの設定
