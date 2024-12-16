@@ -80,8 +80,12 @@
     
     <div id="health-status" style="margin-bottom: 20px; padding: 10px; background-color: #f0f0f0; border-radius: 5px;">
         <h3>システム状態</h3>
-        <p>API状態: <span id="api-health">確認中...</span></p>
-        <p>データベース状態: <span id="db-health">確認中...</span></p>
+        <div style="display: flex; gap: 10px; margin-bottom: 10px;">
+            <button onclick="checkHealth()" style="padding: 5px 10px;">ヘルスチェック実行</button>
+            <span id="last-check" style="color: #666;"></span>
+        </div>
+        <p>API状態: <span id="api-health">未確認</span></p>
+        <p>データベース状態: <span id="db-health">未確認</span></p>
     </div>
     
     <div class="post-form">
@@ -135,7 +139,11 @@
         }
 
         async function checkHealth() {
+            const button = document.querySelector('button');
+            button.disabled = true;
+            
             try {
+                // API health check
                 const apiResponse = await fetch('/health');
                 const apiData = await apiResponse.json();
                 document.getElementById('api-health').textContent = 
@@ -143,23 +151,29 @@
                 document.getElementById('api-health').style.color = 
                     apiData.status === 'healthy' ? 'green' : 'red';
 
+                // Database health check
                 const dbResponse = await fetch('/health-db');
                 const dbData = await dbResponse.json();
                 document.getElementById('db-health').textContent = 
                     dbData.status === 'healthy' ? '正常' : '異常';
                 document.getElementById('db-health').style.color = 
                     dbData.status === 'healthy' ? 'green' : 'red';
+
+                // Update last check time
+                const now = new Date().toLocaleString('ja-JP');
+                document.getElementById('last-check').textContent = 
+                    `最終確認: ${now}`;
+
             } catch (error) {
                 console.error('ヘルスチェックエラー:', error);
                 document.getElementById('api-health').textContent = 'エラー';
                 document.getElementById('db-health').textContent = 'エラー';
                 document.getElementById('api-health').style.color = 'red';
                 document.getElementById('db-health').style.color = 'red';
+            } finally {
+                button.disabled = false;
             }
         }
-
-        checkHealth();
-        setInterval(checkHealth, 30000);
     </script>
 </body>
 </html> 
