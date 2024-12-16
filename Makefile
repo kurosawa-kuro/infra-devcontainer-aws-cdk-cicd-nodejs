@@ -1,4 +1,4 @@
-.PHONY: init dev test env setup check staging production pm2-status pm2-stop pm2-restart pm2-logs
+.PHONY: init dev test env setup check staging production pm2-status pm2-stop pm2-restart pm2-logs db-studio db-migrate db-reset db-generate
 
 # 初期セットアップ（全ての準備を一括実行）
 init: permissions env setup
@@ -54,3 +54,23 @@ pm2-restart:
 pm2-logs:
 	@echo "=== Showing PM2 Logs ==="
 	pm2 logs
+
+# Prismaスタジオの起動
+db-studio:
+	@echo "=== Starting Prisma Studio ==="
+	npx prisma studio
+
+# データベースマイグレーションの作成
+db-migrate:
+	@echo "=== Creating Database Migration ==="
+	npx prisma migrate dev
+
+# データベースのリセット（開発環境のみ）
+db-reset:
+	@echo "=== Resetting Database ==="
+	npx prisma migrate reset
+
+# Prismaクライアントの生成
+db-generate:
+	@echo "=== Generating Prisma Client ==="
+	npx prisma generate

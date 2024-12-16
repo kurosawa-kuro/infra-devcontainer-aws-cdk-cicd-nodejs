@@ -32,3 +32,13 @@ echo -e "\n=== Installing Project Dependencies ==="
 rm -rf node_modules
 rm -rf package-lock.json
 npm install
+
+echo -e "\n=== Setting up Prisma ==="
+# Prismaクライアントの生成
+npx prisma generate
+
+# 開発環境の場合のみマイグレーションを実行
+if [ "$NODE_ENV" != "production" ]; then
+  echo "Running database migrations..."
+  npx prisma migrate dev
+fi

@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Microposts</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .post-form {
+            margin-bottom: 30px;
+            padding: 20px;
+            background-color: #f5f5f5;
+            border-radius: 5px;
+        }
+        .post-form input[type="text"] {
+            width: 80%;
+            padding: 8px;
+            margin-bottom: 10px;
+        }
+        .post-form input[type="file"] {
+            margin-bottom: 10px;
+        }
+        .post-form button {
+            padding: 8px 15px;
+            background-color: #007bff;
+            color: white;
+            border: none;
+            border-radius: 3px;
+            cursor: pointer;
+        }
+        .posts {
+            list-style: none;
+            padding: 0;
+        }
+        .post-item {
+            padding: 15px;
+            border-bottom: 1px solid #eee;
+        }
+        .post-title {
+            font-size: 1.1em;
+            margin-bottom: 5px;
+        }
+        .post-image-container {
+            max-width: 100%;
+            margin: 10px 0;
+            text-align: center;
+        }
+        .post-image {
+            max-width: 100%;
+            max-height: 400px;
+            height: auto;
+            object-fit: contain;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        }
+        @media (max-width: 600px) {
+            .post-image {
+                max-height: 300px;
+            }
+        }
+        .post-date {
+            color: #666;
+            font-size: 0.9em;
+        }
+        .image-preview {
+            max-width: 200px;
+            max-height: 200px;
+            margin: 10px 0;
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <h1>Microposts</h1>
+    
+    <div id="health-status" style="margin-bottom: 20px; padding: 10px; background-color: #f0f0f0; border-radius: 5px;">
+        <h3>システム状態</h3>
+        <p>API状態: <span id="api-health">確認中...</span></p>
+        <p>データベース状態: <span id="db-health">確認中...</span></p>
+    </div>
+    
+    <div class="post-form">
+        <form action="/microposts" method="POST" enctype="multipart/form-data">
+            <div>
+                <input type="text" name="title" placeholder="投稿内容を入力" required>
+            </div>
+            <div>
+                <input type="file" name="image" accept="image/*" onchange="previewImage(this)">
+                <img id="preview" class="image-preview">
+            </div>
+            <button type="submit">投稿</button>
+        </form>
+    </div>
+
+    <ul class="posts">
+        <% microposts.forEach(post => { %>
+            <li class="post-item">
+                <div class="post-title"><%= post.title %></div>
+                <% if (post.imageUrl) { %>
+                    <div class="post-image-container">
+                        <img src="<%= post.imageUrl %>" 
+                             alt="投稿画像" 
+                             class="post-image"
+                             loading="lazy">
+                    </div>
+                <% } %>
+                <div class="post-date">
+                    <%= new Date(post.createdAt).toLocaleString('ja-JP') %>
+                </div>
+            </li>
+        <% }); %>
+    </ul>
+
+    <script>
+        function previewImage(input) {
+            const preview = document.getElementById('preview');
+            if (input.files && input.files[0]) {
+                const reader = new FileReader();
+                
+                reader.onload = function(e) {
+                    preview.style.display = 'block';
+                    preview.src = e.target.result;
+                }
+                
+                reader.readAsDataURL(input.files[0]);
+            } else {
+                preview.style.display = 'none';
+                preview.src = '';
+            }
+        }
+
+        async function checkHealth() {
+            try {
+                const apiResponse = await fetch('/health');
+                const apiData = await apiResponse.json();
+                document.getElementById('api-health').textContent = 
+                    apiData.status === 'healthy' ? '正常' : '異常';
+                document.getElementById('api-health').style.color = 
+                    apiData.status === 'healthy' ? 'green' : 'red';
+
+                const dbResponse = await fetch('/health-db');
+                const dbData = await dbResponse.json();
+                document.getElementById('db-health').textContent = 
+                    dbData.status === 'healthy' ? '正常' : '異常';
+                document.getElementById('db-health').style.color = 
+                    dbData.status === 'healthy' ? 'green' : 'red';
+            } catch (error) {
+                console.error('ヘルスチェックエラー:', error);
+                document.getElementById('api-health').textContent = 'エラー';
+                document.getElementById('db-health').textContent = 'エラー';
+                document.getElementById('api-health').style.color = 'red';
+                document.getElementById('db-health').style.color = 'red';
+            }
+        }
+
+        checkHealth();
+        setInterval(checkHealth, 30000);
+    </script>
+</body>
+</html> 
