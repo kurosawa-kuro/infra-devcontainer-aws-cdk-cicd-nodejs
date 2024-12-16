@@ -3,92 +3,153 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Microposts</title>
+    <title>検証用ウェブ アプリ - CRUD/S3/Auth</title>
     <style>
+        :root {
+            --primary-color: #007bff;
+            --border-color: #eee;
+            --bg-color: #f5f5f5;
+            --text-color: #666;
+        }
+        
         body {
             font-family: Arial, sans-serif;
             max-width: 800px;
             margin: 0 auto;
             padding: 20px;
+            line-height: 1.6;
         }
-        .post-form {
-            margin-bottom: 30px;
-            padding: 20px;
-            background-color: #f5f5f5;
-            border-radius: 5px;
-        }
-        .post-form input[type="text"] {
-            width: 80%;
-            padding: 8px;
-            margin-bottom: 10px;
-        }
-        .post-form input[type="file"] {
-            margin-bottom: 10px;
-        }
-        .post-form button {
-            padding: 8px 15px;
-            background-color: #007bff;
-            color: white;
-            border: none;
-            border-radius: 3px;
-            cursor: pointer;
-        }
-        .posts {
+
+        /* 機能一覧 */
+        .feature-list {
             list-style: none;
             padding: 0;
+            color: var(--text-color);
         }
-        .post-item {
+        .feature-list li::before {
+            content: "✓ ";
+            color: green;
+        }
+        .feature-list li.pending::before {
+            content: "- ";
+            color: var(--text-color);
+        }
+
+        /* システム状態 */
+        .status-panel {
+            background-color: var(--bg-color);
             padding: 15px;
-            border-bottom: 1px solid #eee;
+            border-radius: 5px;
+            margin: 20px 0;
         }
-        .post-title {
-            font-size: 1.1em;
-            margin-bottom: 5px;
+        .status-panel button {
+            padding: 5px 10px;
+            margin-right: 10px;
         }
-        .post-image-container {
-            max-width: 100%;
+        .status-check {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 10px;
+        }
+
+        /* 投稿フォーム */
+        .post-form {
+            background-color: var(--bg-color);
+            padding: 20px;
+            border-radius: 5px;
+            margin: 20px 0;
+        }
+        .post-form input[type="text"] {
+            width: 100%;
+            padding: 8px;
+            margin-bottom: 10px;
+            border: 1px solid var(--border-color);
+            border-radius: 3px;
+        }
+        .post-form input[type="file"] {
             margin: 10px 0;
-            text-align: center;
         }
-        .post-image {
-            max-width: 100%;
-            max-height: 400px;
-            height: auto;
-            object-fit: contain;
-            border-radius: 8px;
-            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        .post-form button {
+            background-color: var(--primary-color);
+            color: white;
+            border: none;
+            padding: 8px 15px;
+            border-radius: 3px;
+            cursor: pointer;
+            transition: background-color 0.2s;
         }
-        @media (max-width: 600px) {
-            .post-image {
-                max-height: 300px;
-            }
-        }
-        .post-date {
-            color: #666;
-            font-size: 0.9em;
+        .post-form button:hover {
+            background-color: #0056b3;
         }
         .image-preview {
             max-width: 200px;
             max-height: 200px;
             margin: 10px 0;
             display: none;
+            border-radius: 5px;
+            border: 1px solid var(--border-color);
+        }
+
+        /* 投稿一覧 */
+        .posts {
+            list-style: none;
+            padding: 0;
+        }
+        .post-item {
+            background-color: var(--bg-color);
+            padding: 15px;
+            border-radius: 5px;
+            margin-bottom: 15px;
+        }
+        .post-title {
+            font-size: 1.1em;
+            margin-bottom: 5px;
+            color: #333;
+        }
+        .post-image-container {
+            margin: 10px 0;
+            text-align: center;
+            background-color: white;
+            padding: 10px;
+            border-radius: 5px;
+            border: 1px solid var(--border-color);
+        }
+        .post-image {
+            max-width: 100%;
+            max-height: 400px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+        }
+        .post-date {
+            color: var(--text-color);
+            font-size: 0.9em;
+            margin-top: 8px;
         }
     </style>
 </head>
 <body>
-    <h1>Microposts</h1>
+    <h1>検証用ウェブ アプリ</h1>
     
-    <div id="health-status" style="margin-bottom: 20px; padding: 10px; background-color: #f0f0f0; border-radius: 5px;">
+    <ul class="feature-list">
+        <li>データベース接続確認</li>
+        <li>CRUD操作の実装</li>
+        <li>AWS S3への画像アップロード</li>
+        <li>PostgreSQLとPrisma</li>
+        <li class="pending">認証・認可 (実装予定)</li>
+    </ul>
+    
+    <div class="status-panel">
         <h3>システム状態</h3>
-        <div style="display: flex; gap: 10px; margin-bottom: 10px;">
-            <button onclick="checkHealth()" style="padding: 5px 10px;">ヘルスチェック実行</button>
-            <span id="last-check" style="color: #666;"></span>
+        <div class="status-check">
+            <button onclick="checkHealth()">ヘルスチェック実行</button>
+            <span id="last-check"></span>
         </div>
         <p>API状態: <span id="api-health">未確認</span></p>
         <p>データベース状態: <span id="db-health">未確認</span></p>
     </div>
-    
+
     <div class="post-form">
+        <h3>投稿フォーム</h3>
         <form action="/microposts" method="POST" enctype="multipart/form-data">
             <div>
                 <input type="text" name="title" placeholder="投稿内容を入力" required>
@@ -101,6 +162,7 @@
         </form>
     </div>
 
+    <h3>投稿一覧</h3>
     <ul class="posts">
         <% microposts.forEach(post => { %>
             <li class="post-item">
@@ -121,16 +183,15 @@
     </ul>
 
     <script>
+        // 画像プレビュー
         function previewImage(input) {
             const preview = document.getElementById('preview');
-            if (input.files && input.files[0]) {
+            if (input.files?.[0]) {
                 const reader = new FileReader();
-                
-                reader.onload = function(e) {
+                reader.onload = e => {
                     preview.style.display = 'block';
                     preview.src = e.target.result;
-                }
-                
+                };
                 reader.readAsDataURL(input.files[0]);
             } else {
                 preview.style.display = 'none';
@@ -138,41 +199,41 @@
             }
         }
 
+        // ヘルスチェック
         async function checkHealth() {
-            const button = document.querySelector('button');
+            const button = document.querySelector('.status-check button');
             button.disabled = true;
             
             try {
-                // API health check
-                const apiResponse = await fetch('/health');
-                const apiData = await apiResponse.json();
-                document.getElementById('api-health').textContent = 
-                    apiData.status === 'healthy' ? '正常' : '異常';
-                document.getElementById('api-health').style.color = 
-                    apiData.status === 'healthy' ? 'green' : 'red';
+                const [apiRes, dbRes] = await Promise.all([
+                    fetch('/health'),
+                    fetch('/health-db')
+                ]);
 
-                // Database health check
-                const dbResponse = await fetch('/health-db');
-                const dbData = await dbResponse.json();
-                document.getElementById('db-health').textContent = 
-                    dbData.status === 'healthy' ? '正常' : '異常';
-                document.getElementById('db-health').style.color = 
-                    dbData.status === 'healthy' ? 'green' : 'red';
+                const [apiData, dbData] = await Promise.all([
+                    apiRes.json(),
+                    dbRes.json()
+                ]);
 
-                // Update last check time
-                const now = new Date().toLocaleString('ja-JP');
+                updateStatus('api-health', apiData.status === 'healthy');
+                updateStatus('db-health', dbData.status === 'healthy');
+                
                 document.getElementById('last-check').textContent = 
-                    `最終確認: ${now}`;
+                    `最終確認: ${new Date().toLocaleString('ja-JP')}`;
 
             } catch (error) {
                 console.error('ヘルスチェックエラー:', error);
-                document.getElementById('api-health').textContent = 'エラー';
-                document.getElementById('db-health').textContent = 'エラー';
-                document.getElementById('api-health').style.color = 'red';
-                document.getElementById('db-health').style.color = 'red';
+                updateStatus('api-health', false);
+                updateStatus('db-health', false);
             } finally {
                 button.disabled = false;
             }
+        }
+
+        function updateStatus(elementId, isHealthy) {
+            const element = document.getElementById(elementId);
+            element.textContent = isHealthy ? '正常' : '異��';
+            element.style.color = isHealthy ? 'green' : 'red';
         }
     </script>
 </body>
