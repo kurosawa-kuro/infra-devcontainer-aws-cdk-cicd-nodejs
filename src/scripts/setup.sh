@@ -45,13 +45,17 @@ else
 fi
 
 echo -e "\n=== Setting up environment variables ==="
-if [ ! -f .env ]; then
-    echo "Creating .env file from example..."
-    cp src/env/.env.example .env
-    echo ".env file created successfully."
-else
-    echo ".env file already exists."
+if [ -f .env ]; then
+    # バックアップのタイムスタンプを作成
+    timestamp=$(date +%Y%m%d_%H%M%S)
+    echo "Backing up existing .env file to .env.backup_${timestamp}"
+    cp .env ".env.backup_${timestamp}"
 fi
+
+# 新しい.envファイルをコピー
+echo "Creating .env file from example..."
+cp src/env/.env.example .env
+echo ".env file created/updated successfully."
 
 # プロジェクトの依存関係をクリーンインストール
 echo -e "\n=== Installing Project Dependencies ==="
