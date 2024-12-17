@@ -86,7 +86,7 @@ class Application {
 
   // ミドルウェアの設定
   setupMiddleware() {
-    // ��ギング設定
+    // ロギング設定
     const logFormat = ':remote-addr - :remote-user [:date[clf]] ":method :url HTTP/:http-version" :status :res[content-length] ":referrer" ":user-agent" :response-time ms';
     this.app.use(morgan(logFormat));
 
@@ -151,7 +151,7 @@ class Application {
     }
   }
 
-  // エラーハンドラーの設定
+  // エ��ーハンドラーの設定
   setupErrorHandler() {
     this.app.use((err, req, res, next) => {
       console.error('Application Error:', err);

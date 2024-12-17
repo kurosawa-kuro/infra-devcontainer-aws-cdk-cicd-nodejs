@@ -1,18 +1,13 @@
 .PHONY: init dev test env setup check staging production pm2-status pm2-stop pm2-restart pm2-logs db-studio db-migrate db-reset db-generate
 
 # 初期セットアップ（全ての準備を一括実行）
-init: permissions env setup
+setup: permissions env setup
 	@echo "\n=== Initial setup completed ==="
 
 # 実行権限の付与
 permissions:
 	@echo "=== Setting up file permissions ==="
 	chmod u+x src/scripts/setup.sh src/scripts/check-env.sh src/scripts/fix_ssh_permissions.sh
-
-# 開発環境のセットアップ（依存関係のインストールなど）
-setup:
-	@echo "=== Setting up development environment ==="
-	./src/scripts/setup.sh
 
 # 環境のバージョンチェック
 check:

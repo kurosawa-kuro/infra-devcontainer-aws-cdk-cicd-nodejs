@@ -54,7 +54,7 @@ fi
 
 # 新しい.envファイルをコピー
 echo "Creating .env file from example..."
-cp src/env/.env.example .env
+cp src/scripts/.env.example .env
 echo ".env file created/updated successfully."
 
 # プロジェクトの依存関係をクリーンインストール
