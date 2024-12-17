@@ -15,10 +15,20 @@ class Application {
     this.prisma = new PrismaClient();
     this.port = process.env.PORT || 3000;
     
-    // S3クライアントの初期化を条件付きで行う
+    // S3の設定
+    this.s3Config = {
+      region: process.env.AWS_REGION,
+      bucket: process.env.AWS_BUCKET_NAME,
+      uploadLimits: {
+        fileSize: 5 * 1024 * 1024, // 5MB
+        allowedMimeTypes: ['image/jpeg', 'image/png', 'image/gif']
+      }
+    };
+
+    // S3クライアントの初期化
     if (this.isS3Configured()) {
       this.s3 = new S3Client({
-        region: process.env.AWS_REGION,
+        region: this.s3Config.region,
         credentials: {
           accessKeyId: process.env.AWS_ACCESS_KEY_ID,
           secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY
@@ -29,37 +39,50 @@ class Application {
 
   // S3の設定が完了しているか確認
   isS3Configured() {
-    return process.env.AWS_REGION && 
+    return this.s3Config.region && 
            process.env.AWS_ACCESS_KEY_ID && 
            process.env.AWS_SECRET_ACCESS_KEY &&
-           process.env.AWS_BUCKET_NAME;
+           this.s3Config.bucket;
   }
 
-  // アップロー��ーの設定
+  // ファイルアップロードの設定
   createUploader() {
+    const fileFilter = (req, file, cb) => {
+      if (this.s3Config.uploadLimits.allowedMimeTypes.includes(file.mimetype)) {
+        cb(null, true);
+      } else {
+        cb(new Error(`対応していないファイル形式です。対応形式: ${this.s3Config.uploadLimits.allowedMimeTypes.join(', ')}`));
+      }
+    };
+
     if (this.isS3Configured()) {
+      console.log('Using S3 storage for uploads');
       return multer({
         storage: multerS3({
           s3: this.s3,
-          bucket: process.env.AWS_BUCKET_NAME,
+          bucket: this.s3Config.bucket,
           contentType: multerS3.AUTO_CONTENT_TYPE,
-          metadata: (req, file, cb) => cb(null, { fieldName: file.fieldname }),
+          metadata: (req, file, cb) => {
+            cb(null, {
+              fieldName: file.fieldname,
+              contentType: file.mimetype,
+              uploadedAt: new Date().toISOString()
+            });
+          },
           key: (req, file, cb) => {
-            const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
-            cb(null, uniqueSuffix + path.extname(file.originalname));
+            const uniqueSuffix = `${Date.now()}-${Math.round(Math.random() * 1E9)}`;
+            const fileExtension = path.extname(file.originalname);
+            const fileName = `uploads/${uniqueSuffix}${fileExtension}`;
+            cb(null, fileName);
           }
         }),
-        limits: { fileSize: 5 * 1024 * 1024 }, // 5MB
-        fileFilter: (req, file, cb) => {
-          const allowedTypes = ['image/jpeg', 'image/png', 'image/gif'];
-          allowedTypes.includes(file.mimetype) 
-            ? cb(null, true)
-            : cb(new Error('画像形式はJPEG、PNG、GIFのみ対応しています'));
-        }
+        limits: {
+          fileSize: this.s3Config.uploadLimits.fileSize
+        },
+        fileFilter
       });
     } else {
-      // S3が設定されていない場合はローカルストレージを使用
-      console.log('Warning: S3 is not configured. Using local storage for uploads.');
+      console.log('Using local storage for uploads');
       const uploadDir = path.join(__dirname, '..', 'uploads');
       if (!fs.existsSync(uploadDir)) {
         fs.mkdirSync(uploadDir, { recursive: true });
@@ -69,28 +92,23 @@ class Application {
         storage: multer.diskStorage({
           destination: (req, file, cb) => cb(null, uploadDir),
           filename: (req, file, cb) => {
-            const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
-            cb(null, uniqueSuffix + path.extname(file.originalname));
+            const uniqueSuffix = `${Date.now()}-${Math.round(Math.random() * 1E9)}`;
+            const fileExtension = path.extname(file.originalname);
+            cb(null, `${uniqueSuffix}${fileExtension}`);
           }
         }),
-        limits: { fileSize: 5 * 1024 * 1024 }, // 5MB
-        fileFilter: (req, file, cb) => {
-          const allowedTypes = ['image/jpeg', 'image/png', 'image/gif'];
-          allowedTypes.includes(file.mimetype) 
-            ? cb(null, true)
-            : cb(new Error('画像形式はJPEG、PNG、GIFのみ対応しています'));
-        }
+        limits: {
+          fileSize: this.s3Config.uploadLimits.fileSize
+        },
+        fileFilter
       });
     }
   }
 
   // ミドルウェアの設定
   setupMiddleware() {
-    // ロギング設定
     const logFormat = ':remote-addr - :remote-user [:date[clf]] ":method :url HTTP/:http-version" :status :res[content-length] ":referrer" ":user-agent" :response-time ms';
     this.app.use(morgan(logFormat));
-
-    // 基本設定
     this.app.use(express.json());
     this.app.use(express.urlencoded({ extended: true }));
     this.app.set('view engine', 'ejs');
@@ -103,7 +121,7 @@ class Application {
 
     // ヘルスチェック
     this.app.get('/health', (_, res) => res.json({ status: 'healthy' }));
-    this.app.get('/health-db', async (_, res) => {
+    this.app.get('/health-db', asyncHandler(async (_, res) => {
       try {
         await this.prisma.$queryRaw`SELECT 1`;
         res.json({ status: 'healthy' });
@@ -111,7 +129,7 @@ class Application {
         console.error('Database health check failed:', err);
         res.status(500).json({ status: 'unhealthy', error: err.message });
       }
-    });
+    }));
 
     // メインページ
     this.app.get('/', asyncHandler(async (_, res) => {
@@ -121,40 +139,60 @@ class Application {
       res.render('index', { microposts });
     }));
 
-    // 投稿作成を修正
+    // 投稿作成
     this.app.post('/microposts', upload.single('image'), asyncHandler(async (req, res) => {
-      const { title } = req.body;
-      if (!title?.trim()) {
-        return res.status(400).json({ error: '投稿内容を入力してください' });
-      }
-
-      let imageUrl = null;
-      if (req.file) {
-        imageUrl = this.isS3Configured() 
-          ? req.file.location 
-          : `/uploads/${req.file.filename}`;  // ローカルファイルの場合のパス
-      }
-
-      await this.prisma.micropost.create({
-        data: { 
-          title: title.trim(),
-          imageUrl
+      try {
+        const { title } = req.body;
+        if (!title?.trim()) {
+          return res.status(400).json({ error: '投稿内容を入力してください' });
         }
-      });
 
-      res.redirect('/');
+        let imageUrl = null;
+        if (req.file) {
+          imageUrl = this.isS3Configured() 
+            ? req.file.location 
+            : `/uploads/${req.file.filename}`;
+        }
+
+        await this.prisma.micropost.create({
+          data: { 
+            title: title.trim(),
+            imageUrl
+          }
+        });
+
+        res.redirect('/');
+      } catch (error) {
+        console.error('File upload error:', error);
+        res.status(500).json({ 
+          error: 'ファイルアップロードに失敗しました',
+          details: process.env.NODE_ENV === 'development' ? error.message : undefined
+        });
+      }
     }));
 
-    // ローカルアップロードの場合、静的ファイルを提供
+    // ローカルアップロードの場合の静的ファイル提供
     if (!this.isS3Configured()) {
       this.app.use('/uploads', express.static(path.join(__dirname, '..', 'uploads')));
     }
   }
 
-  // エ��ーハンドラーの設定
+  // エラーハンドラー
   setupErrorHandler() {
     this.app.use((err, req, res, next) => {
       console.error('Application Error:', err);
+      
+      // multerのエラーハンドリング
+      if (err instanceof multer.MulterError) {
+        if (err.code === 'LIMIT_FILE_SIZE') {
+          return res.status(400).json({ 
+            error: `ファイルサイズが大きすぎます。${this.s3Config.uploadLimits.fileSize / (1024 * 1024)}MB以下にしてください。` 
+          });
+        }
+        return res.status(400).json({ error: 'ファイルアップロードエラー' });
+      }
+
+      // 一般的なエラーハンドリング
       res.status(500).json({ 
         error: process.env.NODE_ENV === 'production' 
           ? 'サーバーエラーが発生しました' 
@@ -177,6 +215,7 @@ class Application {
           console.log(`Local:   http://localhost:${this.port}`);
           console.log(`Public:  http://${process.env.EC2_PUBLIC_IP || 'YOUR_EC2_PUBLIC_IP'}:${this.port}`);
           console.log(`Private: http://${process.env.EC2_PRIVATE_IP || 'YOUR_EC2_PRIVATE_IP'}:${this.port}`);
+          console.log(`\nStorage: ${this.isS3Configured() ? 'S3' : 'Local'}`);
         });
       }
     } catch (err) {
@@ -185,18 +224,15 @@ class Application {
     }
   }
 
-  // クリーンアップ処理
   async cleanup() {
     await this.prisma.$disconnect();
   }
 }
 
-// アプリケーションの実行
 if (require.main === module) {
   const app = new Application();
   app.start();
 
-  // 終了時の処理
   ['SIGINT', 'SIGTERM'].forEach(signal => {
     process.on(signal, async () => {
       console.log(`\nReceived ${signal}, cleaning up...`);
