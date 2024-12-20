@@ -18,7 +18,11 @@ class Application {
     // S3の設定
     this.s3Config = {
       region: process.env.AWS_REGION,
-      bucket: process.env.AWS_BUCKET_NAME,
+      bucket: process.env.AWS_BUCKET,
+      cloudfront: {
+        url: process.env.AWS_CLOUDFRONT_URL,
+        distributionId: process.env.AWS_CLOUDFRONT_DISTRIBUTION_ID
+      },
       uploadLimits: {
         fileSize: 5 * 1024 * 1024, // 5MB
         allowedMimeTypes: ['image/jpeg', 'image/png', 'image/gif']
@@ -56,7 +60,7 @@ class Application {
     };
 
     if (this.isS3Configured()) {
-      console.log('Using S3 storage for uploads');
+      console.log('Using S3 storage with CloudFront');
       return multer({
         storage: multerS3({
           s3: this.s3,
