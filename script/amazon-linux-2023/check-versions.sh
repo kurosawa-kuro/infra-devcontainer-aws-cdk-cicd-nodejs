@@ -53,6 +53,15 @@ check_versions() {
     # PostgreSQL
     if check_command psql; then
         log "PostgreSQL version: $(psql --version)"
+        
+        DATABASE_URL="postgresql://neondb_owner:Nrp3FfO1goiB@ep-noisy-cherry-a7rp6riz.ap-southeast-2.aws.neon.tech/neondb?sslmode=require"
+        # データベースへの接続とテーブル一覧の表示を試みる
+        if [ -n "${DATABASE_URL:-}" ]; then
+            log "PostgreSQL tables:"
+            psql "${DATABASE_URL}" -c "\dt" || log "  Unable to connect to database or list tables"
+        else
+            log "  DATABASE_URL not set. Skipping table listing."
+        fi
     else
         log "PostgreSQL: Not installed"
     fi
