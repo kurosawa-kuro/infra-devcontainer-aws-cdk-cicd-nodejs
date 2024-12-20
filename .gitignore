@@ -12,7 +12,11 @@ build/
 coverage/
 .next/
 .nuxt/
+
+# Environment
 .env
+.env.*
+!script/config/.env.example
 
 # Go
 *.exe
