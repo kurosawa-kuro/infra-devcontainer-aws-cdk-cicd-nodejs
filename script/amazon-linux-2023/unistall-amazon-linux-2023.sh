@@ -40,7 +40,7 @@ uninstall_postgresql() {
     userdel -r postgres || true
     groupdel postgres || true
 
-    log "PostgreSQLのアンインストール��完了しました"
+    log "PostgreSQLのアンインストールが完了しました"
 }
 
 # Dockerのアンインストール
@@ -136,7 +136,7 @@ main() {
     log "アンインストールを開始します..."
 
     # 確認プロンプト
-    read -p "全ての���ンポーネントをアンインストールします。続行しますか？ (y/N): " confirm
+    read -p "全てのコンポーネントをアンインストールします。続行しますか？ (y/N): " confirm
     if [[ ! "$confirm" =~ ^[yY]$ ]]; then
         log "アンインストールを中止しました"
         exit 0

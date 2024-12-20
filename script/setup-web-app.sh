@@ -48,8 +48,10 @@ echo -e "\n=== Setting up environment variables ==="
 if [ -f .env ]; then
     # バックアップのタイムスタンプを作成
     timestamp=$(date +%Y%m%d_%H%M%S)
-    echo "Backing up existing .env file to .env.backup_${timestamp}"
-    cp .env ".env.backup_${timestamp}"
+    backup_dir="script/config"
+    backup_file="$backup_dir/.env.backup_${timestamp}"
+    echo "Backing up existing .env file to ${backup_file}"
+    cp .env "${backup_file}"
 fi
 
 # 新しい.envファイルをコピー
