@@ -9,7 +9,7 @@ setup: permissions
 # 実行権限の付与
 permissions:
 	@echo "=== Setting up file permissions ==="
-	chmod u+x script/setup-web-app.sh script/setup-key.sh script/amazon-linux-2023/check-versions.sh script/amazon-linux-2023/setup-amazon-linux-2023.sh script/amazon-linux-2023/unistall-amazon-linux-2023.sh
+	chmod u+x script/setup-web-app.sh script/amazon-linux-2023/setup-key.sh script/amazon-linux-2023/check-versions.sh script/amazon-linux-2023/setup-amazon-linux-2023.sh script/amazon-linux-2023/unistall-amazon-linux-2023.sh
 
 # 環境のバージョンチェック
 check:
