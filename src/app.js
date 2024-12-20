@@ -154,7 +154,7 @@ class Application {
         let imageUrl = null;
         if (req.file) {
           imageUrl = this.isS3Configured() 
-            ? req.file.location 
+            ? `${this.s3Config.cloudfront.url}/${req.file.key}`
             : `/uploads/${req.file.filename}`;
         }
 
