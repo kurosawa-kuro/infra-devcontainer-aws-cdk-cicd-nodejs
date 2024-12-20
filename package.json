@@ -9,9 +9,14 @@
     "start": "node src/app.js",
     "staging": "pm2 start ecosystem.config.js --env staging",
     "production": "pm2 start ecosystem.config.js --env production",
-    "db-studio": "npx prisma studio",
-    "db-migrate": "npx prisma migrate dev",
-    "db-reset": "npx prisma migrate reset"
+    "pm2-status": "pm2 status",
+    "pm2-stop": "pm2 stop all",
+    "pm2-restart": "pm2 restart all",
+    "pm2-logs": "pm2 logs",
+    "db-studio": "prisma studio",
+    "db-migrate": "prisma migrate dev",
+    "db-reset": "prisma migrate reset",
+    "db-generate": "prisma generate"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.712.0",

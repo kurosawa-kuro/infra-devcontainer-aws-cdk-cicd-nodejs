@@ -9,7 +9,7 @@ setup: permissions
 # 実行権限の付与
 permissions:
 	@echo "=== Setting up file permissions ==="
-	chmod u+x script/setup-web-app.sh script/amazon-linux-2023/setup-key.sh script/amazon-linux-2023/check-versions.sh script/amazon-linux-2023/setup-amazon-linux-2023.sh script/amazon-linux-2023/unistall-amazon-linux-2023.sh
+	chmod u+x script/setup-web-app.sh script/amazon-linux-2023/check-versions.sh script/amazon-linux-2023/setup-amazon-linux-2023.sh script/amazon-linux-2023/unistall-amazon-linux-2023.sh
 
 # 環境のバージョンチェック
 check:
@@ -35,39 +35,39 @@ production:
 # PM2プロセスの状態確認
 pm2-status:
 	@echo "=== Checking PM2 Status ==="
-	npx pm2 status
+	npm run pm2-status
 
 # PM2プロセスの停止
 pm2-stop:
 	@echo "=== Stopping PM2 Processes ==="
-	npx pm2 stop all
+	npm run pm2-stop
 
 # PM2プロセスの再起動
 pm2-restart:
 	@echo "=== Restarting PM2 Processes ==="
-	npx pm2 restart all
+	npm run pm2-restart
 
 # PM2ログの表示
 pm2-logs:
 	@echo "=== Showing PM2 Logs ==="
-	npx pm2 logs
+	npm run pm2-logs
 
 # Prismaスタジオの起動
 db-studio:
 	@echo "=== Starting Prisma Studio ==="
-	npx prisma studio
+	npm run db-studio
 
 # データベースマイグレーションの作成
 db-migrate:
 	@echo "=== Creating Database Migration ==="
-	npx prisma migrate dev
+	npm run db-migrate
 
 # データベースのリセット（開発環境のみ）
 db-reset:
 	@echo "=== Resetting Database ==="
-	npx prisma migrate reset
+	npm run db-reset
 
 # Prismaクライアントの生成
 db-generate:
 	@echo "=== Generating Prisma Client ==="
-	npx prisma generate
+	npm run db-generate
