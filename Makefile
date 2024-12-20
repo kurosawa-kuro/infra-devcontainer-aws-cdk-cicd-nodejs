@@ -2,6 +2,7 @@
 
 # 初期セットアップ（全ての準備を一括実行）
 setup: permissions env setup
+	./src/scripts/setup.sh
 	@echo "\n=== Initial setup completed ==="
 
 # 実行権限の付与
