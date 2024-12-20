@@ -13,7 +13,6 @@ coverage/
 .next/
 .nuxt/
 .env
-!.env.example
 
 # Go
 *.exe
