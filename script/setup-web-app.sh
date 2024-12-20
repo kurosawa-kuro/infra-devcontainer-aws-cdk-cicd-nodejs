@@ -63,7 +63,7 @@ echo ".env file created/updated successfully."
 echo -e "\n=== Installing Project Dependencies ==="
 rm -rf node_modules
 rm -rf package-lock.json
-npm install
+npm install --no-fund --no-audit
 
 echo -e "\n=== Setting up Prisma ==="
 # Prismaクライアントの生成
