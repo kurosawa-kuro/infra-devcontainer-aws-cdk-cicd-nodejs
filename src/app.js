@@ -13,11 +13,11 @@ require('dotenv').config();
 class StorageConfig {
   constructor() {
     this.config = {
-      region: process.env.AWS_REGION,
-      bucket: process.env.AWS_BUCKET,
+      region: process.env.STORAGE_S3_REGION,
+      bucket: process.env.STORAGE_S3_BUCKET,
       cloudfront: {
-        url: process.env.AWS_CLOUDFRONT_URL,
-        distributionId: process.env.AWS_CLOUDFRONT_DISTRIBUTION_ID
+        url: process.env.STORAGE_CDN_URL,
+        distributionId: process.env.STORAGE_CDN_DISTRIBUTION_ID
       },
       uploadLimits: {
         fileSize: 5 * 1024 * 1024, // 5MB
@@ -27,10 +27,10 @@ class StorageConfig {
   }
 
   isEnabled() {
-    const isS3Enabled = process.env.ENABLE_AWS_S3 !== 'false';
+    const isS3Enabled = process.env.STORAGE_PROVIDER !== 'local';
     const hasRequiredConfig = this.config.region && 
-           process.env.AWS_ACCESS_KEY_ID && 
-           process.env.AWS_SECRET_ACCESS_KEY &&
+           process.env.STORAGE_S3_ACCESS_KEY && 
+           process.env.STORAGE_S3_SECRET_KEY &&
            this.config.bucket;
     
     return isS3Enabled && hasRequiredConfig;
@@ -42,8 +42,8 @@ class StorageConfig {
     return new S3Client({
       region: this.config.region,
       credentials: {
-        accessKeyId: process.env.AWS_ACCESS_KEY_ID,
-        secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY
+        accessKeyId: process.env.STORAGE_S3_ACCESS_KEY,
+        secretAccessKey: process.env.STORAGE_S3_SECRET_KEY
       }
     });
   }
@@ -186,7 +186,7 @@ class Application {
   constructor() {
     this.app = express();
     this.prisma = new PrismaClient();
-    this.port = process.env.PORT || 3000;
+    this.port = process.env.APP_PORT || 3000;
     
     this.storageConfig = new StorageConfig();
     this.fileUploader = new FileUploader(this.storageConfig);
@@ -274,13 +274,13 @@ class Application {
       this.setupRoutes();
       this.setupErrorHandler();
 
-      if (process.env.NODE_ENV !== 'test') {
-        const host = '0.0.0.0';
+      if (process.env.APP_ENV !== 'test') {
+        const host = process.env.APP_HOST || '0.0.0.0';
         this.app.listen(this.port, host, () => {
           console.log('\n=== Server URLs ===');
           console.log(`Local:   http://localhost:${this.port}`);
-          console.log(`Public:  http://${process.env.EC2_PUBLIC_IP || 'YOUR_EC2_PUBLIC_IP'}:${this.port}`);
-          console.log(`Private: http://${process.env.EC2_PRIVATE_IP || 'YOUR_EC2_PRIVATE_IP'}:${this.port}`);
+          console.log(`Public:  http://${process.env.SERVER_PUBLIC_IP || 'YOUR_SERVER_PUBLIC_IP'}:${this.port}`);
+          console.log(`Private: http://${process.env.SERVER_PRIVATE_IP || 'YOUR_SERVER_PRIVATE_IP'}:${this.port}`);
           console.log(`\nStorage: ${this.storageConfig.isEnabled() ? 'S3' : 'Local'}`);
         });
       }
