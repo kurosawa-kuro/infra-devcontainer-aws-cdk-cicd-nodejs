@@ -43,10 +43,14 @@ class Application {
 
   // S3の設定が完了しているか確認
   isS3Configured() {
-    return this.s3Config.region && 
+    // ENABLE_AWS_S3がfalseの場合のみS3を無効化
+    const isS3Enabled = process.env.ENABLE_AWS_S3 !== 'false';
+    const hasRequiredConfig = this.s3Config.region && 
            process.env.AWS_ACCESS_KEY_ID && 
            process.env.AWS_SECRET_ACCESS_KEY &&
            this.s3Config.bucket;
+    
+    return isS3Enabled && hasRequiredConfig;
   }
 
   // ファイルアップロードの設定
