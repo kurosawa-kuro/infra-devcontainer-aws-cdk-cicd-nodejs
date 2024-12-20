@@ -115,4 +115,4 @@ temp/
 .tmp/
 *.tmp
 *.temp
-.env.backup_20241220_073836
+.env.backup_*
