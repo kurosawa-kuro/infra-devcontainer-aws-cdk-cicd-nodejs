@@ -58,7 +58,7 @@ terraform.rc
 .aws/
 aws.json
 credentials
-config
+# config
 *.pem
 *.ppk
 
