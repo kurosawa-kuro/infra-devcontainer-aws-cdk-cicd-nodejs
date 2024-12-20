@@ -1,73 +1,79 @@
 .PHONY: init dev test env setup check staging production pm2-status pm2-stop pm2-restart pm2-logs db-studio db-migrate db-reset db-generate
 
-# 初期セットアップ（全ての準備を一括実行）
+# スクリプトパスの定義
+SCRIPT_DIR := script
+AMAZON_LINUX_DIR := $(SCRIPT_DIR)/amazon-linux-2023
+SETUP_SCRIPTS := $(SCRIPT_DIR)/setup-web-app.sh \
+				 $(AMAZON_LINUX_DIR)/check-versions.sh \
+				 $(AMAZON_LINUX_DIR)/setup-amazon-linux-2023.sh \
+				 $(AMAZON_LINUX_DIR)/unistall-amazon-linux-2023.sh
+
+# 初期セットアップとシステムチェック
+#---------------------------------
 setup: permissions
-	./script/setup-web-app.sh
+	./$(SCRIPT_DIR)/setup-web-app.sh
 	@echo "\n=== Initial setup completed ==="
 
-
-# 実行権限の付与
 permissions:
 	@echo "=== Setting up file permissions ==="
-	chmod u+x script/setup-web-app.sh script/amazon-linux-2023/check-versions.sh script/amazon-linux-2023/setup-amazon-linux-2023.sh script/amazon-linux-2023/unistall-amazon-linux-2023.sh
+	chmod u+x $(SETUP_SCRIPTS)
 
-# 環境のバージョンチェック
 check:
 	@echo "=== Checking environment versions ==="
-	./script/amazon-linux-2023/check-versions.sh
+	./$(AMAZON_LINUX_DIR)/check-versions.sh
 
-# 開発サーバーの起動（ローカル開発用）
+# アプリケーション実行
+#---------------------------------
+.PHONY: dev staging production
 dev:
 	npm run dev
 
-# テストの実行
-test:
-	npm test
-
-# ステージング環境の起動（PM2）
 staging:
 	npm run staging
 
-# 本番環境の起動（PM2）
 production:
 	npm run production
 
-# PM2プロセスの状態確認
+# PM2プロセス管理
+#---------------------------------
+.PHONY: pm2-status pm2-stop pm2-restart pm2-logs
 pm2-status:
 	@echo "=== Checking PM2 Status ==="
 	npm run pm2-status
 
-# PM2プロセスの停止
 pm2-stop:
 	@echo "=== Stopping PM2 Processes ==="
 	npm run pm2-stop
 
-# PM2プロセスの再起動
 pm2-restart:
 	@echo "=== Restarting PM2 Processes ==="
 	npm run pm2-restart
 
-# PM2ログの表示
 pm2-logs:
 	@echo "=== Showing PM2 Logs ==="
 	npm run pm2-logs
 
-# Prismaスタジオの起動
+# データベース操作
+#---------------------------------
+.PHONY: db-studio db-migrate db-reset db-generate
 db-studio:
 	@echo "=== Starting Prisma Studio ==="
 	npm run db-studio
 
-# データベースマイグレーションの作成
 db-migrate:
 	@echo "=== Creating Database Migration ==="
 	npm run db-migrate
 
-# データベースのリセット（開発環境のみ）
 db-reset:
 	@echo "=== Resetting Database ==="
 	npm run db-reset
 
-# Prismaクライアントの生成
 db-generate:
 	@echo "=== Generating Prisma Client ==="
 	npm run db-generate
+
+# テスト
+#---------------------------------
+.PHONY: test
+test:
+	npm test
