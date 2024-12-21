@@ -17,7 +17,7 @@ declare -A INSTALL_FLAGS=(
 
 # データベース設定
 declare -A DB_CONFIG=(
-    [DB]=dev_db
+    [DB]=training_develop
     [USER]=postgres
     [PASSWORD]=postgres
 )
