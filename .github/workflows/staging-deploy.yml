@@ -23,25 +23,37 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Setup SSH key
+      - name: Setup SSH key and known hosts
         run: |
           mkdir -p ~/.ssh
           echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
           chmod 600 ~/.ssh/id_rsa
           ssh-keyscan -H ${{ secrets.LIGHTSAIL_IP }} >> ~/.ssh/known_hosts
+          eval "$(ssh-agent -s)"
+          ssh-add ~/.ssh/id_rsa
+          echo "SSH key setup complete"
+          ls -la ~/.ssh
+          ssh -o StrictHostKeyChecking=no -vvv -i ~/.ssh/id_rsa ec2-user@${{ secrets.LIGHTSAIL_IP }} 'echo "SSH connection test successful"'
 
       - name: Deploy and Start Application
+        if: success()
         run: |
+          echo "Starting deployment..."
           # Deploy to correct path
-          ssh -i ~/.ssh/id_rsa ec2-user@${{ secrets.LIGHTSAIL_IP }} 'mkdir -p /home/ec2-user/dev/infra-devcontainer-aws-cdk-cicd-nodejs'
+          ssh -i ~/.ssh/id_rsa ec2-user@${{ secrets.LIGHTSAIL_IP }} "mkdir -p /home/ec2-user/dev/infra-devcontainer-aws-cdk-cicd-nodejs"
+          
+          echo "Copying files..."
           scp -i ~/.ssh/id_rsa -r ./* ec2-user@${{ secrets.LIGHTSAIL_IP }}:/home/ec2-user/dev/infra-devcontainer-aws-cdk-cicd-nodejs/
           
+          echo "Starting application setup..."
           # Ensure correct Node.js version on remote server and start application
-          ssh -i ~/.ssh/id_rsa ec2-user@${{ secrets.LIGHTSAIL_IP }} 'cd /home/ec2-user/dev/infra-devcontainer-aws-cdk-cicd-nodejs && \
-            export NVM_DIR="$HOME/.nvm" && \
-            [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh" && \
+          ssh -i ~/.ssh/id_rsa ec2-user@${{ secrets.LIGHTSAIL_IP }} 'bash -l -c "
+            cd /home/ec2-user/dev/infra-devcontainer-aws-cdk-cicd-nodejs && \
+            export NVM_DIR=\"\$HOME/.nvm\" && \
+            [ -s \"\$NVM_DIR/nvm.sh\" ] && \. \"\$NVM_DIR/nvm.sh\" && \
             nvm install 18.18 && \
             nvm use 18.18 && \
             npm install && \
             npm run pm2-stop || true && \
-            npm run staging'
+            npm run staging
+          "'
