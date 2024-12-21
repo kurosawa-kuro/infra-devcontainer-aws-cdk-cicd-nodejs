@@ -26,7 +26,7 @@ jobs:
       - name: Deploy to Lightsail
         uses: appleboy/ssh-action@master
         with:
-          host: ${{ secrets.LIGHTSAIL_IP }}
+          host: ${{ secrets.STAGING_IP }}
           username: ec2-user
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           script: |
