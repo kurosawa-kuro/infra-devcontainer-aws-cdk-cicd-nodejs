@@ -186,7 +186,7 @@ class Application {
   constructor() {
     this.app = express();
     this.prisma = new PrismaClient();
-    this.port = process.env.APP_PORT || 3000;
+    this.port = process.env.APP_PORT || 8080;
     
     this.storageConfig = new StorageConfig();
     this.fileUploader = new FileUploader(this.storageConfig);
