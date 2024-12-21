@@ -14,6 +14,11 @@ setup: permissions
 	./$(SCRIPT_DIR)/setup-web-app.sh
 	@echo "\n=== Initial setup completed ==="
 
+# dev/infra-devcontainer-aws-cdk-cicd-nodejs/script/amazon-linux-2023/setup-amazon-linux-2023.sh
+setup-lib: permissions
+	sudo ./$(AMAZON_LINUX_DIR)/setup-amazon-linux-2023.sh
+	@echo "\n=== Initial setup completed ==="
+
 permissions:
 	@echo "=== Setting up file permissions ==="
 	chmod u+x $(SETUP_SCRIPTS)
