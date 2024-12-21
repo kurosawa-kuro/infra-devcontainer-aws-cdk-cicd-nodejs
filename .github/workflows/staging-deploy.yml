@@ -5,61 +5,45 @@ on:
     branches:
       - develop
 
-env:
-  AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
-  AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-
 jobs:
   deploy:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
 
       - name: Set up Node.js
-        uses: actions/setup-node@v2
+        uses: actions/setup-node@v3
         with:
-          node-version: '18.18'
+          node-version: '18'
 
       - name: Install dependencies
         run: npm ci
 
-      - name: Setup SSH key and known hosts
+      - name: Create .env file
         run: |
-          mkdir -p ~/.ssh
-          echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
-          chmod 600 ~/.ssh/id_rsa
-          # Generate and display public key for verification
-          ssh-keygen -y -f ~/.ssh/id_rsa > ~/.ssh/id_rsa.pub
-          echo "=== Public Key for authorized_keys ==="
-          cat ~/.ssh/id_rsa.pub
-          echo "=== End of Public Key ==="
-          
-          ssh-keyscan -H ${{ secrets.LIGHTSAIL_IP }} >> ~/.ssh/known_hosts
-          eval "$(ssh-agent -s)"
-          ssh-add ~/.ssh/id_rsa
-          echo "SSH key setup complete"
-          ls -la ~/.ssh
-          ssh -o StrictHostKeyChecking=no -vvv -i ~/.ssh/id_rsa ec2-user@${{ secrets.LIGHTSAIL_IP }} 'echo "SSH connection test successful"'
+          echo "${{ secrets.ENV_FILE }}" > .env
 
-      - name: Deploy and Start Application
-        if: success()
-        run: |
-          echo "Starting deployment..."
-          # Deploy to correct path
-          ssh -i ~/.ssh/id_rsa ec2-user@${{ secrets.LIGHTSAIL_IP }} "mkdir -p /home/ec2-user/dev/infra-devcontainer-aws-cdk-cicd-nodejs"
-          
-          echo "Copying files..."
-          scp -i ~/.ssh/id_rsa -r ./* ec2-user@${{ secrets.LIGHTSAIL_IP }}:/home/ec2-user/dev/infra-devcontainer-aws-cdk-cicd-nodejs/
-          
-          echo "Starting application setup..."
-          # Ensure correct Node.js version on remote server and start application
-          ssh -i ~/.ssh/id_rsa ec2-user@${{ secrets.LIGHTSAIL_IP }} 'bash -l -c "
-            cd /home/ec2-user/dev/infra-devcontainer-aws-cdk-cicd-nodejs && \
-            export NVM_DIR=\"\$HOME/.nvm\" && \
-            [ -s \"\$NVM_DIR/nvm.sh\" ] && \. \"\$NVM_DIR/nvm.sh\" && \
-            nvm install 18.18 && \
-            nvm use 18.18 && \
-            npm install && \
-            npm run pm2-stop || true && \
+      - name: Deploy to Lightsail
+        uses: appleboy/ssh-action@master
+        with:
+          host: ${{ secrets.LIGHTSAIL_IP }}
+          username: ec2-user
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          script: |
+            # アプリケーションディレクトリに移動
+            cd /home/ec2-user/dev/infra-devcontainer-aws-cdk-cicd-nodejs
+
+            # 既存のプロセスを停止
+            npm run pm2-stop || true
+
+            # リポジトリの更新
+            git pull origin develop
+
+            # 依存関係のインストール
+            npm ci
+
+            # 環境変数ファイルの作成
+            echo "${{ secrets.ENV_FILE }}" > .env
+
+            # アプリケーションの起動
             npm run staging
-          "'
