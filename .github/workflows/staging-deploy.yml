@@ -5,8 +5,36 @@ on:
     branches:
       - develop
 
+env:
+  AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+  AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+  LIGHTSAIL_IP: "13.231.179.166"
+
 jobs:
   deploy:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v2 
+      - uses: actions/checkout@v2
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v2
+        with:
+          node-version: '16'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Setup SSH key
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          ssh-keyscan -H ${{ env.LIGHTSAIL_IP }} >> ~/.ssh/known_hosts
+
+      - name: Build application
+        run: npm run build
+
+      - name: Deploy to Lightsail
+        run: |
+          scp -i ~/.ssh/id_rsa -r ./dist/* ec2-user@${{ env.LIGHTSAIL_IP }}:/home/ec2-user/app/
+          ssh -i ~/.ssh/id_rsa ec2-user@${{ env.LIGHTSAIL_IP }} 'cd /home/ec2-user/app && npm install --production'
