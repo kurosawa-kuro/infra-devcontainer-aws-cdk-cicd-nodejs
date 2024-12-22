@@ -8,6 +8,7 @@
     "test": "NODE_ENV=test jest --runInBand --forceExit --detectOpenHandles",
     "start": "node src/app.js",
     "staging": "pm2 start ecosystem.config.js --env staging",
+    "production-test": "NODE_ENV=production node -r dotenv/config src/app.js dotenv_config_path=.env.production",
     "production": "pm2 start ecosystem.config.js --env production",
     "pm2-status": "pm2 status",
     "pm2-stop": "pm2 stop all",
