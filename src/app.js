@@ -278,9 +278,10 @@ class Application {
         const host = process.env.APP_HOST || '0.0.0.0';
         this.app.listen(this.port, host, () => {
           console.log('\n=== Server URLs ===');
-          console.log(`Local:   http://localhost:${this.port}`);
-          console.log(`Public:  http://${process.env.SERVER_PUBLIC_IP || 'YOUR_SERVER_PUBLIC_IP'}:${this.port}`);
-          console.log(`Private: http://${process.env.SERVER_PRIVATE_IP || 'YOUR_SERVER_PRIVATE_IP'}:${this.port}`);
+          console.log(`APP_ENV:   ${process.env.APP_ENV}`);  
+          console.log(`Local:     http://localhost:${this.port}`);
+          console.log(`Public:    http://${process.env.SERVER_PUBLIC_IP || 'YOUR_SERVER_PUBLIC_IP'}:${this.port}`);
+          console.log(`Private:   http://${process.env.SERVER_PRIVATE_IP || 'YOUR_SERVER_PRIVATE_IP'}:${this.port}`);
           console.log(`\nStorage: ${this.storageConfig.isEnabled() ? 'S3' : 'Local'}`);
         });
       }
