@@ -67,6 +67,8 @@ jobs:
       - name: Download task definition
         id: download-taskdef
         run: |
+          # Get AWS Account ID
+          AWS_ACCOUNT_ID=$(aws sts get-caller-identity --query "Account" --output text)
           echo "Fetching current task definition..."
           if ! aws ecs describe-task-definition \
             --task-definition ${{ env.ECS_TASK_FAMILY }} \
@@ -87,7 +89,7 @@ jobs:
               "requiresCompatibilities": ["FARGATE"],
               "cpu": "256",
               "memory": "512",
-              "executionRoleArn": "arn:aws:iam::${{ steps.login-ecr.outputs.account }}:role/ecsTaskExecutionRole",
+              "executionRoleArn": "arn:aws:iam::'"${AWS_ACCOUNT_ID}"':role/ecsTaskExecutionRole",
               "containerDefinitions": [{
                 "name": "${{ env.CONTAINER_NAME }}",
                 "image": "${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:latest",
