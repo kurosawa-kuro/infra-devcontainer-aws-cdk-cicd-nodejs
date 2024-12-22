@@ -2,8 +2,9 @@
 
 # エラー処理の設定
 set -euo pipefail
-trap 'echo "エラーが発生しました: $?" >&2' ERR
+trap 'echo "Error occurred: $?" >&2' ERR
 
+# ユーティリティ関数
 log() {
     echo "[$(date '+%Y-%m-%d %H:%M:%S')] $1"
 }
@@ -12,50 +13,24 @@ check_command() {
     command -v "$1" &>/dev/null
 }
 
-check_versions() {
-    log "インストール済みのコンポーネントバージョンを確認します..."
+# バージョンチェック関数
+check_component_version() {
+    local command=$1
+    local version_command=$2
     
-    # Git
-    if check_command git; then
-        log "Git version: $(git --version)"
+    if check_command "$command"; then
+        log "$command version: $($version_command)"
     else
-        log "Git: Not installed"
+        log "$command: Not installed"
     fi
+}
 
-    # Make
-    if check_command make; then
-        log "Make version: $(make --version | head -n1)"
-    else
-        log "Make: Not installed"
-    fi
-
-    # Docker
-    if check_command docker; then
-        log "Docker version: $(docker --version)"
-    else
-        log "Docker: Not installed"
-    fi
-
-    # Docker Compose
-    if check_command docker-compose; then
-        log "Docker Compose version: $(docker-compose --version)"
-    else
-        log "Docker Compose: Not installed"
-    fi
-
-    # Node.js
-    if check_command node; then
-        log "Node.js version: $(node -v)"
-    else
-        log "Node.js: Not installed"
-    fi
-
-    # PostgreSQL
+# データベース関連チェック
+check_postgresql() {
     if check_command psql; then
         log "PostgreSQL version: $(psql --version)"
         
         DATABASE_URL="postgresql://postgres:postgres@localhost/training_develop"
-        # データベースへの接続とテーブル一覧の表示を試みる
         if [ -n "${DATABASE_URL:-}" ]; then
             log "PostgreSQL tables:"
             psql "${DATABASE_URL}" -c "\dt" || log "  Unable to connect to database or list tables"
@@ -65,8 +40,10 @@ check_versions() {
     else
         log "PostgreSQL: Not installed"
     fi
+}
 
-    # Go
+# Go環境チェック
+check_go() {
     if check_command go; then
         log "Go version: $(go version)"
         log "Go environment:"
@@ -77,5 +54,41 @@ check_versions() {
     fi
 }
 
-# メイン実行
-check_versions 
+# AWS設定チェック
+check_aws_configuration() {
+    log "=== AWS Configuration Check ==="
+    log "AWS Configuration List:"
+    aws configure list
+    log "AWS Identity Check:"
+    aws sts get-caller-identity
+}
+
+# システム情報チェック
+check_system_info() {
+    log "=== System Information ==="
+    check_component_version "node" "node --version"
+    check_component_version "npm" "npm --version"
+    check_component_version "docker" "docker --version"
+    check_component_version "git" "git --version"
+}
+
+# メインの実行関数
+check_versions() {
+    log "インストール済みのコンポーネントバージョンを確認します..."
+    
+    # 基本コンポーネントのチェック
+    check_component_version "git" "git --version"
+    check_component_version "make" "make --version | head -n1"
+    check_component_version "docker" "docker --version"
+    check_component_version "docker-compose" "docker-compose --version"
+    check_component_version "node" "node -v"
+    
+    # 特別なチェックが必要なコンポーネント
+    check_postgresql
+    check_go
+}
+
+# スクリプトの実行
+check_versions
+check_aws_configuration
+check_system_info
