@@ -70,7 +70,16 @@ jobs:
           echo "Fetching current task definition..."
           if ! aws ecs describe-task-definition \
             --task-definition ${{ env.ECS_TASK_FAMILY }} \
-            --query taskDefinition > task-definition.json; then
+            --query 'taskDefinition | {
+              family: family,
+              networkMode: networkMode,
+              requiresCompatibilities: requiresCompatibilities,
+              cpu: cpu,
+              memory: memory,
+              containerDefinitions: containerDefinitions,
+              executionRoleArn: executionRoleArn,
+              taskRoleArn: taskRoleArn
+            }' > task-definition.json; then
             echo "Failed to fetch task definition. Creating a new one..."
             echo '{
               "family": "${{ env.ECS_TASK_FAMILY }}",
@@ -78,6 +87,7 @@ jobs:
               "requiresCompatibilities": ["FARGATE"],
               "cpu": "256",
               "memory": "512",
+              "executionRoleArn": "arn:aws:iam::${{ steps.login-ecr.outputs.account }}:role/ecsTaskExecutionRole",
               "containerDefinitions": [{
                 "name": "${{ env.CONTAINER_NAME }}",
                 "image": "${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:latest",
@@ -85,7 +95,15 @@ jobs:
                   "containerPort": 8080,
                   "protocol": "tcp"
                 }],
-                "essential": true
+                "essential": true,
+                "logConfiguration": {
+                  "logDriver": "awslogs",
+                  "options": {
+                    "awslogs-group": "/ecs/${{ env.ECS_TASK_FAMILY }}",
+                    "awslogs-region": "${{ env.AWS_REGION }}",
+                    "awslogs-stream-prefix": "ecs"
+                  }
+                }
               }]
             }' > task-definition.json
           fi
