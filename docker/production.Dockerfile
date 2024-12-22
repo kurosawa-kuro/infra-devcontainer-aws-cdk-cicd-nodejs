@@ -1,25 +1,33 @@
-FROM node:18-alpine
-
+# ビルドステージ
+FROM node:18-alpine AS builder
 WORKDIR /app
 
-# Install OpenSSL
+# OpenSSLをインストール
 RUN apk add --no-cache openssl openssl-dev
 
-# Install dependencies first (better layer caching)
+# 依存関係のインストールと Prisma の生成
 COPY package*.json ./
-RUN npm ci
-
-# Setup Prisma
 COPY prisma ./prisma/
-RUN npx prisma generate
+RUN npm ci && \
+    npx prisma generate
 
-# Copy the rest of the application
+# アプリケーションコードのコピー
 COPY . .
 
-# Generate Prisma Client again after copying all files
-# This ensures the correct binary targets are included
-RUN npx prisma generate
+# 実行ステージ
+FROM node:18-alpine
+WORKDIR /app
+
+# OpenSSLをインストール
+RUN apk add --no-cache openssl openssl-dev
+
+# 必要なファイルのみをコピー
+COPY --from=builder /app/node_modules ./node_modules
+COPY --from=builder /app/package*.json ./
+COPY --from=builder /app/prisma ./prisma
+COPY --from=builder /app/src ./src
 
 EXPOSE 8080
 
-CMD ["npm", "start"] 
+# package.jsonのスクリプトを使用して起動
+CMD ["npm", "run", "docker-start"]
