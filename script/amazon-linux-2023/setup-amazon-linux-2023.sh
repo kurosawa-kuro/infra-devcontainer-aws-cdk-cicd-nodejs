@@ -159,6 +159,32 @@ install_nodejs() {
     curl -fsSL https://rpm.nodesource.com/setup_20.x | bash -
     dnf install -y nodejs
     npm install -g npm@latest
+    sudo npm install -g aws-cdk
+
+    # Add npm global bin to PATH and create symlink for cdk
+    local npm_global_bin=$(npm config get prefix)/bin
+    ln -sf "${npm_global_bin}/cdk" /usr/local/bin/cdk
+
+    # Add npm global bin to system-wide PATH
+    if [ ! -f /etc/profile.d/npm-global.sh ]; then
+        echo "export PATH=\$PATH:${npm_global_bin}" > /etc/profile.d/npm-global.sh
+        chmod 644 /etc/profile.d/npm-global.sh
+    fi
+
+    # Add to current user's .bashrc if not already present
+    if ! grep -q "${npm_global_bin}" /home/ec2-user/.bashrc; then
+        echo "export PATH=\$PATH:${npm_global_bin}" >> /home/ec2-user/.bashrc
+    fi
+
+    INSTALL_INFO[NODEJS]=$(cat << EOF
+NodeJS情報:
+- Node Version: $(node -v)
+- NPM Version: $(npm -v)
+- AWS CDK Version: $(${npm_global_bin}/cdk --version)
+- Global bin path: ${npm_global_bin}
+- 注意: 新しいシェルを開くか、source ~/.bashrcを実行してください
+EOF
+)
 }
 
 #=========================================
@@ -223,7 +249,10 @@ check_installed_versions() {
                 make) log "Make version: $(make --version | head -n1)" ;;
                 docker) log "Docker version: $(docker --version)" ;;
                 docker-compose) log "Docker Compose version: $(docker-compose --version)" ;;
-                node) log "Node version: $(node -v)" ;;
+                node) 
+                    log "Node version: $(node -v)"
+                    log "AWS CDK version: $(cdk --version)"
+                ;;
                 psql) log "PostgreSQL version: $(psql --version)" ;;
             esac
         }
