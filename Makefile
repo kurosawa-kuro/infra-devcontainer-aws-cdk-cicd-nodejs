@@ -1,12 +1,14 @@
-.PHONY: init dev test env setup check staging production pm2-status pm2-stop pm2-restart pm2-logs db-studio db-migrate db-reset db-generate
+.PHONY: init dev test env setup check staging production pm2-status pm2-stop pm2-restart pm2-logs db-studio db-migrate db-reset db-generate ecr-build-push
 
 # スクリプトパスの定義
 SCRIPT_DIR := script
 AMAZON_LINUX_DIR := $(SCRIPT_DIR)/amazon-linux-2023
+ECS_DIR := $(SCRIPT_DIR)/ecs
 SETUP_SCRIPTS := $(SCRIPT_DIR)/setup-web-app.sh \
 				 $(AMAZON_LINUX_DIR)/check-versions.sh \
 				 $(AMAZON_LINUX_DIR)/setup-amazon-linux-2023.sh \
-				 $(AMAZON_LINUX_DIR)/unistall-amazon-linux-2023.sh
+				 $(AMAZON_LINUX_DIR)/unistall-amazon-linux-2023.sh \
+				 $(ECS_DIR)/build-and-push.sh
 
 # 初期セットアップとシステムチェック
 #---------------------------------
@@ -26,6 +28,13 @@ permissions:
 check:
 	@echo "=== Checking environment versions ==="
 	./$(AMAZON_LINUX_DIR)/check-versions.sh
+
+# ECRビルドとプッシュ
+#---------------------------------
+.PHONY: ecr-build-push
+ecr-build-push:
+	@echo "=== Building and pushing Docker image to ECR ==="
+	./$(ECS_DIR)/build-and-push.sh
 
 # アプリケーション実行
 #---------------------------------
