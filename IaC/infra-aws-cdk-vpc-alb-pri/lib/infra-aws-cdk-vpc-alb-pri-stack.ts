@@ -11,6 +11,8 @@ interface IInfraConfig {
   readonly vpcCidr: string;
   readonly publicSubnet1Cidr: string;
   readonly publicSubnet2Cidr: string;
+  readonly privateSubnet1Cidr: string;
+  readonly privateSubnet2Cidr: string;
   readonly healthCheckPath: string;
 }
 
@@ -33,6 +35,8 @@ class InfrastructureConfig implements IInfraConfig, IResourceNaming {
   public readonly vpcCidr = '10.0.0.0/16';
   public readonly publicSubnet1Cidr = '10.0.10.0/24';
   public readonly publicSubnet2Cidr = '10.0.11.0/24';
+  public readonly privateSubnet1Cidr = '10.0.20.0/24';
+  public readonly privateSubnet2Cidr = '10.0.21.0/24';
   public readonly healthCheckPath = '/health';
 
   public getVpcName(): string { return `${this.prefix}-vpc`; }
@@ -105,12 +109,17 @@ class NetworkResourceFactory {
       vpcName: this.config.getVpcName(),
       ipAddresses: ec2.IpAddresses.cidr(this.config.vpcCidr),
       maxAzs: 2,
-      natGateways: 0,
+      natGateways: 1,
       subnetConfiguration: [
         {
           cidrMask: 24,
           name: 'Public',
           subnetType: ec2.SubnetType.PUBLIC,
+        },
+        {
+          cidrMask: 24,
+          name: 'Private',
+          subnetType: ec2.SubnetType.PRIVATE_WITH_EGRESS,
         }
       ],
     });
@@ -128,33 +137,25 @@ class NetworkResourceFactory {
       allowAllOutbound: true,
     });
 
-    // ALBの80番ポートを公開
     loadBalancerSecurityGroup.addIngressRule(
       ec2.Peer.anyIpv4(),
       ec2.Port.tcp(80),
       'Allow inbound HTTP traffic on port 80'
     );
 
-    // EC2インスタンス用のセキュリティグループを作成
+    // EC2インスタンス用のセキュリティグループを作成（プライベートサブネット用）
     const instanceSecurityGroup = new ec2.SecurityGroup(this.scope, this.config.getSecurityGroupName(), {
       vpc,
       securityGroupName: this.config.getSecurityGroupName(),
-      description: 'Security group for Express.js application',
+      description: 'Security group for Express.js application in private subnet',
       allowAllOutbound: true,
     });
 
-    // EC2インスタンスのセキュリティグループにALBからの通信を許可
+    // EC2インスタンスのセキュリティグループにALBからの通信のみを許可
     instanceSecurityGroup.addIngressRule(
       ec2.Peer.securityGroupId(loadBalancerSecurityGroup.securityGroupId),
       ec2.Port.tcp(this.config.appPort),
       'Allow traffic from ALB to EC2 instances'
-    );
-
-    // SSH接続用ポート
-    instanceSecurityGroup.addIngressRule(
-      ec2.Peer.anyIpv4(),
-      ec2.Port.tcp(22),
-      'Allow inbound SSH traffic on port 22'
     );
 
     this.output.outputSecurityGroupInfo(instanceSecurityGroup);
