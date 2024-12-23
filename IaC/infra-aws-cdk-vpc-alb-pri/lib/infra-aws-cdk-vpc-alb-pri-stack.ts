@@ -73,9 +73,35 @@ class InfrastructureOutput {
       value: vpc.publicSubnets.map(subnet => subnet.subnetId).join(', '),
       description: 'Public Subnet IDs',
     });
+    new cdk.CfnOutput(this.scope, 'PrivateSubnets', {
+      value: vpc.privateSubnets.map(subnet => subnet.subnetId).join(', '),
+      description: 'Private Subnet IDs',
+    });
     new cdk.CfnOutput(this.scope, 'VpcCidr', {
       value: config.vpcCidr,
       description: 'VPC CIDR',
+    });
+
+    // NAT Gateway情報の出力
+    vpc.publicSubnets.forEach((subnet, index) => {
+      const natGateways = subnet.node.children.filter((child: any) => 
+        child.constructor.name === 'CfnNatGateway'
+      );
+      
+      natGateways.forEach((natGw: any) => {
+        new cdk.CfnOutput(this.scope, `NatGateway-${index}`, {
+          value: natGw.ref,
+          description: `NAT Gateway in AZ ${subnet.availabilityZone}`,
+        });
+      });
+    });
+
+    // プライベートサブネットのルートテーブル情報
+    vpc.privateSubnets.forEach((subnet, index) => {
+      new cdk.CfnOutput(this.scope, `PrivateSubnetRouteTable-${index}`, {
+        value: subnet.routeTable.routeTableId,
+        description: `Route Table for Private Subnet in AZ ${subnet.availabilityZone}`,
+      });
     });
   }
 
