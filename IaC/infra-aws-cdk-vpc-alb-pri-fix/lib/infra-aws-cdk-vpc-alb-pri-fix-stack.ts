@@ -28,7 +28,7 @@ namespace Config {
     public readonly privateSubnet1Cidr = '10.0.20.0/24';
     public readonly privateSubnet2Cidr = '10.0.21.0/24';
     public readonly healthCheckPath = '/health';
-    public readonly usePrivateSubnet = false;
+    public readonly usePrivateSubnet = true;
 
     public validate(): void {
       if (!this.validateCidrRanges()) throw new Error('Invalid CIDR ranges');
