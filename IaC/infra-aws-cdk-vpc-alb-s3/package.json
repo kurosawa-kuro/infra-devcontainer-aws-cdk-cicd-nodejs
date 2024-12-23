@@ -1,8 +1,8 @@
 {
-  "name": "infra-aws-cdk-vpc-alb-pri-fix",
+  "name": "infra-aws-cdk-vpc-alb-s3",
   "version": "0.1.0",
   "bin": {
-    "infra-aws-cdk-vpc-alb-pri-fix": "bin/infra-aws-cdk-vpc-alb-pri-fix.js"
+    "infra-aws-cdk-vpc-alb-s3": "bin/infra-aws-cdk-vpc-alb-s3.js"
   },
   "scripts": {
     "build": "tsc",
