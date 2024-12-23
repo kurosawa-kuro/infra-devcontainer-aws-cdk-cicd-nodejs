@@ -14,6 +14,7 @@ interface IInfraConfig {
   readonly privateSubnet1Cidr: string;
   readonly privateSubnet2Cidr: string;
   readonly healthCheckPath: string;
+  readonly usePrivateSubnet: boolean;
 }
 
 // インフラ設定の検証インターフェース
@@ -34,6 +35,7 @@ class InfraConfig implements IInfraConfig, IConfigValidator {
   public readonly privateSubnet1Cidr = '10.0.20.0/24';
   public readonly privateSubnet2Cidr = '10.0.21.0/24';
   public readonly healthCheckPath = '/health';
+  public readonly usePrivateSubnet = false;
 
   // CIDR範囲の検証
   public validateCidrRanges(): boolean {
@@ -84,23 +86,29 @@ class VpcFactory {
   ) {}
 
   public create(): ec2.Vpc {
+    const subnetConfiguration = [
+      {
+        cidrMask: 24,
+        name: 'Public',
+        subnetType: ec2.SubnetType.PUBLIC,
+      }
+    ];
+
+    // プライベートサブネットが必要な場合のみ追加
+    if (this.config.usePrivateSubnet) {
+      subnetConfiguration.push({
+        cidrMask: 24,
+        name: 'Private',
+        subnetType: ec2.SubnetType.PRIVATE_WITH_EGRESS,
+      });
+    }
+
     return new ec2.Vpc(this.scope, this.naming.getVpcName(), {
       vpcName: this.naming.getVpcName(),
       ipAddresses: ec2.IpAddresses.cidr(this.config.vpcCidr),
       maxAzs: 2,
-      natGateways: 1,
-      subnetConfiguration: [
-        {
-          cidrMask: 24,
-          name: 'Public',
-          subnetType: ec2.SubnetType.PUBLIC,
-        },
-        {
-          cidrMask: 24,
-          name: 'Private',
-          subnetType: ec2.SubnetType.PRIVATE_WITH_EGRESS,
-        }
-      ],
+      natGateways: this.config.usePrivateSubnet ? 1 : 0,
+      subnetConfiguration,
     });
   }
 }
