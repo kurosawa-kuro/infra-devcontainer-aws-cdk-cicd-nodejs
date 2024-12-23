@@ -1,10 +1,3 @@
-CDK Basic
-
-```
-cdk init app --language typescript
-```
-
-```
 # CDKコマンドの定義
 CDK = cdk
 DEPLOY_FLAGS = --require-approval never
@@ -28,20 +21,3 @@ destroy:
 .PHONY: reset-deploy
 reset-deploy:
 	$(MAKE) destroy && $(MAKE) first-deploy
-
-```
-
-- IaC/aaa/bin/aaa.ts
-```
-#!/usr/bin/env node
-import * as cdk from 'aws-cdk-lib';
-import { InfraAwsCdkVpcAlbS3CfRmonitorStack } from '../lib/infra-aws-cdk-vpc-alb-s3-cf-rmonitor-stack';
-
-const app = new cdk.App();
-new InfraAwsCdkVpcAlbS3CfRmonitorStack(app, 'InfraAwsCdkVpcAlbS3CfRmonitorStack', {
-  env: {
-    account: process.env.CDK_DEFAULT_ACCOUNT,
-    region: process.env.CDK_DEFAULT_REGION
-  }
-});
-```
