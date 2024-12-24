@@ -1,7 +1,7 @@
 const express = require('express');
 const asyncHandler = require('express-async-handler');
-const pino = require('pino');
-const pinoHttp = require('pino-http');
+const winston = require('winston');
+const expressWinston = require('express-winston');
 const path = require('path');
 const multer = require('multer');
 const { PrismaClient } = require('@prisma/client');
@@ -190,14 +190,19 @@ class Application {
     this.prisma = new PrismaClient();
     this.port = process.env.APP_PORT || 8080;
     
-    this.logger = pino({
-      transport: {
-        target: 'pino-pretty'
-      },
+    // Winstonロガーの設定
+    this.logger = winston.createLogger({
       level: 'info',
-      formatters: {
-        level: (label) => ({ level: label })
-      }
+      format: winston.format.combine(
+        winston.format.colorize(),
+        winston.format.simple(),
+        winston.format.printf(({ level, message }) => {
+          return `${level}: ${message}`;
+        })
+      ),
+      transports: [
+        new winston.transports.Console()
+      ]
     });
     
     this.storageConfig = new StorageConfig();
@@ -206,19 +211,18 @@ class Application {
   }
 
   setupMiddleware() {
-    this.app.use(pinoHttp({
-      logger: this.logger,
-      autoLogging: {
-        ignore: (req) => req.url === '/health' || req.url === '/health-db'
+    // リクエストロギング
+    this.app.use(expressWinston.logger({
+      winstonInstance: this.logger,
+      meta: false,
+      msg: (req, res) => {
+        const responseTime = res.responseTime || 0;
+        return `${req.method.padEnd(6)} ${req.url.padEnd(30)} ${responseTime}ms`;
       },
-      customSuccessMessage: (req, res, responseTime) => 
-        `${req.method.padEnd(6)} ${req.url.padEnd(30)} ${responseTime}ms`,
-      customErrorMessage: (error, req, res, responseTime) => 
-        `${req.method.padEnd(6)} ${req.url.padEnd(30)} ${responseTime}ms - ${error.message}`,
-      serializers: {
-        req: () => undefined,
-        res: () => undefined,
-        err: () => undefined
+      expressFormat: false,
+      colorize: true,
+      ignoreRoute: (req) => {
+        return req.url === '/health' || req.url === '/health-db';
       }
     }));
 
@@ -226,6 +230,16 @@ class Application {
     this.app.use(express.urlencoded({ extended: true }));
     this.app.set('view engine', 'ejs');
     this.app.set('views', path.join(__dirname, 'views'));
+
+    // エラーロギング
+    this.app.use(expressWinston.errorLogger({
+      winstonInstance: this.logger,
+      meta: false,
+      msg: (req, res, err) => {
+        const responseTime = res.responseTime || 0;
+        return `${req.method.padEnd(6)} ${req.url.padEnd(30)} ${responseTime}ms - ${err.message}`;
+      }
+    }));
   }
 
   setupRoutes() {
@@ -335,7 +349,7 @@ class Application {
         });
       }
     } catch (err) {
-      console.error('Application startup error:', err);
+      this.logger.error('Application startup error:', err);
       process.exit(1);
     }
   }
