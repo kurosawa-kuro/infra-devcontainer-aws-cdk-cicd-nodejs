@@ -1,14 +1,22 @@
-.PHONY: init dev test env setup check staging production pm2-status pm2-stop pm2-restart pm2-logs db-studio db-migrate db-reset db-generate ecr-build-push
+# 全PHONYターゲットの宣言
+.PHONY: setup permissions check \
+        ecr-build-push \
+        dev staging production \
+        pm2-status pm2-stop pm2-restart pm2-logs \
+        db-studio db-migrate db-reset db-generate \
+        test \
+        batch-s3-log batch-s3-log-now
 
-# スクリプトパスの定義
+# 変数定義
+#---------------------------------
 SCRIPT_DIR := script
 AMAZON_LINUX_DIR := $(SCRIPT_DIR)/amazon-linux-2023
 ECS_DIR := $(SCRIPT_DIR)/ecs
 SETUP_SCRIPTS := $(SCRIPT_DIR)/setup-web-app.sh \
-				 $(AMAZON_LINUX_DIR)/check-versions.sh \
-				 $(AMAZON_LINUX_DIR)/setup-amazon-linux-2023.sh \
-				 $(AMAZON_LINUX_DIR)/unistall-amazon-linux-2023.sh \
-				 $(ECS_DIR)/build-and-push.sh
+                 $(AMAZON_LINUX_DIR)/check-versions.sh \
+                 $(AMAZON_LINUX_DIR)/setup-amazon-linux-2023.sh \
+                 $(AMAZON_LINUX_DIR)/unistall-amazon-linux-2023.sh \
+                 $(ECS_DIR)/build-and-push.sh
 
 # 初期セットアップとシステムチェック
 #---------------------------------
@@ -24,16 +32,14 @@ check:
 	@echo "=== Checking environment versions ==="
 	./$(AMAZON_LINUX_DIR)/check-versions.sh
 
-# ECRビルドとプッシュ
+# インフラストラクチャ操作
 #---------------------------------
-.PHONY: ecr-build-push
 ecr-build-push:
 	@echo "=== Building and pushing Docker image to ECR ==="
 	./$(ECS_DIR)/build-and-push.sh
 
 # アプリケーション実行
 #---------------------------------
-.PHONY: dev staging production
 dev:
 	npm run dev
 
@@ -45,7 +51,6 @@ production:
 
 # PM2プロセス管理
 #---------------------------------
-.PHONY: pm2-status pm2-stop pm2-restart pm2-logs
 pm2-status:
 	@echo "=== Checking PM2 Status ==="
 	npm run pm2-status
@@ -64,7 +69,6 @@ pm2-logs:
 
 # データベース操作
 #---------------------------------
-.PHONY: db-studio db-migrate db-reset db-generate
 db-studio:
 	@echo "=== Starting Prisma Studio ==="
 	npm run db-studio
@@ -83,6 +87,15 @@ db-generate:
 
 # テスト
 #---------------------------------
-.PHONY: test
 test:
 	npm test
+
+# バッチ処理
+#---------------------------------
+batch-s3-log:
+	@echo "=== Running S3 Log Batch Process ==="
+	npm run batch-s3-log
+
+batch-s3-log-now:
+	@echo "=== Running S3 Log Batch Process (Immediate) ==="
+	npm run batch-s3-log-now
