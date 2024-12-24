@@ -24,8 +24,8 @@
     
     "docker:start": "npm run db:deploy && npm start",
     
-    "batch:s3-log": "node src/batch/s3-batch-log-01.js",
-    "batch:s3-log:now": "node src/batch/s3-batch-log-01.js --now"
+    "batch:s3-log": "node src/batch/s3-log-uploader.js",
+    "batch:s3-log:now": "node src/batch/s3-log-uploader.js --now"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.717.0",
