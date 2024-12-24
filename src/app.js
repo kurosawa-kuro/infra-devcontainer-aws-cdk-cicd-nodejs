@@ -1,6 +1,7 @@
 const express = require('express');
 const asyncHandler = require('express-async-handler');
 const winston = require('winston');
+const WinstonCloudWatch = require('winston-cloudwatch');
 const expressWinston = require('express-winston');
 const path = require('path');
 const multer = require('multer');
@@ -10,7 +11,87 @@ const multerS3 = require('multer-s3');
 const fs = require('fs');
 const axios = require('axios');
 require('dotenv').config();
-const logger = require('./logger');
+
+// ロギングシステムの設定と管理
+class LoggingSystem {
+  constructor() {
+    this.setupLogDirectory();
+    this.logger = this.createLogger();
+  }
+
+  setupLogDirectory() {
+    const logDir = path.join(__dirname, '..', 'logs');
+    if (!fs.existsSync(logDir)) {
+      fs.mkdirSync(logDir, { recursive: true });
+    }
+  }
+
+  createLogger() {
+    return winston.createLogger({
+      format: winston.format.combine(
+        winston.format.timestamp(),
+        winston.format.json()
+      ),
+      transports: [
+        this.createConsoleTransport(),
+        this.createErrorFileTransport(),
+        this.createCombinedFileTransport(),
+        this.createCloudWatchTransport()
+      ]
+    });
+  }
+
+  createConsoleTransport() {
+    return new winston.transports.Console({
+      format: winston.format.combine(
+        winston.format.colorize(),
+        winston.format.simple(),
+        winston.format.printf(({ level, message, timestamp }) => {
+          return `${timestamp} ${level}: ${message}`;
+        })
+      )
+    });
+  }
+
+  createErrorFileTransport() {
+    return new winston.transports.File({
+      filename: 'logs/error.log',
+      level: 'error',
+      format: winston.format.combine(
+        winston.format.timestamp(),
+        winston.format.json()
+      )
+    });
+  }
+
+  createCombinedFileTransport() {
+    return new winston.transports.File({
+      filename: 'logs/combined.log',
+      format: winston.format.combine(
+        winston.format.timestamp(),
+        winston.format.json()
+      )
+    });
+  }
+
+  createCloudWatchTransport() {
+    return new WinstonCloudWatch({
+      logGroupName: '/aws/express/myapp',
+      logStreamName: `express-${new Date().toISOString().slice(0, 10)}`,
+      awsRegion: 'ap-northeast-1',
+      awsOptions: {
+        credentials: {
+          accessKeyId: process.env.STORAGE_S3_ACCESS_KEY,
+          secretAccessKey: process.env.STORAGE_S3_SECRET_KEY
+        }
+      }
+    });
+  }
+
+  getLogger() {
+    return this.logger;
+  }
+}
 
 // ストレージ設定を管理するクラス
 class StorageConfig {
@@ -23,7 +104,7 @@ class StorageConfig {
         distributionId: process.env.STORAGE_CDN_DISTRIBUTION_ID
       },
       uploadLimits: {
-        fileSize: 5 * 1024 * 1024, // 5MB
+        fileSize: 5 * 1024 * 1024,
         allowedMimeTypes: ['image/jpeg', 'image/png', 'image/gif']
       }
     };
@@ -191,8 +272,8 @@ class Application {
     this.prisma = new PrismaClient();
     this.port = process.env.APP_PORT || 8080;
     
-    // loggerを外部ファイルから使用
-    this.logger = logger;
+    const loggingSystem = new LoggingSystem();
+    this.logger = loggingSystem.getLogger();
     
     this.storageConfig = new StorageConfig();
     this.fileUploader = new FileUploader(this.storageConfig);
@@ -200,7 +281,12 @@ class Application {
   }
 
   setupMiddleware() {
-    // リクエストロギング
+    this.setupRequestLogging();
+    this.setupBasicMiddleware();
+    this.setupErrorLogging();
+  }
+
+  setupRequestLogging() {
     this.app.use(expressWinston.logger({
       winstonInstance: this.logger,
       meta: false,
@@ -210,17 +296,18 @@ class Application {
       },
       expressFormat: false,
       colorize: true,
-      ignoreRoute: (req) => {
-        return req.url === '/health' || req.url === '/health-db';
-      }
+      ignoreRoute: (req) => req.url === '/health' || req.url === '/health-db'
     }));
+  }
 
+  setupBasicMiddleware() {
     this.app.use(express.json());
     this.app.use(express.urlencoded({ extended: true }));
     this.app.set('view engine', 'ejs');
     this.app.set('views', path.join(__dirname, 'views'));
+  }
 
-    // エラーロギング
+  setupErrorLogging() {
     this.app.use(expressWinston.errorLogger({
       winstonInstance: this.logger,
       meta: false,
