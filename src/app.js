@@ -191,15 +191,13 @@ class Application {
     this.port = process.env.APP_PORT || 8080;
     
     this.logger = pino({
-      level: process.env.LOG_LEVEL || 'info',
-      transport: process.env.NODE_ENV === 'development' ? {
-        target: 'pino-pretty',
-        options: {
-          colorize: true,
-          translateTime: 'SYS:standard',
-          ignore: 'pid,hostname'
-        }
-      } : undefined
+      transport: {
+        target: 'pino-pretty'
+      },
+      level: 'info',
+      formatters: {
+        level: (label) => ({ level: label })
+      }
     });
     
     this.storageConfig = new StorageConfig();
@@ -210,16 +208,17 @@ class Application {
   setupMiddleware() {
     this.app.use(pinoHttp({
       logger: this.logger,
-      customLogLevel: function (res, err) {
-        if (res.statusCode >= 400 && res.statusCode < 500) return 'warn'
-        if (res.statusCode >= 500 || err) return 'error'
-        return 'info'
+      autoLogging: {
+        ignore: (req) => req.url === '/health' || req.url === '/health-db'
       },
-      customSuccessMessage: function (res) {
-        return `request completed with status code ${res.statusCode}`
-      },
-      customErrorMessage: function (error, res) {
-        return `request failed with status code ${res.statusCode}: ${error.message}`
+      customSuccessMessage: (req, res, responseTime) => 
+        `${req.method.padEnd(6)} ${req.url.padEnd(30)} ${responseTime}ms`,
+      customErrorMessage: (error, req, res, responseTime) => 
+        `${req.method.padEnd(6)} ${req.url.padEnd(30)} ${responseTime}ms - ${error.message}`,
+      serializers: {
+        req: () => undefined,
+        res: () => undefined,
+        err: () => undefined
       }
     }));
 
@@ -306,9 +305,9 @@ class Application {
         privateIp: privateIpResponse.data
       };
     } catch (error) {
-      this.logger.warn('Failed to fetch EC2 metadata:', error.message);
+      console.warn('Failed to fetch EC2 metadata:', error.message);
       return {
-        publicIp: '13.114.210.249',  // フォールバック値または環境変数から取得
+        publicIp: '13.114.210.249',
         privateIp: 'localhost'
       };
     }
@@ -325,18 +324,18 @@ class Application {
         const { publicIp, privateIp } = await this.getInstanceMetadata();
         
         this.app.listen(this.port, host, () => {
-          this.logger.info('\n=== Server Information ===');
-          this.logger.info(`APP_ENV:      ${process.env.APP_ENV}`);
-          this.logger.info(`Storage:      ${this.storageConfig.isEnabled() ? 'S3' : 'Local'}`);
-          this.logger.info('\n=== Access URLs ===');
-          this.logger.info(`Local:        http://localhost:${this.port}`);
-          this.logger.info(`Public IPv4:  http://${publicIp}:${this.port}`);
-          this.logger.info(`Private IPv4: http://${privateIp}:${this.port}`);
-          this.logger.info('\n=== Server is ready ===');
+          console.log('\n=== Server Information ===');
+          console.log(`Environment: ${process.env.APP_ENV}`);
+          console.log(`Storage:     ${this.storageConfig.isEnabled() ? 'S3' : 'Local'}`);
+          console.log('\n=== Access URLs ===');
+          console.log(`Local:       http://localhost:${this.port}`);
+          console.log(`Public:      http://${publicIp}:${this.port}`);
+          console.log(`Private:     http://${privateIp}:${this.port}`);
+          console.log('\n=== Server is ready ===\n');
         });
       }
     } catch (err) {
-      this.logger.error('Application startup error:', err);
+      console.error('Application startup error:', err);
       process.exit(1);
     }
   }
