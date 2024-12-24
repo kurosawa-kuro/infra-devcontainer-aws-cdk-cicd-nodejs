@@ -10,6 +10,7 @@ const multerS3 = require('multer-s3');
 const fs = require('fs');
 const axios = require('axios');
 require('dotenv').config();
+const logger = require('./logger');
 
 // ストレージ設定を管理するクラス
 class StorageConfig {
@@ -190,20 +191,8 @@ class Application {
     this.prisma = new PrismaClient();
     this.port = process.env.APP_PORT || 8080;
     
-    // Winstonロガーの設定
-    this.logger = winston.createLogger({
-      level: 'info',
-      format: winston.format.combine(
-        winston.format.colorize(),
-        winston.format.simple(),
-        winston.format.printf(({ level, message }) => {
-          return `${level}: ${message}`;
-        })
-      ),
-      transports: [
-        new winston.transports.Console()
-      ]
-    });
+    // loggerを外部ファイルから使用
+    this.logger = logger;
     
     this.storageConfig = new StorageConfig();
     this.fileUploader = new FileUploader(this.storageConfig);
