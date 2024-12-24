@@ -1,9 +1,10 @@
 # 全PHONYターゲットの宣言
 .PHONY: setup permissions check \
         ecr-build-push \
-        dev staging production \
+        dev staging prod prod-test \
         pm2-status pm2-stop pm2-restart pm2-logs \
-        db-studio db-migrate db-reset db-generate \
+        db-studio db-migrate db-reset db-generate db-deploy \
+        docker-start \
         test \
         batch-s3-log batch-s3-log-now
 
@@ -46,44 +47,57 @@ dev:
 staging:
 	npm run staging
 
-production:
-	npm run production
+prod:
+	npm run prod
+
+prod-test:
+	npm run prod:test
 
 # PM2プロセス管理
 #---------------------------------
 pm2-status:
 	@echo "=== Checking PM2 Status ==="
-	npm run pm2-status
+	npm run pm2:status
 
 pm2-stop:
 	@echo "=== Stopping PM2 Processes ==="
-	npm run pm2-stop
+	npm run pm2:stop
 
 pm2-restart:
 	@echo "=== Restarting PM2 Processes ==="
-	npm run pm2-restart
+	npm run pm2:restart
 
 pm2-logs:
 	@echo "=== Showing PM2 Logs ==="
-	npm run pm2-logs
+	npm run pm2:logs
 
 # データベース操作
 #---------------------------------
 db-studio:
 	@echo "=== Starting Prisma Studio ==="
-	npm run db-studio
+	npm run db:studio
 
 db-migrate:
 	@echo "=== Creating Database Migration ==="
-	npm run db-migrate
+	npm run db:migrate
 
 db-reset:
 	@echo "=== Resetting Database ==="
-	npm run db-reset
+	npm run db:reset
 
 db-generate:
 	@echo "=== Generating Prisma Client ==="
-	npm run db-generate
+	npm run db:generate
+
+db-deploy:
+	@echo "=== Deploying Database Migrations ==="
+	npm run db:deploy
+
+# Docker操作
+#---------------------------------
+docker-start:
+	@echo "=== Starting Docker Container ==="
+	npm run docker:start
 
 # テスト
 #---------------------------------
@@ -94,8 +108,8 @@ test:
 #---------------------------------
 batch-s3-log:
 	@echo "=== Running S3 Log Batch Process ==="
-	npm run batch-s3-log
+	npm run batch:s3-log
 
 batch-s3-log-now:
 	@echo "=== Running S3 Log Batch Process (Immediate) ==="
-	npm run batch-s3-log-now
+	npm run batch:s3-log:now

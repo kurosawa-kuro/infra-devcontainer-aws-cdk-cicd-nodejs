@@ -8,20 +8,24 @@
     "test": "NODE_ENV=test jest --runInBand --forceExit --detectOpenHandles",
     "start": "node src/app.js",
     "staging": "pm2 start ecosystem.config.js --env staging",
-    "production-test": "NODE_ENV=production node -r dotenv/config src/app.js dotenv_config_path=.env",
-    "production": "pm2 start ecosystem.config.js --env production",
-    "pm2-status": "pm2 status",
-    "pm2-stop": "pm2 stop all",
-    "pm2-restart": "pm2 restart all",
-    "pm2-logs": "pm2 logs",
-    "db-studio": "prisma studio",
-    "db-migrate": "prisma migrate dev",
-    "db-reset": "prisma migrate reset",
-    "db-generate": "prisma generate",
-    "db-deploy": "prisma migrate deploy",
-    "docker-start": "npm run db-deploy && npm start",
-    "batch-s3-log": "node src/batch/s3-batch-log-01.js",
-    "batch-s3-log-now": "node src/batch/s3-batch-log-01.js --now"
+    "prod:test": "NODE_ENV=production node -r dotenv/config src/app.js dotenv_config_path=.env",
+    "prod": "pm2 start ecosystem.config.js --env production",
+    
+    "pm2:status": "pm2 status",
+    "pm2:stop": "pm2 stop all",
+    "pm2:restart": "pm2 restart all",
+    "pm2:logs": "pm2 logs",
+    
+    "db:studio": "prisma studio",
+    "db:migrate": "prisma migrate dev",
+    "db:reset": "prisma migrate reset",
+    "db:generate": "prisma generate",
+    "db:deploy": "prisma migrate deploy",
+    
+    "docker:start": "npm run db:deploy && npm start",
+    
+    "batch:s3-log": "node src/batch/s3-batch-log-01.js",
+    "batch:s3-log:now": "node src/batch/s3-batch-log-01.js --now"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.717.0",
