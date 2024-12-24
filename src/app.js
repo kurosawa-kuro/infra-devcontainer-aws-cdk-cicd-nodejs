@@ -1,12 +1,14 @@
 const express = require('express');
 const asyncHandler = require('express-async-handler');
-const morgan = require('morgan');
+const pino = require('pino');
+const pinoHttp = require('pino-http');
 const path = require('path');
 const multer = require('multer');
 const { PrismaClient } = require('@prisma/client');
 const { S3Client } = require('@aws-sdk/client-s3');
 const multerS3 = require('multer-s3');
 const fs = require('fs');
+const axios = require('axios');
 require('dotenv').config();
 
 // ストレージ設定を管理するクラス
@@ -188,14 +190,39 @@ class Application {
     this.prisma = new PrismaClient();
     this.port = process.env.APP_PORT || 8080;
     
+    this.logger = pino({
+      level: process.env.LOG_LEVEL || 'info',
+      transport: process.env.NODE_ENV === 'development' ? {
+        target: 'pino-pretty',
+        options: {
+          colorize: true,
+          translateTime: 'SYS:standard',
+          ignore: 'pid,hostname'
+        }
+      } : undefined
+    });
+    
     this.storageConfig = new StorageConfig();
     this.fileUploader = new FileUploader(this.storageConfig);
     this.errorHandler = new ErrorHandler(this.storageConfig.getUploadLimits());
   }
 
   setupMiddleware() {
-    const logFormat = ':remote-addr - :remote-user [:date[clf]] ":method :url HTTP/:http-version" :status :res[content-length] ":referrer" ":user-agent" :response-time ms';
-    this.app.use(morgan(logFormat));
+    this.app.use(pinoHttp({
+      logger: this.logger,
+      customLogLevel: function (res, err) {
+        if (res.statusCode >= 400 && res.statusCode < 500) return 'warn'
+        if (res.statusCode >= 500 || err) return 'error'
+        return 'info'
+      },
+      customSuccessMessage: function (res) {
+        return `request completed with status code ${res.statusCode}`
+      },
+      customErrorMessage: function (error, res) {
+        return `request failed with status code ${res.statusCode}: ${error.message}`
+      }
+    }));
+
     this.app.use(express.json());
     this.app.use(express.urlencoded({ extended: true }));
     this.app.set('view engine', 'ejs');
@@ -268,6 +295,25 @@ class Application {
     this.app.use((err, req, res, next) => this.errorHandler.handle(err, req, res, next));
   }
 
+  async getInstanceMetadata() {
+    try {
+      const [publicIpResponse, privateIpResponse] = await Promise.all([
+        axios.get('http://169.254.169.254/latest/meta-data/public-ipv4', { timeout: 2000 }),
+        axios.get('http://169.254.169.254/latest/meta-data/local-ipv4', { timeout: 2000 })
+      ]);
+      return {
+        publicIp: publicIpResponse.data,
+        privateIp: privateIpResponse.data
+      };
+    } catch (error) {
+      this.logger.warn('Failed to fetch EC2 metadata:', error.message);
+      return {
+        publicIp: '13.114.210.249',  // フォールバック値または環境変数から取得
+        privateIp: 'localhost'
+      };
+    }
+  }
+
   async start() {
     try {
       this.setupMiddleware();
@@ -276,17 +322,21 @@ class Application {
 
       if (process.env.APP_ENV !== 'test') {
         const host = process.env.APP_HOST || '0.0.0.0';
+        const { publicIp, privateIp } = await this.getInstanceMetadata();
+        
         this.app.listen(this.port, host, () => {
-          console.log('\n=== Server URLs ===');
-          console.log(`APP_ENV:   ${process.env.APP_ENV}`);  
-          console.log(`Local:     http://localhost:${this.port}`);
-          console.log(`Public:    http://${process.env.SERVER_PUBLIC_IP || 'YOUR_SERVER_PUBLIC_IP'}:${this.port}`);
-          console.log(`Private:   http://${process.env.SERVER_PRIVATE_IP || 'YOUR_SERVER_PRIVATE_IP'}:${this.port}`);
-          console.log(`\nStorage: ${this.storageConfig.isEnabled() ? 'S3' : 'Local'}`);
+          this.logger.info('\n=== Server Information ===');
+          this.logger.info(`APP_ENV:      ${process.env.APP_ENV}`);
+          this.logger.info(`Storage:      ${this.storageConfig.isEnabled() ? 'S3' : 'Local'}`);
+          this.logger.info('\n=== Access URLs ===');
+          this.logger.info(`Local:        http://localhost:${this.port}`);
+          this.logger.info(`Public IPv4:  http://${publicIp}:${this.port}`);
+          this.logger.info(`Private IPv4: http://${privateIp}:${this.port}`);
+          this.logger.info('\n=== Server is ready ===');
         });
       }
     } catch (err) {
-      console.error('Application startup error:', err);
+      this.logger.error('Application startup error:', err);
       process.exit(1);
     }
   }
