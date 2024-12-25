@@ -52,6 +52,7 @@ export class InfraAwsCdkVpcAlbAmiS3CloudfrontStack extends cdk.Stack {
     super(scope, id, {
       ...props,
       env: { region: CONFIG.region },
+      crossRegionReferences: true,
     });
 
     this.createVpcResources();
@@ -187,6 +188,8 @@ export class InfraAwsCdkVpcAlbAmiS3CloudfrontStack extends cdk.Stack {
         sampledRequestsEnabled: true,
       },
       rules: [],
+      name: `${CONFIG.prefix}-cf-waf`,
+      description: 'WAF rules for CloudFront distribution'
     });
 
     this.distribution = new cloudfront.Distribution(this, 'StaticContentDistribution', {
