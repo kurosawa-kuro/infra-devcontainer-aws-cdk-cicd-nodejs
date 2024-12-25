@@ -30,9 +30,6 @@ const CONFIG = {
     timeout: 5,
     interval: 30,
   },
-  s3: {
-    bucketName: 'cdk-vpc-js-express-ejs-8080-s3-02',
-  },
   cloudfront: {
     comment: 'CDN for S3 static content',
   },
@@ -185,9 +182,10 @@ export class InfraAwsCdkVpcAlbAmiS3CloudfrontStack extends cdk.Stack {
 
   private createS3Bucket(): s3.Bucket {
     return new s3.Bucket(this, 'StaticContentBucket', {
-      bucketName: CONFIG.s3.bucketName,
+      bucketName: `${CONFIG.prefix}-s3`,
+      autoDeleteObjects: true,
+      removalPolicy: cdk.RemovalPolicy.DESTROY,
       blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL,
-      removalPolicy: cdk.RemovalPolicy.RETAIN,
       cors: [{
         allowedHeaders: ['*'],
         allowedMethods: [
@@ -273,6 +271,21 @@ export class InfraAwsCdkVpcAlbAmiS3CloudfrontStack extends cdk.Stack {
     new cdk.CfnOutput(this, 'DistributionDomainName', {
       value: this.distribution.distributionDomainName,
       description: 'CloudFront Distribution Domain Name',
+    });
+
+    new cdk.CfnOutput(this, 'StorageS3Bucket', {
+      value: `STORAGE_S3_BUCKET=${this.bucket.bucketName}`,
+      description: 'Environment variable for S3 bucket name',
+    });
+
+    new cdk.CfnOutput(this, 'StorageCdnUrl', {
+      value: `STORAGE_CDN_URL=https://${this.distribution.distributionDomainName}`,
+      description: 'Environment variable for CloudFront URL',
+    });
+
+    new cdk.CfnOutput(this, 'StorageCdnDistributionId', {
+      value: `STORAGE_CDN_DISTRIBUTION_ID=${this.distribution.distributionId}`,
+      description: 'Environment variable for CloudFront Distribution ID',
     });
   }
 }

@@ -15,7 +15,8 @@ first-deploy:
 # スタックの削除
 .PHONY: destroy
 destroy:
-	$(CDK) destroy --force
+	$(CDK) destroy InfraAwsCdkVpcAlbAmiS3CloudfrontStack --force
+	$(CDK) destroy WebAclStack --force
 
 # 完全リセット時（削除→再デプロイ）
 .PHONY: reset-deploy
