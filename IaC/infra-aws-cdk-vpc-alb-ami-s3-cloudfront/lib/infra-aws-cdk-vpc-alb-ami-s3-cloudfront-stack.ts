@@ -233,20 +233,46 @@ export class InfraAwsCdkVpcAlbAmiS3CloudfrontStack extends cdk.Stack {
       }
     });
 
+    // カスタムキャッシュポリシーを作成
+    const cachingOptimized = new cloudfront.CachePolicy(this, 'CachingOptimized', {
+      comment: 'Caching optimized for S3 static content',
+      defaultTtl: cdk.Duration.days(1),
+      maxTtl: cdk.Duration.days(365),
+      minTtl: cdk.Duration.hours(1),
+      enableAcceptEncodingBrotli: true,
+      enableAcceptEncodingGzip: true,
+      cookieBehavior: cloudfront.CacheCookieBehavior.none(),
+      headerBehavior: cloudfront.CacheHeaderBehavior.none(),
+      queryStringBehavior: cloudfront.CacheQueryStringBehavior.none(),
+    });
+
+    // S3バケットのOrigin設定を作成
+    const s3Origin = new origins.S3Origin(this.bucket, {
+      originAccessIdentity: undefined,  // OAIを無効化
+      originShieldEnabled: true,  // Origin Shield を有効化
+      originShieldRegion: CONFIG.region, // Origin Shield のリージョンを設定
+    });
+
     // CloudFrontディストリビューションを作成
     const distribution = new cloudfront.Distribution(this, 'StaticContentDistribution', {
       defaultBehavior: {
-        origin: new origins.S3Origin(this.bucket),
+        origin: s3Origin,
         viewerProtocolPolicy: cloudfront.ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
         allowedMethods: cloudfront.AllowedMethods.ALLOW_ALL,
-        originRequestPolicy: cloudfront.OriginRequestPolicy.ALL_VIEWER,
-        cachePolicy: cloudfront.CachePolicy.CACHING_OPTIMIZED,
+        cachedMethods: cloudfront.CachedMethods.CACHE_GET_HEAD,
+        compress: true,
+        cachePolicy: cachingOptimized,
+        originRequestPolicy: cloudfront.OriginRequestPolicy.CORS_S3_ORIGIN,
       },
       webAclId: webAcl.attrArn,
       comment: CONFIG.cloudfront.comment,
+      defaultRootObject: 'index.html',  // デフォルトのルートオブジェクト
+      enableIpv6: true,                 // IPv6を有効化
+      httpVersion: cloudfront.HttpVersion.HTTP2,  // HTTP/2を有効化
+      priceClass: cloudfront.PriceClass.PRICE_CLASS_ALL,  // すべてのエッジロケーションを使用
     });
 
-    // S3バケットポリシーを追加
+    // S3バケットポリシーを追加（CloudFrontからのアクセスのみを許可）
     const bucketPolicyStatement = new iam.PolicyStatement({
       actions: ['s3:GetObject'],
       effect: iam.Effect.ALLOW,
