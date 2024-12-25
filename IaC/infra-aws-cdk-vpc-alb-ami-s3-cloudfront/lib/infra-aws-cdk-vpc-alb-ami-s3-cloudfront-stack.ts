@@ -7,6 +7,7 @@ import * as s3 from 'aws-cdk-lib/aws-s3';
 import * as cloudfront from 'aws-cdk-lib/aws-cloudfront';
 import * as origins from 'aws-cdk-lib/aws-cloudfront-origins';
 import * as wafv2 from 'aws-cdk-lib/aws-wafv2';
+import * as iam from 'aws-cdk-lib/aws-iam';
 
 const CONFIG = {
   prefix: 'cdk-vpc-js-express-ejs-8080',
@@ -222,11 +223,20 @@ export class InfraAwsCdkVpcAlbAmiS3CloudfrontStack extends cdk.Stack {
   }
 
   private createCloudFrontDistribution(webAcl: wafv2.CfnWebACL): cloudfront.Distribution {
-    return new cloudfront.Distribution(this, 'StaticContentDistribution', {
+    // CloudFront OACを作成
+    const cloudFrontOac = new cloudfront.CfnOriginAccessControl(this, 'CloudFrontOAC', {
+      originAccessControlConfig: {
+        name: `${CONFIG.prefix}-oac`,
+        originAccessControlOriginType: 's3',
+        signingBehavior: 'always',
+        signingProtocol: 'sigv4'
+      }
+    });
+
+    // CloudFrontディストリビューションを作成
+    const distribution = new cloudfront.Distribution(this, 'StaticContentDistribution', {
       defaultBehavior: {
-        origin: new origins.S3Origin(this.bucket, {
-          // 必要に応じてオリジンアクセスIDを使用
-        }),
+        origin: new origins.S3Origin(this.bucket),
         viewerProtocolPolicy: cloudfront.ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
         allowedMethods: cloudfront.AllowedMethods.ALLOW_ALL,
         originRequestPolicy: cloudfront.OriginRequestPolicy.ALL_VIEWER,
@@ -235,6 +245,27 @@ export class InfraAwsCdkVpcAlbAmiS3CloudfrontStack extends cdk.Stack {
       webAclId: webAcl.attrArn,
       comment: CONFIG.cloudfront.comment,
     });
+
+    // S3バケットポリシーを追加
+    const bucketPolicyStatement = new iam.PolicyStatement({
+      actions: ['s3:GetObject'],
+      effect: iam.Effect.ALLOW,
+      principals: [new iam.ServicePrincipal('cloudfront.amazonaws.com')],
+      resources: [`${this.bucket.bucketArn}/*`],
+      conditions: {
+        StringEquals: {
+          'AWS:SourceArn': `arn:aws:cloudfront::${this.account}:distribution/${distribution.distributionId}`
+        }
+      }
+    });
+
+    this.bucket.addToResourcePolicy(bucketPolicyStatement);
+
+    // OACをディストリビューションに関連付け
+    const cfnDistribution = distribution.node.defaultChild as cloudfront.CfnDistribution;
+    cfnDistribution.addPropertyOverride('DistributionConfig.Origins.0.OriginAccessControlId', cloudFrontOac.ref);
+
+    return distribution;
   }
 
   private addOutputs(): void {
