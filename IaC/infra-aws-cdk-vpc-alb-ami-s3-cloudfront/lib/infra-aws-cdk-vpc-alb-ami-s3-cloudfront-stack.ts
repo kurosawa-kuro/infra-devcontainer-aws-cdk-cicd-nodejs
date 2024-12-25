@@ -8,7 +8,6 @@ import * as cloudfront from 'aws-cdk-lib/aws-cloudfront';
 import * as origins from 'aws-cdk-lib/aws-cloudfront-origins';
 import * as wafv2 from 'aws-cdk-lib/aws-wafv2';
 
-// 設定値を一箇所で管理
 const CONFIG = {
   prefix: 'cdk-vpc-js-express-ejs-8080',
   region: 'ap-northeast-1',
@@ -40,13 +39,13 @@ const CONFIG = {
 } as const;
 
 export class InfraAwsCdkVpcAlbAmiS3CloudfrontStack extends cdk.Stack {
-  private vpc: ec2.Vpc;
-  private albSg: ec2.SecurityGroup;
-  private appSg: ec2.SecurityGroup;
-  private instance: ec2.Instance;
-  private alb: elbv2.ApplicationLoadBalancer;
-  private bucket: s3.Bucket;
-  private distribution: cloudfront.Distribution;
+  private readonly vpc: ec2.Vpc;
+  private readonly albSg: ec2.SecurityGroup;
+  private readonly appSg: ec2.SecurityGroup;
+  private readonly instance: ec2.Instance;
+  private readonly alb: elbv2.ApplicationLoadBalancer;
+  private readonly bucket: s3.Bucket;
+  private readonly distribution: cloudfront.Distribution;
 
   constructor(scope: Construct, id: string, props?: cdk.StackProps) {
     super(scope, id, {
@@ -55,16 +54,28 @@ export class InfraAwsCdkVpcAlbAmiS3CloudfrontStack extends cdk.Stack {
       crossRegionReferences: true,
     });
 
-    this.createVpcResources();
-    this.createSecurityGroups();
-    this.createEC2Instance();
-    this.createLoadBalancer();
-    this.createS3AndCloudFront();
+    // VPC and Network
+    this.vpc = this.createVpc();
+    const { albSg, appSg } = this.createSecurityGroups();
+    this.albSg = albSg;
+    this.appSg = appSg;
+
+    // Compute and Load Balancing
+    this.instance = this.createEc2Instance();
+    this.alb = this.createAlb();
+    const targetGroup = this.createTargetGroup();
+    this.configureAlbListener(targetGroup);
+
+    // Storage and CDN
+    this.bucket = this.createS3Bucket();
+    const webAcl = this.createWebAcl();
+    this.distribution = this.createCloudFrontDistribution(webAcl);
+
     this.addOutputs();
   }
 
-  private createVpcResources(): void {
-    this.vpc = new ec2.Vpc(this, 'AppVpc', {
+  private createVpc(): ec2.Vpc {
+    return new ec2.Vpc(this, 'AppVpc', {
       vpcName: `${CONFIG.prefix}-vpc`,
       ipAddresses: ec2.IpAddresses.cidr(CONFIG.vpc.cidr),
       maxAzs: CONFIG.vpc.maxAzs,
@@ -78,42 +89,44 @@ export class InfraAwsCdkVpcAlbAmiS3CloudfrontStack extends cdk.Stack {
     });
   }
 
-  private createSecurityGroups(): void {
-    this.albSg = new ec2.SecurityGroup(this, 'AlbSecurityGroup', {
+  private createSecurityGroups() {
+    const albSg = new ec2.SecurityGroup(this, 'AlbSecurityGroup', {
       vpc: this.vpc,
       securityGroupName: `${CONFIG.prefix}-alb-sg`,
       description: 'Security group for ALB',
       allowAllOutbound: true,
     });
 
-    this.albSg.addIngressRule(
+    albSg.addIngressRule(
       ec2.Peer.anyIpv4(),
       ec2.Port.tcp(80),
       'Allow HTTP'
     );
 
-    this.appSg = new ec2.SecurityGroup(this, 'AppSecurityGroup', {
+    const appSg = new ec2.SecurityGroup(this, 'AppSecurityGroup', {
       vpc: this.vpc,
       securityGroupName: `${CONFIG.prefix}-app-sg`,
       description: 'Security group for App',
       allowAllOutbound: true,
     });
 
-    this.appSg.addIngressRule(
-      ec2.Peer.securityGroupId(this.albSg.securityGroupId),
+    appSg.addIngressRule(
+      ec2.Peer.securityGroupId(albSg.securityGroupId),
       ec2.Port.tcp(CONFIG.app.port),
       'Allow from ALB'
     );
 
-    this.appSg.addIngressRule(
+    appSg.addIngressRule(
       ec2.Peer.anyIpv4(),
       ec2.Port.tcp(22),
       'Allow SSH'
     );
+
+    return { albSg, appSg };
   }
 
-  private createEC2Instance(): void {
-    this.instance = new ec2.Instance(this, 'AppInstance', {
+  private createEc2Instance(): ec2.Instance {
+    return new ec2.Instance(this, 'AppInstance', {
       vpc: this.vpc,
       instanceType: CONFIG.app.instanceType,
       machineImage: ec2.MachineImage.genericLinux({
@@ -130,15 +143,17 @@ export class InfraAwsCdkVpcAlbAmiS3CloudfrontStack extends cdk.Stack {
     });
   }
 
-  private createLoadBalancer(): void {
-    this.alb = new elbv2.ApplicationLoadBalancer(this, 'AppLoadBalancer', {
+  private createAlb(): elbv2.ApplicationLoadBalancer {
+    return new elbv2.ApplicationLoadBalancer(this, 'AppLoadBalancer', {
       vpc: this.vpc,
       internetFacing: true,
       loadBalancerName: `${CONFIG.prefix}-alb`,
       securityGroup: this.albSg,
       vpcSubnets: { subnetType: ec2.SubnetType.PUBLIC }
     });
+  }
 
+  private createTargetGroup(): elbv2.ApplicationTargetGroup {
     const targetGroup = new elbv2.ApplicationTargetGroup(this, 'AppTargetGroup', {
       vpc: this.vpc,
       port: CONFIG.app.port,
@@ -155,14 +170,18 @@ export class InfraAwsCdkVpcAlbAmiS3CloudfrontStack extends cdk.Stack {
     });
 
     targetGroup.addTarget(new targets.InstanceTarget(this.instance));
+    return targetGroup;
+  }
+
+  private configureAlbListener(targetGroup: elbv2.ApplicationTargetGroup): void {
     this.alb.addListener('HttpListener', {
       port: 80,
       defaultTargetGroups: [targetGroup],
     });
   }
 
-  private createS3AndCloudFront(): void {
-    this.bucket = new s3.Bucket(this, 'StaticContentBucket', {
+  private createS3Bucket(): s3.Bucket {
+    return new s3.Bucket(this, 'StaticContentBucket', {
       bucketName: CONFIG.s3.bucketName,
       blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL,
       removalPolicy: cdk.RemovalPolicy.RETAIN,
@@ -178,8 +197,10 @@ export class InfraAwsCdkVpcAlbAmiS3CloudfrontStack extends cdk.Stack {
         exposedHeaders: [],
       }],
     });
+  }
 
-    const webAcl = new wafv2.CfnWebACL(this, 'CloudFrontWebAcl', {
+  private createWebAcl(): wafv2.CfnWebACL {
+    return new wafv2.CfnWebACL(this, 'CloudFrontWebAcl', {
       defaultAction: { allow: {} },
       scope: 'CLOUDFRONT',
       visibilityConfig: {
@@ -191,8 +212,10 @@ export class InfraAwsCdkVpcAlbAmiS3CloudfrontStack extends cdk.Stack {
       name: `${CONFIG.prefix}-cf-waf`,
       description: 'WAF rules for CloudFront distribution'
     });
+  }
 
-    this.distribution = new cloudfront.Distribution(this, 'StaticContentDistribution', {
+  private createCloudFrontDistribution(webAcl: wafv2.CfnWebACL): cloudfront.Distribution {
+    return new cloudfront.Distribution(this, 'StaticContentDistribution', {
       defaultBehavior: {
         origin: new origins.HttpOrigin(`${this.bucket.bucketName}.s3.${CONFIG.region}.amazonaws.com`, {
           protocolPolicy: cloudfront.OriginProtocolPolicy.HTTPS_ONLY
