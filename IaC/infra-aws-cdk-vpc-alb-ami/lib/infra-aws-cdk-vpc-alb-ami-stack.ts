@@ -2,280 +2,153 @@ import * as cdk from 'aws-cdk-lib';
 import { Construct } from 'constructs';
 import * as ec2 from 'aws-cdk-lib/aws-ec2';
 import * as elbv2 from 'aws-cdk-lib/aws-elasticloadbalancingv2';
+import * as targets from 'aws-cdk-lib/aws-elasticloadbalancingv2-targets';
 
-// インフラストラクチャリソースの設定を管理
-interface IInfraConfig {
-  readonly prefix: string;
-  readonly region: string;
-  readonly appPort: number;
-  readonly vpcCidr: string;
-  readonly publicSubnet1Cidr: string;
-  readonly publicSubnet2Cidr: string;
-  readonly healthCheckPath: string;
-}
+// 設定値を一箇所で管理
+const CONFIG = {
+  prefix: 'cdk-vpc-js-express-ejs-8080',
+  region: 'ap-northeast-1',
+  vpc: {
+    cidr: '10.0.0.0/16',
+    maxAzs: 2,
+    subnetMask: 24,
+  },
+  app: {
+    port: 8080,
+    healthCheckPath: '/health',
+    ami: 'ami-0782bb976c68e3fb6',
+    instanceType: ec2.InstanceType.of(ec2.InstanceClass.T2, ec2.InstanceSize.MICRO),
+    keyName: 'training-ec2',
+    volumeSize: 10,
+  },
+  healthCheck: {
+    healthyThreshold: 2,
+    unhealthyThreshold: 2,
+    timeout: 5,
+    interval: 30,
+  },
+} as const;
 
-// リソース名の生成を管理
-interface IResourceNaming {
-  getVpcName(): string;
-  getSecurityGroupName(): string;
-  getLoadBalancerName(): string;
-  getTargetGroupName(): string;
-  getSubnetName(az: string): string;
-  getInternetGatewayName(): string;
-  getRouteTableName(): string;
-}
-
-// インフラストラクチャの設定と命名を管理するクラス
-class InfrastructureConfig implements IInfraConfig, IResourceNaming {
-  public readonly prefix = 'cdk-vpc-js-express-ejs-8080';
-  public readonly region = 'ap-northeast-1';
-  public readonly appPort = 8080;
-  public readonly vpcCidr = '10.0.0.0/16';
-  public readonly publicSubnet1Cidr = '10.0.10.0/24';
-  public readonly publicSubnet2Cidr = '10.0.11.0/24';
-  public readonly healthCheckPath = '/health';
-
-  public getVpcName(): string { return `${this.prefix}-vpc`; }
-  public getSecurityGroupName(): string { return `${this.prefix}-sg-web`; }
-  public getLoadBalancerName(): string { return `${this.prefix}-elb`; }
-  public getTargetGroupName(): string { return `${this.prefix}-tg-alb`; }
-  public getSubnetName(az: string): string { return `${this.prefix}-subnet-pub-${az}`; }
-  public getInternetGatewayName(): string { return `${this.prefix}-igw`; }
-  public getRouteTableName(): string { return `${this.prefix}-rtb-pub`; }
-}
-
-// CloudFormation出力の管理
-class InfrastructureOutput {
-  constructor(private readonly scope: Construct) {}
-
-  public outputConfig(config: IInfraConfig): void {
-    new cdk.CfnOutput(this.scope, 'StackConfig', {
-      value: JSON.stringify({
-        prefix: config.prefix,
-        region: config.region,
-        appPort: config.appPort,
-        vpcCidr: config.vpcCidr,
-      }, null, 2),
-      description: 'Stack Configuration',
+export class InfraAwsCdkVpcAlbAmiStack extends cdk.Stack {
+  constructor(scope: Construct, id: string, props?: cdk.StackProps) {
+    super(scope, id, {
+      ...props,
+      env: { region: CONFIG.region },
     });
-  }
 
-  public outputVpcInfo(vpc: ec2.Vpc, config: IInfraConfig): void {
-    new cdk.CfnOutput(this.scope, 'VpcId', {
-      value: vpc.vpcId,
-      description: 'VPC ID',
-    });
-    new cdk.CfnOutput(this.scope, 'PublicSubnets', {
-      value: vpc.publicSubnets.map(subnet => subnet.subnetId).join(', '),
-      description: 'Public Subnet IDs',
-    });
-    new cdk.CfnOutput(this.scope, 'VpcCidr', {
-      value: config.vpcCidr,
-      description: 'VPC CIDR',
-    });
-  }
-
-  public outputSecurityGroupInfo(securityGroup: ec2.SecurityGroup): void {
-    new cdk.CfnOutput(this.scope, 'SecurityGroupId', {
-      value: securityGroup.securityGroupId,
-      description: 'Security Group ID',
-    });
-  }
-
-  public outputLoadBalancerInfo(alb: elbv2.ApplicationLoadBalancer): void {
-    new cdk.CfnOutput(this.scope, 'LoadBalancerDnsName', {
-      value: alb.loadBalancerDnsName,
-      description: 'Load Balancer DNS Name',
-    });
-  }
-}
-
-// ネットワークリソースの作成を管理
-class NetworkResourceFactory {
-  private albSecurityGroup?: ec2.SecurityGroup;
-
-  constructor(
-    private readonly scope: Construct,
-    private readonly config: InfrastructureConfig,
-    private readonly output: InfrastructureOutput
-  ) {}
-
-  public createVpc(): ec2.Vpc {
-    const vpc = new ec2.Vpc(this.scope, this.config.getVpcName(), {
-      vpcName: this.config.getVpcName(),
-      ipAddresses: ec2.IpAddresses.cidr(this.config.vpcCidr),
-      maxAzs: 2,
+    // VPCの作成
+    const vpc = new ec2.Vpc(this, 'AppVpc', {
+      vpcName: `${CONFIG.prefix}-vpc`,
+      ipAddresses: ec2.IpAddresses.cidr(CONFIG.vpc.cidr),
+      maxAzs: CONFIG.vpc.maxAzs,
       natGateways: 0,
-      subnetConfiguration: [
-        {
-          cidrMask: 24,
-          name: 'Public',
-          subnetType: ec2.SubnetType.PUBLIC,
-        }
-      ],
+      subnetConfiguration: [{
+        name: 'Public',
+        subnetType: ec2.SubnetType.PUBLIC,
+        mapPublicIpOnLaunch: true,
+        cidrMask: CONFIG.vpc.subnetMask
+      }],
     });
 
-    this.output.outputVpcInfo(vpc, this.config);
-    return vpc;
-  }
-
-  public createSecurityGroups(vpc: ec2.Vpc): { instanceSecurityGroup: ec2.SecurityGroup; loadBalancerSecurityGroup: ec2.SecurityGroup } {
-    // ALB用のセキュリティグループを作成
-    const loadBalancerSecurityGroup = new ec2.SecurityGroup(this.scope, 'AlbSecurityGroup', {
+    // セキュリティグループの作成
+    const albSg = new ec2.SecurityGroup(this, 'AlbSecurityGroup', {
       vpc,
-      securityGroupName: `${this.config.prefix}-alb-sg`,
-      description: 'Security group for Application Load Balancer',
+      securityGroupName: `${CONFIG.prefix}-alb-sg`,
+      description: 'Security group for ALB',
       allowAllOutbound: true,
     });
 
-    // ALBの80番ポートを公開
-    loadBalancerSecurityGroup.addIngressRule(
+    albSg.addIngressRule(
       ec2.Peer.anyIpv4(),
       ec2.Port.tcp(80),
-      'Allow inbound HTTP traffic on port 80'
+      'Allow HTTP'
     );
 
-    // EC2インスタンス用のセキュリティグループを作成
-    const instanceSecurityGroup = new ec2.SecurityGroup(this.scope, this.config.getSecurityGroupName(), {
+    const appSg = new ec2.SecurityGroup(this, 'AppSecurityGroup', {
       vpc,
-      securityGroupName: this.config.getSecurityGroupName(),
-      description: 'Security group for Express.js application',
+      securityGroupName: `${CONFIG.prefix}-app-sg`,
+      description: 'Security group for App',
       allowAllOutbound: true,
     });
 
-    // EC2インスタンスのセキュリティグループにALBからの通信を許可
-    instanceSecurityGroup.addIngressRule(
-      ec2.Peer.securityGroupId(loadBalancerSecurityGroup.securityGroupId),
-      ec2.Port.tcp(this.config.appPort),
-      'Allow traffic from ALB to EC2 instances'
+    appSg.addIngressRule(
+      ec2.Peer.securityGroupId(albSg.securityGroupId),
+      ec2.Port.tcp(CONFIG.app.port),
+      'Allow from ALB'
     );
 
-    // SSH接続用ポート
-    instanceSecurityGroup.addIngressRule(
+    appSg.addIngressRule(
       ec2.Peer.anyIpv4(),
       ec2.Port.tcp(22),
-      'Allow inbound SSH traffic on port 22'
+      'Allow SSH'
     );
 
-    this.output.outputSecurityGroupInfo(instanceSecurityGroup);
-    this.albSecurityGroup = loadBalancerSecurityGroup;
+    // EC2インスタンスの作成
+    const instance = new ec2.Instance(this, 'AppInstance', {
+      vpc,
+      instanceType: CONFIG.app.instanceType,
+      machineImage: ec2.MachineImage.genericLinux({
+        [CONFIG.region]: CONFIG.app.ami,
+      }),
+      securityGroup: appSg,
+      keyName: CONFIG.app.keyName,
+      vpcSubnets: { subnetType: ec2.SubnetType.PUBLIC },
+      instanceName: `${CONFIG.prefix}-ec2`,
+      blockDevices: [{
+        deviceName: '/dev/xvda',
+        volume: ec2.BlockDeviceVolume.ebs(CONFIG.app.volumeSize),
+      }],
+    });
 
-    return {
-      instanceSecurityGroup,
-      loadBalancerSecurityGroup
-    };
-  }
-}
-
-// ロードバランサーリソースの作成を管理
-class LoadBalancerFactory {
-  constructor(
-    private readonly scope: Construct,
-    private readonly config: InfrastructureConfig,
-    private readonly output: InfrastructureOutput
-  ) {}
-
-  public createApplicationLoadBalancer(
-    vpc: ec2.Vpc,
-    albSecurityGroup: ec2.SecurityGroup
-  ): elbv2.ApplicationLoadBalancer {
-    const alb = new elbv2.ApplicationLoadBalancer(this.scope, this.config.getLoadBalancerName(), {
+    // ALBの作成
+    const alb = new elbv2.ApplicationLoadBalancer(this, 'AppLoadBalancer', {
       vpc,
       internetFacing: true,
-      loadBalancerName: this.config.getLoadBalancerName(),
-      securityGroup: albSecurityGroup,
+      loadBalancerName: `${CONFIG.prefix}-alb`,
+      securityGroup: albSg,
       vpcSubnets: { subnetType: ec2.SubnetType.PUBLIC }
     });
 
-    const targetGroup = this.createTargetGroup(vpc);
-    this.createListener(alb, targetGroup);
-    this.output.outputLoadBalancerInfo(alb);
-    return alb;
-  }
-
-  private createTargetGroup(vpc: ec2.Vpc): elbv2.ApplicationTargetGroup {
-    return new elbv2.ApplicationTargetGroup(this.scope, this.config.getTargetGroupName(), {
+    const targetGroup = new elbv2.ApplicationTargetGroup(this, 'AppTargetGroup', {
       vpc,
-      port: this.config.appPort,
+      port: CONFIG.app.port,
       protocol: elbv2.ApplicationProtocol.HTTP,
       targetType: elbv2.TargetType.INSTANCE,
       healthCheck: {
-        path: this.config.healthCheckPath,
+        path: CONFIG.app.healthCheckPath,
         port: 'traffic-port',
-        healthyThresholdCount: 2,
-        unhealthyThresholdCount: 2,
-        timeout: cdk.Duration.seconds(5),
-        interval: cdk.Duration.seconds(30),
+        healthyThresholdCount: CONFIG.healthCheck.healthyThreshold,
+        unhealthyThresholdCount: CONFIG.healthCheck.unhealthyThreshold,
+        timeout: cdk.Duration.seconds(CONFIG.healthCheck.timeout),
+        interval: cdk.Duration.seconds(CONFIG.healthCheck.interval),
       }
     });
-  }
 
-  private createListener(
-    alb: elbv2.ApplicationLoadBalancer,
-    targetGroup: elbv2.ApplicationTargetGroup
-  ): void {
+    targetGroup.addTarget(new targets.InstanceTarget(instance));
     alb.addListener('HttpListener', {
       port: 80,
       defaultTargetGroups: [targetGroup],
     });
-  }
-}
 
-// インフラストラクチャスタックのオーケストレーション
-export class InfraAwsCdkVpcAlbAmiStack extends cdk.Stack {
-  private readonly config: InfrastructureConfig;
-  private readonly output: InfrastructureOutput;
-  private readonly networkFactory: NetworkResourceFactory;
-  private readonly loadBalancerFactory: LoadBalancerFactory;
-
-  private vpc: ec2.Vpc;
-  private instanceSecurityGroup: ec2.SecurityGroup;
-  private loadBalancerSecurityGroup: ec2.SecurityGroup;
-  private alb: elbv2.ApplicationLoadBalancer;
-
-  constructor(scope: Construct, id: string, props?: cdk.StackProps) {
-    super(scope, id, {
-      ...props,
-      env: { region: new InfrastructureConfig().region },
+    // CloudFormation出力の作成
+    new cdk.CfnOutput(this, 'VpcId', {
+      value: vpc.vpcId,
+      description: 'VPC ID',
     });
 
-    // コンポーネントの初期化
-    this.config = new InfrastructureConfig();
-    this.output = new InfrastructureOutput(this);
-    this.networkFactory = new NetworkResourceFactory(this, this.config, this.output);
-    this.loadBalancerFactory = new LoadBalancerFactory(this, this.config, this.output);
+    new cdk.CfnOutput(this, 'InstanceId', {
+      value: instance.instanceId,
+      description: 'EC2 Instance ID',
+    });
 
-    // インフラストラクチャの構築
-    this.output.outputConfig(this.config);
-    this.createInfrastructure();
-  }
+    new cdk.CfnOutput(this, 'InstancePublicIp', {
+      value: instance.instancePublicIp,
+      description: 'EC2 Instance Public IP',
+    });
 
-  private createInfrastructure(): void {
-    this.vpc = this.networkFactory.createVpc();
-    const securityGroups = this.networkFactory.createSecurityGroups(this.vpc);
-    this.instanceSecurityGroup = securityGroups.instanceSecurityGroup;
-    this.loadBalancerSecurityGroup = securityGroups.loadBalancerSecurityGroup;
-    
-    this.alb = this.loadBalancerFactory.createApplicationLoadBalancer(
-      this.vpc,
-      this.loadBalancerSecurityGroup
-    );
-  }
-
-  // パブリックインターフェース
-  public getVpc(): ec2.Vpc {
-    return this.vpc;
-  }
-
-  public getInstanceSecurityGroup(): ec2.SecurityGroup {
-    return this.instanceSecurityGroup;
-  }
-
-  public getLoadBalancerSecurityGroup(): ec2.SecurityGroup {
-    return this.loadBalancerSecurityGroup;
-  }
-
-  public getAlb(): elbv2.ApplicationLoadBalancer {
-    return this.alb;
+    new cdk.CfnOutput(this, 'LoadBalancerDns', {
+      value: alb.loadBalancerDnsName,
+      description: 'ALB DNS Name',
+    });
   }
 }

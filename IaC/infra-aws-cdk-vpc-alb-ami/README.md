@@ -1,3 +1,9 @@
+dev/infra-devcontainer-aws-cdk-cicd-nodejs/IaC/infra-aws-cdk-vpc-alb-ami/lib/infra-aws-cdk-vpc-alb-ami-stack.ts
+にAMIからEC2作成を連携するコードを追加依頼
+
+ec2名
+cdk-vpc-js-express-ejs-8080-ec2
+
 pemファイルのパス
 ../training-ec2.pem
 
