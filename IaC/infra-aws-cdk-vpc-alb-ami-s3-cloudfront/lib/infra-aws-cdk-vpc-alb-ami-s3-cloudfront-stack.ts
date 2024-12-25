@@ -31,7 +31,7 @@ const CONFIG = {
     interval: 30,
   },
   s3: {
-    bucketName: 'cdk-vpc-js-express-ejs-8080-s3',
+    bucketName: 'cdk-vpc-js-express-ejs-8080-s3-02',
   },
   cloudfront: {
     comment: 'CDN for S3 static content',
@@ -39,6 +39,7 @@ const CONFIG = {
 } as const;
 
 export class InfraAwsCdkVpcAlbAmiS3CloudfrontStack extends cdk.Stack {
+  private readonly app: cdk.App;
   private readonly vpc: ec2.Vpc;
   private readonly albSg: ec2.SecurityGroup;
   private readonly appSg: ec2.SecurityGroup;
@@ -53,6 +54,8 @@ export class InfraAwsCdkVpcAlbAmiS3CloudfrontStack extends cdk.Stack {
       env: { region: CONFIG.region },
       crossRegionReferences: true,
     });
+
+    this.app = scope as cdk.App;
 
     // VPC and Network
     this.vpc = this.createVpc();
@@ -133,7 +136,7 @@ export class InfraAwsCdkVpcAlbAmiS3CloudfrontStack extends cdk.Stack {
         [CONFIG.region]: CONFIG.app.ami,
       }),
       securityGroup: this.appSg,
-      keyName: CONFIG.app.keyName,
+      keyPair: ec2.KeyPair.fromKeyPairName(this, 'KeyPair', CONFIG.app.keyName),
       vpcSubnets: { subnetType: ec2.SubnetType.PUBLIC },
       instanceName: `${CONFIG.prefix}-ec2`,
       blockDevices: [{
@@ -200,7 +203,13 @@ export class InfraAwsCdkVpcAlbAmiS3CloudfrontStack extends cdk.Stack {
   }
 
   private createWebAcl(): wafv2.CfnWebACL {
-    return new wafv2.CfnWebACL(this, 'CloudFrontWebAcl', {
+    // Create the WebACL in us-east-1 for CloudFront
+    const webAclStack = new cdk.Stack(this.app, 'WebAclStack', {
+      env: { region: 'us-east-1' },
+      crossRegionReferences: true,
+    });
+
+    return new wafv2.CfnWebACL(webAclStack, 'CloudFrontWebAcl', {
       defaultAction: { allow: {} },
       scope: 'CLOUDFRONT',
       visibilityConfig: {

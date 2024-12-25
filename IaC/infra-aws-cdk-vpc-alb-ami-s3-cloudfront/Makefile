@@ -10,7 +10,7 @@ init:
 # 初回デプロイ
 .PHONY: first-deploy
 first-deploy:
-	$(CDK) bootstrap && $(CDK) deploy $(DEPLOY_FLAGS)
+	$(CDK) bootstrap && $(CDK) deploy --all $(DEPLOY_FLAGS)
 
 # スタックの削除
 .PHONY: destroy
