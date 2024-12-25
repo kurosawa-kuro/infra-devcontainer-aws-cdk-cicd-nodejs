@@ -246,17 +246,10 @@ export class InfraAwsCdkVpcAlbAmiS3CloudfrontStack extends cdk.Stack {
       queryStringBehavior: cloudfront.CacheQueryStringBehavior.none(),
     });
 
-    // S3バケットのOrigin設定を作成
-    const s3Origin = new origins.S3Origin(this.bucket, {
-      originAccessIdentity: undefined,  // OAIを無効化
-      originShieldEnabled: true,  // Origin Shield を有効化
-      originShieldRegion: CONFIG.region, // Origin Shield のリージョンを設定
-    });
-
     // CloudFrontディストリビューションを作成
     const distribution = new cloudfront.Distribution(this, 'StaticContentDistribution', {
       defaultBehavior: {
-        origin: s3Origin,
+        origin: new origins.S3Origin(this.bucket),
         viewerProtocolPolicy: cloudfront.ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
         allowedMethods: cloudfront.AllowedMethods.ALLOW_ALL,
         cachedMethods: cloudfront.CachedMethods.CACHE_GET_HEAD,
@@ -266,10 +259,10 @@ export class InfraAwsCdkVpcAlbAmiS3CloudfrontStack extends cdk.Stack {
       },
       webAclId: webAcl.attrArn,
       comment: CONFIG.cloudfront.comment,
-      defaultRootObject: 'index.html',  // デフォルトのルートオブジェクト
-      enableIpv6: true,                 // IPv6を有効化
-      httpVersion: cloudfront.HttpVersion.HTTP2,  // HTTP/2を有効化
-      priceClass: cloudfront.PriceClass.PRICE_CLASS_ALL,  // すべてのエッジロケーションを使用
+      defaultRootObject: 'index.html',
+      enableIpv6: true,
+      httpVersion: cloudfront.HttpVersion.HTTP2,
+      priceClass: cloudfront.PriceClass.PRICE_CLASS_ALL,
     });
 
     // S3バケットポリシーを追加（CloudFrontからのアクセスのみを許可）
@@ -289,6 +282,8 @@ export class InfraAwsCdkVpcAlbAmiS3CloudfrontStack extends cdk.Stack {
 
     // OACをディストリビューションに関連付け
     const cfnDistribution = distribution.node.defaultChild as cloudfront.CfnDistribution;
+    cfnDistribution.overrideLogicalId('StaticContentDistribution');
+    cfnDistribution.addPropertyOverride('DistributionConfig.Origins.0.S3OriginConfig.OriginAccessIdentity', '');
     cfnDistribution.addPropertyOverride('DistributionConfig.Origins.0.OriginAccessControlId', cloudFrontOac.ref);
 
     return distribution;
