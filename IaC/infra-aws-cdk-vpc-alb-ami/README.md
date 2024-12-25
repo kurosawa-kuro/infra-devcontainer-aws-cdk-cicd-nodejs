@@ -1,14 +1,18 @@
-# Welcome to your CDK TypeScript project
+pemファイルのパス
+../training-ec2.pem
 
-This is a blank project for CDK development with TypeScript.
+AMIの情報
+template-express-ejs-postgresql
+ami-0782bb976c68e3fb6
+template-express-ejs-postgresql
 
-The `cdk.json` file tells the CDK Toolkit how to execute your app.
-
-## Useful commands
-
-* `npm run build`   compile typescript to js
-* `npm run watch`   watch for changes and compile
-* `npm run test`    perform the jest unit tests
-* `npx cdk deploy`  deploy this stack to your default AWS account/region
-* `npx cdk diff`    compare deployed stack with current state
-* `npx cdk synth`   emits the synthesized CloudFormation template
+OwnerAlias: –
+プラットフォーム: Other Linux
+アーキテクチャ: x86_64
+所有者: 476114153361
+発行日: 2024-12-23
+ルートデバイスタイプ: ebs
+仮想化: hvm
+ENA 有効: はい
+タグ:
+name: template-express-ejs-postgresql
