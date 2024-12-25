@@ -223,8 +223,14 @@ export class InfraAwsCdkVpcAlbAmiS3CloudfrontStack extends cdk.Stack {
   }
 
   private createCloudFrontDistribution(webAcl: wafv2.CfnWebACL): cloudfront.Distribution {
-    // CloudFront OACを作成
-    const cloudFrontOac = new cloudfront.CfnOriginAccessControl(this, 'CloudFrontOAC', {
+    const { distribution, oac } = this.createBaseDistribution(webAcl);
+    this.configureBucketPolicy(distribution);
+    this.configureOriginAccess(distribution, oac);
+    return distribution;
+  }
+
+  private createBaseDistribution(webAcl: wafv2.CfnWebACL): { distribution: cloudfront.Distribution; oac: cloudfront.CfnOriginAccessControl } {
+    const oac = new cloudfront.CfnOriginAccessControl(this, 'CloudFrontOAC', {
       originAccessControlConfig: {
         name: `${CONFIG.prefix}-oac`,
         originAccessControlOriginType: 's3',
@@ -233,7 +239,6 @@ export class InfraAwsCdkVpcAlbAmiS3CloudfrontStack extends cdk.Stack {
       }
     });
 
-    // カスタムキャッシュポリシーを作成
     const cachingOptimized = new cloudfront.CachePolicy(this, 'CachingOptimized', {
       comment: 'Caching optimized for S3 static content',
       defaultTtl: cdk.Duration.days(1),
@@ -246,7 +251,6 @@ export class InfraAwsCdkVpcAlbAmiS3CloudfrontStack extends cdk.Stack {
       queryStringBehavior: cloudfront.CacheQueryStringBehavior.none(),
     });
 
-    // CloudFrontディストリビューションを作成
     const distribution = new cloudfront.Distribution(this, 'StaticContentDistribution', {
       defaultBehavior: {
         origin: new origins.S3Origin(this.bucket),
@@ -265,7 +269,10 @@ export class InfraAwsCdkVpcAlbAmiS3CloudfrontStack extends cdk.Stack {
       priceClass: cloudfront.PriceClass.PRICE_CLASS_ALL,
     });
 
-    // S3バケットポリシーを追加（CloudFrontからのアクセスのみを許可）
+    return { distribution, oac };
+  }
+
+  private configureBucketPolicy(distribution: cloudfront.Distribution): void {
     const bucketPolicyStatement = new iam.PolicyStatement({
       actions: ['s3:GetObject'],
       effect: iam.Effect.ALLOW,
@@ -277,16 +284,14 @@ export class InfraAwsCdkVpcAlbAmiS3CloudfrontStack extends cdk.Stack {
         }
       }
     });
-
     this.bucket.addToResourcePolicy(bucketPolicyStatement);
+  }
 
-    // OACをディストリビューションに関連付け
+  private configureOriginAccess(distribution: cloudfront.Distribution, oac: cloudfront.CfnOriginAccessControl): void {
     const cfnDistribution = distribution.node.defaultChild as cloudfront.CfnDistribution;
     cfnDistribution.overrideLogicalId('StaticContentDistribution');
     cfnDistribution.addPropertyOverride('DistributionConfig.Origins.0.S3OriginConfig.OriginAccessIdentity', '');
-    cfnDistribution.addPropertyOverride('DistributionConfig.Origins.0.OriginAccessControlId', cloudFrontOac.ref);
-
-    return distribution;
+    cfnDistribution.addPropertyOverride('DistributionConfig.Origins.0.OriginAccessControlId', oac.ref);
   }
 
   private addOutputs(): void {
