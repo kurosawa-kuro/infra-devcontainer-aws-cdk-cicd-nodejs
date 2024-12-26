@@ -18,7 +18,7 @@ sudo chown -R ec2-user:ec2-user /home/ec2-user/app
 ```bash
 # Git Clone
 cd /home/ec2-user/app
-git clone [your-repo-url] .
+git clone https://github.com/kurosawa-kuro/infra-devcontainer-aws-cdk-cicd-nodejs.git .
 
 # 依存関係のインストール
 npm install --production

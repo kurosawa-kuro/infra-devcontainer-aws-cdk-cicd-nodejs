@@ -1,4 +1,3 @@
-
 import * as cdk from 'aws-cdk-lib';
 import { Construct } from 'constructs';
 import * as ec2 from 'aws-cdk-lib/aws-ec2';
@@ -11,7 +10,7 @@ import * as wafv2 from 'aws-cdk-lib/aws-wafv2';
 import * as iam from 'aws-cdk-lib/aws-iam';
 
 const CONFIG = {
-  prefix: 'cdk-vpc-js-express-ejs-8080',
+  prefix: 'cdk-express-02',
   region: 'ap-northeast-1',
   vpc: {
     cidr: '10.0.0.0/16',
