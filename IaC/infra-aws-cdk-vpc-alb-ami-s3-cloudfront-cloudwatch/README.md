@@ -1,14 +1,40 @@
-# Welcome to your CDK TypeScript project
+はい、シンプルな構成に整理し直します：
 
-This is a blank project for CDK development with TypeScript.
+1. 初期セットアップ
+```bash
+# 必要なパッケージのインストール
+sudo dnf update -y
+sudo dnf install -y git nodejs npm
 
-The `cdk.json` file tells the CDK Toolkit how to execute your app.
+# pm2のグローバルインストール
+sudo npm install -g pm2
 
-## Useful commands
+# アプリケーションディレクトリの作成
+sudo mkdir -p /home/ec2-user/app
+sudo chown -R ec2-user:ec2-user /home/ec2-user/app
+```
 
-* `npm run build`   compile typescript to js
-* `npm run watch`   watch for changes and compile
-* `npm run test`    perform the jest unit tests
-* `npx cdk deploy`  deploy this stack to your default AWS account/region
-* `npx cdk diff`    compare deployed stack with current state
-* `npx cdk synth`   emits the synthesized CloudFormation template
+2. アプリケーションのデプロイ
+```bash
+# Git Clone
+cd /home/ec2-user/app
+git clone [your-repo-url] .
+
+# 依存関係のインストール
+npm install --production
+
+# 環境変数の設定
+cp .env.example .env
+vim .env  # 環境変数を設定
+```
+
+3. pm2での起動
+```bash
+# pm2設定と起動
+cd /home/ec2-user/app
+pm2 start app.js --name "express-app"
+
+# pm2の自動起動設定
+pm2 startup
+pm2 save
+```
