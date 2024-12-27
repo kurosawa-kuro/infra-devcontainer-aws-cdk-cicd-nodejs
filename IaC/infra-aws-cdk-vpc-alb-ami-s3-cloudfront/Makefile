@@ -32,6 +32,9 @@ clean-bootstrap:
 	-aws s3 rb s3://$(CDK_ASSETS_BUCKET)-$(REGION_VIRGINIA) --force || true
 	# Wait a moment for S3 deletion to propagate
 	sleep 10
+	# Delete CloudFormation execution roles in both regions
+	-aws iam delete-role --role-name cdk-hnb659fds-cfn-exec-role-$(AWS_ACCOUNT_ID)-$(REGION_TOKYO) || true
+	-aws iam delete-role --role-name cdk-hnb659fds-cfn-exec-role-$(AWS_ACCOUNT_ID)-$(REGION_VIRGINIA) || true
 	# Delete CDKToolkit stacks in both regions
 	-aws cloudformation delete-stack --stack-name $(CDK_TOOLKIT) --region $(REGION_TOKYO)
 	-aws cloudformation delete-stack --stack-name $(CDK_TOOLKIT) --region $(REGION_VIRGINIA)

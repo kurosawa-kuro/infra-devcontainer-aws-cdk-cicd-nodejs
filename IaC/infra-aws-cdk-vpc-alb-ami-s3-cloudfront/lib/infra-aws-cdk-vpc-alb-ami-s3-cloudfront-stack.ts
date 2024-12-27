@@ -92,16 +92,16 @@ export class InfraAwsCdkVpcAlbAmiS3CloudfrontStack extends cdk.Stack {
     // Name the Internet Gateway
     const cfnVpc = vpc.node.defaultChild as ec2.CfnVPC;
     const igw = vpc.node.findChild('IGW') as ec2.CfnInternetGateway;
-    igw.overrideLogicalId(`${CONFIG.prefix}-igw`);
+    igw.overrideLogicalId(`${CONFIG.prefix.replace(/-/g, '_')}_igw`);
 
     // Name the public route table
     const publicSubnets = vpc.publicSubnets;
     publicSubnets.forEach((subnet, index) => {
       const cfnSubnet = subnet.node.defaultChild as ec2.CfnSubnet;
-      cfnSubnet.overrideLogicalId(`${CONFIG.prefix}-public-subnet-${index === 0 ? '1a' : '1c'}`);
+      cfnSubnet.overrideLogicalId(`${CONFIG.prefix.replace(/-/g, '_')}_public_subnet_${index === 0 ? '1a' : '1c'}`);
       
       const routeTable = subnet.node.findChild('RouteTable') as ec2.CfnRouteTable;
-      routeTable.overrideLogicalId(`${CONFIG.prefix}-public-rt`);
+      routeTable.overrideLogicalId(`${CONFIG.prefix.replace(/-/g, '_')}_public_rt_${index === 0 ? '1a' : '1c'}`);
     });
 
     return vpc;
