@@ -11,8 +11,7 @@ WAF_NAME = $(PREFIX)-cf-waf
 REGION_TOKYO = ap-northeast-1
 REGION_VIRGINIA = us-east-1
 MAIN_STACK = InfraAwsCdkVpcAlbAmiS3CloudfrontStack
-WAF_STACK = WebAclStack
-CLOUDWATCH_STACK = InfraAwsCdkVpcAlbAmiS3CloudfrontCloudwatchStack
+WAF_STACK = $(PREFIX)-WebAclStack
 
 # よく使うコマンド
 .PHONY: first-deploy
@@ -42,31 +41,23 @@ force-delete-stack:
 		--region $${REGION:-$(REGION_VIRGINIA)}
 
 # 完全クリーンアップ
-.PHONY: cleanup-all
-cleanup-all:
-	# CloudWatchスタックの削除
-	-aws cloudformation delete-stack --stack-name $(CLOUDWATCH_STACK) --region $(REGION_TOKYO)
-	-aws cloudformation wait stack-delete-complete --stack-name $(CLOUDWATCH_STACK) --region $(REGION_TOKYO)
-	
-	# 既存のWAF WebACLの削除
-	-WEB_ACL_ID=$$(aws wafv2 list-web-acls --scope CLOUDFRONT --region $(REGION_VIRGINIA) \
-		--query 'WebACLs[?Name==`$(WAF_NAME)`].Id' --output text); \
-	if [ ! -z "$$WEB_ACL_ID" ]; then \
-		LOCK_TOKEN=$$(aws wafv2 get-web-acl --name $(WAF_NAME) \
-			--scope CLOUDFRONT --id $$WEB_ACL_ID --region $(REGION_VIRGINIA) \
-			--query 'LockToken' --output text); \
-		aws wafv2 delete-web-acl --name $(WAF_NAME) \
-			--scope CLOUDFRONT --id $$WEB_ACL_ID --region $(REGION_VIRGINIA) \
-			--lock-token $$LOCK_TOKEN; \
-	fi
-	
-	# 失敗したスタックの強制削除
-	-aws cloudformation delete-stack --stack-name $(WAF_STACK) --region $(REGION_VIRGINIA)
-	-aws cloudformation wait stack-delete-complete --stack-name $(WAF_STACK) --region $(REGION_VIRGINIA)
+.PHONY: force-cleanup-all
+force-cleanup-all:
+	# まず、CloudFrontディストリビューションを削除
 	-aws cloudformation delete-stack --stack-name $(MAIN_STACK) --region $(REGION_TOKYO)
 	-aws cloudformation wait stack-delete-complete --stack-name $(MAIN_STACK) --region $(REGION_TOKYO)
+
+	# 次に、WAF WebACLを削除
+	-aws cloudformation delete-stack --stack-name $(WAF_STACK) --region $(REGION_VIRGINIA)
+	-aws cloudformation wait stack-delete-complete --stack-name $(WAF_STACK) --region $(REGION_VIRGINIA)
+
+	# 残っているスタックを確認
+	@echo "Checking remaining stacks in $(REGION_TOKYO):"
+	@aws cloudformation list-stacks --region $(REGION_TOKYO) --query 'StackSummaries[?StackStatus!=`DELETE_COMPLETE`].[StackName,StackStatus]' --output table
+	@echo "Checking remaining stacks in $(REGION_VIRGINIA):"
+	@aws cloudformation list-stacks --region $(REGION_VIRGINIA) --query 'StackSummaries[?StackStatus!=`DELETE_COMPLETE`].[StackName,StackStatus]' --output table
 
 # 開発用コマンド
 .PHONY: init
 init:
-	$(CDK) init app --language typescript
+	$(CDK) init app --language typescript 
