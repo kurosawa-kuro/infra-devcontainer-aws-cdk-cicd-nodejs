@@ -10,7 +10,7 @@ import * as wafv2 from 'aws-cdk-lib/aws-wafv2';
 import * as iam from 'aws-cdk-lib/aws-iam';
 
 const CONFIG = {
-  prefix: 'cdk-vpc-js-express-ejs-8080',
+  prefix: 'cdk-express-01',
   region: 'ap-northeast-1',
   vpc: {
     cidr: '10.0.0.0/16',
@@ -20,7 +20,7 @@ const CONFIG = {
   app: {
     port: 8080,
     healthCheckPath: '/health',
-    ami: 'ami-0782bb976c68e3fb6',
+    ami: 'ami-0d6308af452376e20',
     instanceType: ec2.InstanceType.of(ec2.InstanceClass.T2, ec2.InstanceSize.MICRO),
     keyName: 'training-ec2',
     volumeSize: 10,
