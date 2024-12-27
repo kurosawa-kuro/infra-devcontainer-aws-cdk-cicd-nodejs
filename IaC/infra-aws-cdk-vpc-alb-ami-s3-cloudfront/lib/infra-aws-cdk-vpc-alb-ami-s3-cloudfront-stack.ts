@@ -76,18 +76,35 @@ export class InfraAwsCdkVpcAlbAmiS3CloudfrontStack extends cdk.Stack {
   }
 
   private createVpc(): ec2.Vpc {
-    return new ec2.Vpc(this, 'AppVpc', {
+    const vpc = new ec2.Vpc(this, 'AppVpc', {
       vpcName: `${CONFIG.prefix}-vpc`,
       ipAddresses: ec2.IpAddresses.cidr(CONFIG.vpc.cidr),
       maxAzs: CONFIG.vpc.maxAzs,
       natGateways: 0,
       subnetConfiguration: [{
-        name: 'Public',
+        name: `${CONFIG.prefix}-public-subnet`,
         subnetType: ec2.SubnetType.PUBLIC,
         mapPublicIpOnLaunch: true,
         cidrMask: CONFIG.vpc.subnetMask
       }],
     });
+
+    // Name the Internet Gateway
+    const cfnVpc = vpc.node.defaultChild as ec2.CfnVPC;
+    const igw = vpc.node.findChild('IGW') as ec2.CfnInternetGateway;
+    igw.overrideLogicalId(`${CONFIG.prefix}-igw`);
+
+    // Name the public route table
+    const publicSubnets = vpc.publicSubnets;
+    publicSubnets.forEach((subnet, index) => {
+      const cfnSubnet = subnet.node.defaultChild as ec2.CfnSubnet;
+      cfnSubnet.overrideLogicalId(`${CONFIG.prefix}-public-subnet-${index === 0 ? '1a' : '1c'}`);
+      
+      const routeTable = subnet.node.findChild('RouteTable') as ec2.CfnRouteTable;
+      routeTable.overrideLogicalId(`${CONFIG.prefix}-public-rt`);
+    });
+
+    return vpc;
   }
 
   private createSecurityGroups() {
@@ -160,6 +177,7 @@ export class InfraAwsCdkVpcAlbAmiS3CloudfrontStack extends cdk.Stack {
       port: CONFIG.app.port,
       protocol: elbv2.ApplicationProtocol.HTTP,
       targetType: elbv2.TargetType.INSTANCE,
+      targetGroupName: `${CONFIG.prefix}-tg`,
       healthCheck: {
         path: CONFIG.app.healthCheckPath,
         port: 'traffic-port',
@@ -240,6 +258,7 @@ export class InfraAwsCdkVpcAlbAmiS3CloudfrontStack extends cdk.Stack {
     });
 
     const cachingOptimized = new cloudfront.CachePolicy(this, 'CachingOptimized', {
+      cachePolicyName: `${CONFIG.prefix}-cache-policy`,
       comment: 'Caching optimized for S3 static content',
       defaultTtl: cdk.Duration.days(1),
       maxTtl: cdk.Duration.days(365),
@@ -268,6 +287,10 @@ export class InfraAwsCdkVpcAlbAmiS3CloudfrontStack extends cdk.Stack {
       httpVersion: cloudfront.HttpVersion.HTTP2,
       priceClass: cloudfront.PriceClass.PRICE_CLASS_ALL,
     });
+
+    // Set the distribution name using CfnDistribution
+    const cfnDistribution = distribution.node.defaultChild as cloudfront.CfnDistribution;
+    cfnDistribution.overrideLogicalId(`${CONFIG.prefix}-cf`);
 
     return { distribution, oac };
   }
