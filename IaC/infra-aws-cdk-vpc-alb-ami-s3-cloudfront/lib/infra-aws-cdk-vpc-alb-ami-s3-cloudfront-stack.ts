@@ -350,81 +350,83 @@ export class InfraAwsCdkVpcAlbAmiS3CloudfrontStack extends cdk.Stack {
   }
 
   private addOutputs(): void {
-    this.addInfrastructureOutputs();
-    this.addApplicationOutputs();
-    this.addResourceNamesOutput();
-    this.addEnvironmentVariablesOutputs();
-  }
-
-  private addInfrastructureOutputs(): void {
+    // Resource IDs
     new cdk.CfnOutput(this, 'VpcId', {
       value: this.vpc.vpcId,
       description: 'VPC ID',
+      exportName: `${CONFIG.prefix}-vpc-id`,
     });
 
-    new cdk.CfnOutput(this, 'InstanceId', {
+    new cdk.CfnOutput(this, 'Ec2InstanceId', {
       value: this.instance.instanceId,
       description: 'EC2 Instance ID',
+      exportName: `${CONFIG.prefix}-ec2-instance-id`,
     });
 
-    new cdk.CfnOutput(this, 'InstancePublicIp', {
-      value: this.instance.instancePublicIp,
-      description: 'EC2 Instance Public IP',
-    });
-  }
-
-  private addApplicationOutputs(): void {
-    new cdk.CfnOutput(this, 'LoadBalancerDns', {
-      value: this.alb.loadBalancerDnsName,
-      description: 'ALB DNS Name',
-    });
-
-    new cdk.CfnOutput(this, 'BucketName', {
-      value: this.bucket.bucketName,
-      description: 'S3 Bucket Name',
-    });
-
-    new cdk.CfnOutput(this, 'DistributionId', {
+    new cdk.CfnOutput(this, 'CloudFrontDistributionId', {
       value: this.distribution.distributionId,
       description: 'CloudFront Distribution ID',
+      exportName: `${CONFIG.prefix}-cloudfront-distribution-id`,
     });
 
-    new cdk.CfnOutput(this, 'DistributionDomainName', {
+    // Endpoints
+    new cdk.CfnOutput(this, 'Ec2PublicIp', {
+      value: this.instance.instancePublicIp,
+      description: 'EC2 Instance Public IP',
+      exportName: `${CONFIG.prefix}-ec2-public-ip`,
+    });
+
+    new cdk.CfnOutput(this, 'AlbEndpoint', {
+      value: this.alb.loadBalancerDnsName,
+      description: 'Application Load Balancer Endpoint',
+      exportName: `${CONFIG.prefix}-alb-endpoint`,
+    });
+
+    new cdk.CfnOutput(this, 'CloudFrontEndpoint', {
       value: this.distribution.distributionDomainName,
-      description: 'CloudFront Distribution Domain Name',
+      description: 'CloudFront Distribution Endpoint',
+      exportName: `${CONFIG.prefix}-cloudfront-endpoint`,
     });
-  }
 
-  private addResourceNamesOutput(): void {
+    // Resource Names
+    new cdk.CfnOutput(this, 'S3BucketName', {
+      value: this.bucket.bucketName,
+      description: 'S3 Bucket Name',
+      exportName: `${CONFIG.prefix}-s3-bucket-name`,
+    });
+
     new cdk.CfnOutput(this, 'ResourceNames', {
       value: [
-        `VPC: ${CONFIG.naming.vpc}`,
-        `IGW: ${CONFIG.naming.igw}`,
+        `VPC: ${CONFIG.prefix}-vpc`,
+        `IGW: ${CONFIG.prefix}-igw`,
         `Subnet: ${CONFIG.prefix}-public-subnet-1a`,
         `Route Table: ${CONFIG.prefix}-public-rt-1a`,
-        `EC2: ${CONFIG.naming.ec2}`,
-        `ALB: ${CONFIG.naming.alb}`,
-        `S3: ${CONFIG.naming.s3}`,
-        `CloudFront: ${CONFIG.naming.cloudfront}`,
+        `EC2: ${CONFIG.prefix}-ec2`,
+        `ALB: ${CONFIG.prefix}-alb`,
+        `S3: ${CONFIG.prefix}-s3`,
+        `CloudFront: ${CONFIG.prefix}-cf`
       ].join('\n'),
       description: 'Physical resource names used in this stack',
+      exportName: `${CONFIG.prefix}-resource-names`,
     });
-  }
 
-  private addEnvironmentVariablesOutputs(): void {
-    new cdk.CfnOutput(this, 'StorageS3Bucket', {
+    // Environment Variables
+    new cdk.CfnOutput(this, 'EnvVarS3Bucket', {
       value: `STORAGE_S3_BUCKET=${this.bucket.bucketName}`,
       description: 'Environment variable for S3 bucket name',
+      exportName: `${CONFIG.prefix}-env-s3-bucket`,
     });
 
-    new cdk.CfnOutput(this, 'StorageCdnUrl', {
+    new cdk.CfnOutput(this, 'EnvVarCdnUrl', {
       value: `STORAGE_CDN_URL=https://${this.distribution.distributionDomainName}`,
       description: 'Environment variable for CloudFront URL',
+      exportName: `${CONFIG.prefix}-env-cdn-url`,
     });
 
-    new cdk.CfnOutput(this, 'StorageCdnDistributionId', {
+    new cdk.CfnOutput(this, 'EnvVarCdnDistributionId', {
       value: `STORAGE_CDN_DISTRIBUTION_ID=${this.distribution.distributionId}`,
       description: 'Environment variable for CloudFront Distribution ID',
+      exportName: `${CONFIG.prefix}-env-cdn-distribution-id`,
     });
   }
 }
