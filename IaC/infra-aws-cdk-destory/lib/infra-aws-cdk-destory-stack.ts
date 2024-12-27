@@ -5,72 +5,168 @@ import * as elbv2 from 'aws-cdk-lib/aws-elasticloadbalancingv2';
 import * as cloudfront from 'aws-cdk-lib/aws-cloudfront';
 import * as origins from 'aws-cdk-lib/aws-cloudfront-origins';
 import * as iam from 'aws-cdk-lib/aws-iam';
-import * as waf from 'aws-cdk-lib/aws-wafv2';
+import * as wafv2 from 'aws-cdk-lib/aws-wafv2';
+import * as cfn from 'aws-cdk-lib/aws-cloudformation';
 import { Construct } from 'constructs';
+
+const CONFIG = {
+  prefix: 'cdk-express-01',
+  region: 'ap-northeast-1',
+  vpc: {
+    cidr: '10.0.0.0/16',
+    maxAzs: 2,
+    subnetMask: 24,
+  },
+  cloudformation: {
+    stacks: [
+      'cdk-express-01-vpc-alb-ami-s3-cloudfront',
+      'cdk-express-01-WebAclStack',
+    ]
+  }
+} as const;
 
 export class InfraAwsCdkDestoryStack extends cdk.Stack {
   constructor(scope: Construct, id: string, props?: cdk.StackProps) {
-    super(scope, id, props);
+    super(scope, id, {
+      ...props,
+      env: { region: CONFIG.region },
+      crossRegionReferences: true,
+    });
 
-    // 特定のプレフィックスを持つリソースを削除
-    const prefix = 'cdk-express-01';
+    // CloudFormationスタックの削除設定
+    CONFIG.cloudformation.stacks.forEach((stackName) => {
+      new cfn.CfnStack(this, `Delete-${stackName}`, {
+        templateUrl: 'https://s3.amazonaws.com/cloudformation-templates-us-east-1/EmptyStack.template',
+        parameters: {},
+        timeoutInMinutes: 60,
+      }).addDeletionOverride('*');
+    });
 
     // VPC関連リソースの削除設定
-    const vpc = new ec2.Vpc(this, 'VPC', {
-      vpcName: `${prefix}-vpc`,
-      maxAzs: 2,
+    const vpc = new ec2.Vpc(this, 'AppVpc', {
+      vpcName: `${CONFIG.prefix}-vpc`,
+      ipAddresses: ec2.IpAddresses.cidr(CONFIG.vpc.cidr),
+      maxAzs: CONFIG.vpc.maxAzs,
+      natGateways: 0,
+      subnetConfiguration: [{
+        name: 'Public',
+        subnetType: ec2.SubnetType.PUBLIC,
+        mapPublicIpOnLaunch: true,
+        cidrMask: CONFIG.vpc.subnetMask
+      }],
+    });
+
+    // セキュリティグループの削除設定
+    const albSg = new ec2.SecurityGroup(this, 'AlbSecurityGroup', {
+      vpc,
+      securityGroupName: `${CONFIG.prefix}-alb-sg`,
+      description: 'Security group for ALB',
+      allowAllOutbound: true,
+    });
+
+    const appSg = new ec2.SecurityGroup(this, 'AppSecurityGroup', {
+      vpc,
+      securityGroupName: `${CONFIG.prefix}-app-sg`,
+      description: 'Security group for App',
+      allowAllOutbound: true,
     });
 
     // EC2インスタンスの削除設定
-    new ec2.Instance(this, 'EC2Instance', {
+    new ec2.Instance(this, 'AppInstance', {
       vpc,
-      instanceName: `${prefix}-ec2`,
+      instanceName: `${CONFIG.prefix}-ec2`,
       instanceType: ec2.InstanceType.of(ec2.InstanceClass.T2, ec2.InstanceSize.MICRO),
-      machineImage: new ec2.AmazonLinuxImage(),
+      machineImage: ec2.MachineImage.genericLinux({
+        [CONFIG.region]: 'ami-0d6308af452376e20',
+      }),
+      securityGroup: appSg,
+      vpcSubnets: { subnetType: ec2.SubnetType.PUBLIC },
+      blockDevices: [{
+        deviceName: '/dev/xvda',
+        volume: ec2.BlockDeviceVolume.ebs(10),
+      }],
     });
 
     // ALBの削除設定
-    new elbv2.ApplicationLoadBalancer(this, 'ALB', {
+    new elbv2.ApplicationLoadBalancer(this, 'AppLoadBalancer', {
       vpc,
-      loadBalancerName: `${prefix}-alb`,
       internetFacing: true,
+      loadBalancerName: `${CONFIG.prefix}-alb`,
+      securityGroup: albSg,
+      vpcSubnets: { subnetType: ec2.SubnetType.PUBLIC },
     });
 
     // S3バケットの削除設定
-    const bucket = new s3.Bucket(this, 'Bucket', {
-      bucketName: `${prefix}-s3`,
+    const bucket = new s3.Bucket(this, 'StaticContentBucket', {
+      bucketName: `${CONFIG.prefix}-s3`,
       removalPolicy: cdk.RemovalPolicy.DESTROY,
-      autoDeleteObjects: true, // バケット内のオブジェクトも削除
+      autoDeleteObjects: true,
+      blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL,
     });
 
-    // WAF Web ACLの削除設定
-    const webAcl = new waf.CfnWebACL(this, 'WebACL', {
-      name: `${prefix}-web-acl`,
-      description: 'Web ACL for CloudFront',
+    // WAF Web ACLの削除設定（us-east-1リージョン）
+    const webAclStack = new cdk.Stack(scope as cdk.App, `${CONFIG.prefix}-WebAclStack`, {
+      env: { region: 'us-east-1' },
+      crossRegionReferences: true,
+    });
+
+    const webAcl = new wafv2.CfnWebACL(webAclStack, `${CONFIG.prefix}-CloudFrontWebAcl`, {
+      defaultAction: { allow: {} },
       scope: 'CLOUDFRONT',
-      defaultAction: {
-        allow: {}
-      },
-      rules: [],
       visibilityConfig: {
         cloudWatchMetricsEnabled: true,
-        metricName: `${prefix}-web-acl-metric`,
+        metricName: `${CONFIG.prefix}-cf-waf-metric`,
         sampledRequestsEnabled: true,
       },
+      rules: [],
+      name: `${CONFIG.prefix}-cf-waf`,
+      description: 'WAF rules for CloudFront distribution'
     });
 
-    // CloudFrontディストリビューションの削除設定（WAF付き）
-    new cloudfront.Distribution(this, 'Distribution', {
+    // CloudFront Origin Access Control
+    const oac = new cloudfront.CfnOriginAccessControl(this, 'CloudFrontOAC', {
+      originAccessControlConfig: {
+        name: `${CONFIG.prefix}-oac`,
+        originAccessControlOriginType: 's3',
+        signingBehavior: 'always',
+        signingProtocol: 'sigv4'
+      }
+    });
+
+    // CloudFrontディストリビューションの削除設定
+    const distribution = new cloudfront.Distribution(this, 'StaticContentDistribution', {
       defaultBehavior: {
         origin: new origins.S3Origin(bucket),
+        viewerProtocolPolicy: cloudfront.ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
+        allowedMethods: cloudfront.AllowedMethods.ALLOW_ALL,
+        cachedMethods: cloudfront.CachedMethods.CACHE_GET_HEAD,
+        compress: true,
       },
       webAclId: webAcl.attrArn,
+      comment: 'CDN for S3 static content',
+      defaultRootObject: 'index.html',
+      enableIpv6: true,
+      httpVersion: cloudfront.HttpVersion.HTTP2,
+      priceClass: cloudfront.PriceClass.PRICE_CLASS_ALL,
     });
 
-    // IAMロールの削除設定
-    new iam.Role(this, 'CustomRole', {
-      roleName: `${prefix}-custom-role`,
-      assumedBy: new iam.ServicePrincipal('ec2.amazonaws.com'),
+    // CloudFront OACの設定
+    const cfnDistribution = distribution.node.defaultChild as cloudfront.CfnDistribution;
+    cfnDistribution.addPropertyOverride('DistributionConfig.Origins.0.S3OriginConfig.OriginAccessIdentity', '');
+    cfnDistribution.addPropertyOverride('DistributionConfig.Origins.0.OriginAccessControlId', oac.ref);
+
+    // バケットポリシーの削除設定
+    const bucketPolicyStatement = new iam.PolicyStatement({
+      actions: ['s3:GetObject'],
+      effect: iam.Effect.ALLOW,
+      principals: [new iam.ServicePrincipal('cloudfront.amazonaws.com')],
+      resources: [`${bucket.bucketArn}/*`],
+      conditions: {
+        StringEquals: {
+          'AWS:SourceArn': `arn:aws:cloudfront::${this.account}:distribution/${distribution.distributionId}`
+        }
+      }
     });
+    bucket.addToResourcePolicy(bucketPolicyStatement);
   }
 }
