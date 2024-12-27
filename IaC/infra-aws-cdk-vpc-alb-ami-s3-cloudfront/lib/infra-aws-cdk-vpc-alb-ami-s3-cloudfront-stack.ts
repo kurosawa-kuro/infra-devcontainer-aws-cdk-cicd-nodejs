@@ -353,6 +353,22 @@ export class InfraAwsCdkVpcAlbAmiS3CloudfrontStack extends cdk.Stack {
       description: 'CloudFront Distribution Domain Name',
     });
 
+    // Resource Names
+    new cdk.CfnOutput(this, 'ResourceNames', {
+      value: [
+        `VPC: ${CONFIG.prefix}-vpc`,
+        `IGW: ${CONFIG.prefix}-igw`,
+        `Subnet: ${CONFIG.prefix}-public-subnet-1a`,
+        `Route Table: ${CONFIG.prefix}-public-rt-1a`,
+        `EC2: ${CONFIG.prefix}-ec2`,
+        `ALB: ${CONFIG.prefix}-alb`,
+        `S3: ${CONFIG.prefix}-s3`,
+        `CloudFront: ${CONFIG.prefix}-cf`,
+      ].join('\n'),
+      description: 'Physical resource names used in this stack',
+    });
+
+    // Environment Variables
     new cdk.CfnOutput(this, 'StorageS3Bucket', {
       value: `STORAGE_S3_BUCKET=${this.bucket.bucketName}`,
       description: 'Environment variable for S3 bucket name',
