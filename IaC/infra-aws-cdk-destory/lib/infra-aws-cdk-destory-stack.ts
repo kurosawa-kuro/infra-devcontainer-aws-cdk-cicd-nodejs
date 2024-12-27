@@ -7,14 +7,14 @@ export class InfraAwsCdkDestoryStack extends cdk.Stack {
     super(scope, id, props);
 
     // 特定のプレフィックスを持つリソースを削除
-    const prefix = 'cdk-vpc-js-express-ejs-8080';
+    const prefix = 'cdk-training-01';
 
     // リソースの削除ポリシーを設定
     cdk.RemovalPolicy.DESTROY;
 
     // 例：S3バケットの削除設定
     new s3.Bucket(this, 'Bucket', {
-      bucketName: `${prefix}-bucket`,
+      bucketName: `${prefix}-s3`,
       removalPolicy: cdk.RemovalPolicy.DESTROY, // 強制削除
       autoDeleteObjects: true // バケット内のオブジェクトも削除
     });

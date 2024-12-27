@@ -56,3 +56,17 @@ full-reset-deploy:
 	
 	# スタックの削除と再デプロイ
 	$(CDK) destroy --all $(DESTROY_FLAGS) && $(MAKE) first-deploy
+
+# 失敗したスタックの強制削除
+.PHONY: force-delete-stack
+force-delete-stack:
+	@if [ -z "$(STACK)" ]; then \
+		echo "Usage: make force-delete-stack STACK=<stack-name> [REGION=<region>]"; \
+		exit 1; \
+	fi
+	aws cloudformation delete-stack \
+		--stack-name $(STACK) \
+		--region $${REGION:-us-east-1}
+	aws cloudformation wait stack-delete-complete \
+		--stack-name $(STACK) \
+		--region $${REGION:-us-east-1}
