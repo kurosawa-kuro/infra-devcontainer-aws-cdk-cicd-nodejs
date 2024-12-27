@@ -203,12 +203,12 @@ export class InfraAwsCdkVpcAlbAmiS3CloudfrontStack extends cdk.Stack {
 
   private createWebAcl(): wafv2.CfnWebACL {
     // Create the WebACL in us-east-1 for CloudFront
-    const webAclStack = new cdk.Stack(this.app, 'WebAclStack', {
+    const webAclStack = new cdk.Stack(this.app, `${CONFIG.prefix}-WebAclStack`, {
       env: { region: 'us-east-1' },
       crossRegionReferences: true,
     });
 
-    return new wafv2.CfnWebACL(webAclStack, 'CloudFrontWebAcl', {
+    return new wafv2.CfnWebACL(webAclStack, `${CONFIG.prefix}-CloudFrontWebAcl`, {
       defaultAction: { allow: {} },
       scope: 'CLOUDFRONT',
       visibilityConfig: {

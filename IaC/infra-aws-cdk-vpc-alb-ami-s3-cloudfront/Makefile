@@ -3,6 +3,10 @@ CDK = cdk
 DEPLOY_FLAGS = --require-approval never
 DESTROY_FLAGS = --force
 
+# プレフィックスとリソース名の定義
+PREFIX = cdk-express-01
+WAF_NAME = $(PREFIX)-cf-waf
+
 # リージョンとスタック名の定義
 REGION_TOKYO = ap-northeast-1
 REGION_VIRGINIA = us-east-1
@@ -46,12 +50,12 @@ cleanup-all:
 	
 	# 既存のWAF WebACLの削除
 	-WEB_ACL_ID=$$(aws wafv2 list-web-acls --scope CLOUDFRONT --region $(REGION_VIRGINIA) \
-		--query 'WebACLs[?Name==`cdk-express-02-cf-waf`].Id' --output text); \
+		--query 'WebACLs[?Name==`$(WAF_NAME)`].Id' --output text); \
 	if [ ! -z "$$WEB_ACL_ID" ]; then \
-		LOCK_TOKEN=$$(aws wafv2 get-web-acl --name cdk-express-02-cf-waf \
+		LOCK_TOKEN=$$(aws wafv2 get-web-acl --name $(WAF_NAME) \
 			--scope CLOUDFRONT --id $$WEB_ACL_ID --region $(REGION_VIRGINIA) \
 			--query 'LockToken' --output text); \
-		aws wafv2 delete-web-acl --name cdk-express-02-cf-waf \
+		aws wafv2 delete-web-acl --name $(WAF_NAME) \
 			--scope CLOUDFRONT --id $$WEB_ACL_ID --region $(REGION_VIRGINIA) \
 			--lock-token $$LOCK_TOKEN; \
 	fi
