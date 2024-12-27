@@ -45,6 +45,10 @@ clean-bootstrap:
 
 # Bootstrap both regions and deploy all stacks
 first-deploy:
+	# Delete WebACL stack if it exists in DELETE_FAILED state
+	-aws cloudformation delete-stack --stack-name $(WAF_STACK) --region $(REGION_VIRGINIA)
+	-aws cloudformation wait stack-delete-complete --stack-name $(WAF_STACK) --region $(REGION_VIRGINIA)
+	sleep 10
 	$(CDK) bootstrap aws://$(AWS_ACCOUNT_ID)/$(REGION_TOKYO) aws://$(AWS_ACCOUNT_ID)/$(REGION_VIRGINIA) && \
 	$(CDK) deploy --all $(DEPLOY_FLAGS)
 
