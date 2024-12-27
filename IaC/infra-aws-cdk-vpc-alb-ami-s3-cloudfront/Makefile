@@ -74,19 +74,29 @@ first-deploy:
 # Force delete failed stacks in both regions
 force-delete-failed:
 	@echo "Deleting failed stacks in $(REGION_TOKYO)..."
-	# Get resources to retain for main stack
+	# Get resources to retain for main stack (excluding DELETE_COMPLETE)
 	-aws cloudformation list-stack-resources --stack-name $(MAIN_STACK) --region $(REGION_TOKYO) \
-		--query 'StackResourceSummaries[*].LogicalResourceId' --output text > /tmp/resources.txt || true
-	aws cloudformation delete-stack --stack-name $(MAIN_STACK) --region $(REGION_TOKYO) \
-		--retain-resources $$(cat /tmp/resources.txt 2>/dev/null || echo "")
+		--query 'StackResourceSummaries[?ResourceStatus!=`DELETE_COMPLETE`].LogicalResourceId' \
+		--output text > /tmp/resources.txt || true
+	@if [ -s /tmp/resources.txt ]; then \
+		aws cloudformation delete-stack --stack-name $(MAIN_STACK) --region $(REGION_TOKYO) \
+			--retain-resources $$(cat /tmp/resources.txt); \
+	else \
+		aws cloudformation delete-stack --stack-name $(MAIN_STACK) --region $(REGION_TOKYO); \
+	fi
 	aws cloudformation wait stack-delete-complete --stack-name $(MAIN_STACK) --region $(REGION_TOKYO) || true
 	
 	@echo "Deleting failed stacks in $(REGION_VIRGINIA)..."
-	# Get resources to retain for WAF stack
+	# Get resources to retain for WAF stack (excluding DELETE_COMPLETE)
 	-aws cloudformation list-stack-resources --stack-name $(WAF_STACK) --region $(REGION_VIRGINIA) \
-		--query 'StackResourceSummaries[*].LogicalResourceId' --output text > /tmp/resources_waf.txt || true
-	aws cloudformation delete-stack --stack-name $(WAF_STACK) --region $(REGION_VIRGINIA) \
-		--retain-resources $$(cat /tmp/resources_waf.txt 2>/dev/null || echo "")
+		--query 'StackResourceSummaries[?ResourceStatus!=`DELETE_COMPLETE`].LogicalResourceId' \
+		--output text > /tmp/resources_waf.txt || true
+	@if [ -s /tmp/resources_waf.txt ]; then \
+		aws cloudformation delete-stack --stack-name $(WAF_STACK) --region $(REGION_VIRGINIA) \
+			--retain-resources $$(cat /tmp/resources_waf.txt); \
+	else \
+		aws cloudformation delete-stack --stack-name $(WAF_STACK) --region $(REGION_VIRGINIA); \
+	fi
 	aws cloudformation wait stack-delete-complete --stack-name $(WAF_STACK) --region $(REGION_VIRGINIA) || true
 	
 	@echo "Waiting for deletions to complete..."
