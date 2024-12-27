@@ -23,7 +23,30 @@ CDK_ASSETS_BUCKET = cdk-hnb659fds-assets-$(AWS_ACCOUNT_ID)
 # ===========================================
 # Main Deployment Commands
 # ===========================================
-.PHONY: first-deploy reset-deploy destroy clean-bootstrap
+.PHONY: first-deploy reset-deploy destroy clean-bootstrap delete-webacl check-failed-stacks
+
+# Check failed stacks in both regions
+check-failed-stacks:
+	@echo "Checking failed stacks in $(REGION_TOKYO)..."
+	@aws cloudformation list-stacks --region $(REGION_TOKYO) \
+		--query 'StackSummaries[?contains(StackStatus, `FAILED`)].[StackName,StackStatus]' \
+		--output table
+	@echo "\nChecking failed stacks in $(REGION_VIRGINIA)..."
+	@aws cloudformation list-stacks --region $(REGION_VIRGINIA) \
+		--query 'StackSummaries[?contains(StackStatus, `FAILED`)].[StackName,StackStatus]' \
+		--output table
+
+# Delete WebACL stack explicitly
+delete-webacl:
+	# Delete WAF WebACL stack in Virginia region
+	-aws cloudformation delete-stack --stack-name $(WAF_STACK) --region $(REGION_VIRGINIA)
+	-aws cloudformation wait stack-delete-complete --stack-name $(WAF_STACK) --region $(REGION_VIRGINIA)
+	# Additional safety check and force delete if needed
+	-aws wafv2 list-web-acls --scope CLOUDFRONT --region $(REGION_VIRGINIA) --query 'WebACLs[?Name==`$(WAF_NAME)`].[Id,Name]' --output text | while read id name; do \
+		aws wafv2 delete-web-acl --name $$name --scope CLOUDFRONT --region $(REGION_VIRGINIA) --id $$id \
+		--lock-token $$(aws wafv2 get-web-acl --name $$name --scope CLOUDFRONT --region $(REGION_VIRGINIA) --id $$id --query 'LockToken' --output text); \
+	done || true
+	sleep 10
 
 # Clean CDK bootstrap resources and redeploy
 clean-bootstrap:
@@ -45,16 +68,17 @@ clean-bootstrap:
 
 # Bootstrap both regions and deploy all stacks
 first-deploy:
-	# Delete WebACL stack if it exists in DELETE_FAILED state
-	-aws cloudformation delete-stack --stack-name $(WAF_STACK) --region $(REGION_VIRGINIA)
-	-aws cloudformation wait stack-delete-complete --stack-name $(WAF_STACK) --region $(REGION_VIRGINIA)
-	sleep 10
 	$(CDK) bootstrap aws://$(AWS_ACCOUNT_ID)/$(REGION_TOKYO) aws://$(AWS_ACCOUNT_ID)/$(REGION_VIRGINIA) && \
 	$(CDK) deploy --all $(DEPLOY_FLAGS)
 
 # Clean up everything and redeploy
 reset-deploy:
-	$(MAKE) force-delete-stack-resources && $(MAKE) nuke-all && $(MAKE) clean-bootstrap && $(MAKE) first-deploy
+	$(MAKE) check-failed-stacks && \
+	$(MAKE) delete-webacl && \
+	$(MAKE) force-delete-stack-resources && \
+	$(MAKE) nuke-all && \
+	$(MAKE) clean-bootstrap && \
+	$(MAKE) first-deploy
 
 # Destroy all stacks
 destroy:
