@@ -23,7 +23,7 @@ CDK_ASSETS_BUCKET = cdk-hnb659fds-assets-$(AWS_ACCOUNT_ID)
 # ===========================================
 # Main Deployment Commands
 # ===========================================
-.PHONY: first-deploy reset-deploy destroy clean-bootstrap delete-webacl check-failed-stacks
+.PHONY: first-deploy reset-deploy destroy clean-bootstrap delete-webacl check-failed-stacks force-delete-failed
 
 # Check failed stacks in both regions
 check-failed-stacks:
@@ -71,9 +71,41 @@ first-deploy:
 	$(CDK) bootstrap aws://$(AWS_ACCOUNT_ID)/$(REGION_TOKYO) aws://$(AWS_ACCOUNT_ID)/$(REGION_VIRGINIA) && \
 	$(CDK) deploy --all $(DEPLOY_FLAGS)
 
+# Force delete failed stacks in both regions
+force-delete-failed:
+	@echo "Deleting failed stacks in $(REGION_TOKYO)..."
+	# Get resources to retain for main stack
+	-aws cloudformation list-stack-resources --stack-name $(MAIN_STACK) --region $(REGION_TOKYO) \
+		--query 'StackResourceSummaries[*].LogicalResourceId' --output text > /tmp/resources.txt || true
+	aws cloudformation delete-stack --stack-name $(MAIN_STACK) --region $(REGION_TOKYO) \
+		--retain-resources $$(cat /tmp/resources.txt 2>/dev/null || echo "")
+	aws cloudformation wait stack-delete-complete --stack-name $(MAIN_STACK) --region $(REGION_TOKYO) || true
+	
+	@echo "Deleting failed stacks in $(REGION_VIRGINIA)..."
+	# Get resources to retain for WAF stack
+	-aws cloudformation list-stack-resources --stack-name $(WAF_STACK) --region $(REGION_VIRGINIA) \
+		--query 'StackResourceSummaries[*].LogicalResourceId' --output text > /tmp/resources_waf.txt || true
+	aws cloudformation delete-stack --stack-name $(WAF_STACK) --region $(REGION_VIRGINIA) \
+		--retain-resources $$(cat /tmp/resources_waf.txt 2>/dev/null || echo "")
+	aws cloudformation wait stack-delete-complete --stack-name $(WAF_STACK) --region $(REGION_VIRGINIA) || true
+	
+	@echo "Waiting for deletions to complete..."
+	sleep 10
+	
+	@echo "Verifying deletions..."
+	@aws cloudformation list-stacks --region $(REGION_TOKYO) \
+		--query 'StackSummaries[?contains(StackStatus, `FAILED`)].[StackName,StackStatus]' \
+		--output text | grep -q "." && echo "Failed stacks still exist in $(REGION_TOKYO)" && exit 1 || true
+	@aws cloudformation list-stacks --region $(REGION_VIRGINIA) \
+		--query 'StackSummaries[?contains(StackStatus, `FAILED`)].[StackName,StackStatus]' \
+		--output text | grep -q "." && echo "Failed stacks still exist in $(REGION_VIRGINIA)" && exit 1 || true
+	
+	@echo "All failed stacks have been successfully deleted."
+
 # Clean up everything and redeploy
 reset-deploy:
-	$(MAKE) check-failed-stacks && \
+	$(MAKE) check-failed-stacks
+	$(MAKE) force-delete-failed || (echo "Failed to delete stacks. Aborting reset-deploy." && exit 1)
 	$(MAKE) delete-webacl && \
 	$(MAKE) force-delete-stack-resources && \
 	$(MAKE) nuke-all && \
