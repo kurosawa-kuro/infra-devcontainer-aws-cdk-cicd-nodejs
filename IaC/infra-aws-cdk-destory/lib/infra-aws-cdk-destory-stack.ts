@@ -19,8 +19,8 @@ const CONFIG = {
   },
   cloudformation: {
     stacks: [
-      'cdk-express-01-vpc-alb-ami-s3-cloudfront',
-      'cdk-express-01-WebAclStack',
+      'cdk-express-01-vpc-alb-ami-s3-cloudfront-stack',
+      'cdk-express-01-web-acl-stack',
     ]
   }
 } as const;
@@ -59,14 +59,14 @@ export class InfraAwsCdkDestoryStack extends cdk.Stack {
     // セキュリティグループの削除設定
     const albSg = new ec2.SecurityGroup(this, 'AlbSecurityGroup', {
       vpc,
-      securityGroupName: `${CONFIG.prefix}-alb-sg`,
+      securityGroupName: `${CONFIG.prefix}-alb-security-group`,
       description: 'Security group for ALB',
       allowAllOutbound: true,
     });
 
     const appSg = new ec2.SecurityGroup(this, 'AppSecurityGroup', {
       vpc,
-      securityGroupName: `${CONFIG.prefix}-app-sg`,
+      securityGroupName: `${CONFIG.prefix}-app-security-group`,
       description: 'Security group for App',
       allowAllOutbound: true,
     });
@@ -74,7 +74,7 @@ export class InfraAwsCdkDestoryStack extends cdk.Stack {
     // EC2インスタンスの削除設定
     new ec2.Instance(this, 'AppInstance', {
       vpc,
-      instanceName: `${CONFIG.prefix}-ec2`,
+      instanceName: `${CONFIG.prefix}-instance`,
       instanceType: ec2.InstanceType.of(ec2.InstanceClass.T2, ec2.InstanceSize.MICRO),
       machineImage: ec2.MachineImage.genericLinux({
         [CONFIG.region]: 'ami-0d6308af452376e20',
@@ -91,42 +91,42 @@ export class InfraAwsCdkDestoryStack extends cdk.Stack {
     new elbv2.ApplicationLoadBalancer(this, 'AppLoadBalancer', {
       vpc,
       internetFacing: true,
-      loadBalancerName: `${CONFIG.prefix}-alb`,
+      loadBalancerName: `${CONFIG.prefix}-load-balancer`,
       securityGroup: albSg,
       vpcSubnets: { subnetType: ec2.SubnetType.PUBLIC },
     });
 
     // S3バケットの削除設定
     const bucket = new s3.Bucket(this, 'StaticContentBucket', {
-      bucketName: `${CONFIG.prefix}-s3`,
+      bucketName: `${CONFIG.prefix}-bucket`,
       removalPolicy: cdk.RemovalPolicy.DESTROY,
       autoDeleteObjects: true,
       blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL,
     });
 
     // WAF Web ACLの削除設定（us-east-1リージョン）
-    const webAclStack = new cdk.Stack(scope as cdk.App, `${CONFIG.prefix}-WebAclStack`, {
+    const webAclStack = new cdk.Stack(scope as cdk.App, `${CONFIG.prefix}-web-acl-stack`, {
       env: { region: 'us-east-1' },
       crossRegionReferences: true,
     });
 
-    const webAcl = new wafv2.CfnWebACL(webAclStack, `${CONFIG.prefix}-CloudFrontWebAcl`, {
+    const webAcl = new wafv2.CfnWebACL(webAclStack, `${CONFIG.prefix}-cloudfront-web-acl`, {
       defaultAction: { allow: {} },
       scope: 'CLOUDFRONT',
       visibilityConfig: {
         cloudWatchMetricsEnabled: true,
-        metricName: `${CONFIG.prefix}-cf-waf-metric`,
+        metricName: `${CONFIG.prefix}-cloudfront-waf-metric`,
         sampledRequestsEnabled: true,
       },
       rules: [],
-      name: `${CONFIG.prefix}-cf-waf`,
+      name: `${CONFIG.prefix}-cloudfront-waf`,
       description: 'WAF rules for CloudFront distribution'
     });
 
     // CloudFront Origin Access Control
     const oac = new cloudfront.CfnOriginAccessControl(this, 'CloudFrontOAC', {
       originAccessControlConfig: {
-        name: `${CONFIG.prefix}-oac`,
+        name: `${CONFIG.prefix}-origin-access-control`,
         originAccessControlOriginType: 's3',
         signingBehavior: 'always',
         signingProtocol: 'sigv4'
