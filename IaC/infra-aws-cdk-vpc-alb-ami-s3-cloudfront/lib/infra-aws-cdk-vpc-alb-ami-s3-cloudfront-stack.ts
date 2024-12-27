@@ -92,16 +92,16 @@ export class InfraAwsCdkVpcAlbAmiS3CloudfrontStack extends cdk.Stack {
     // Name the Internet Gateway
     const cfnVpc = vpc.node.defaultChild as ec2.CfnVPC;
     const igw = vpc.node.findChild('IGW') as ec2.CfnInternetGateway;
-    igw.overrideLogicalId(`${CONFIG.prefix}-igw`);
+    igw.overrideLogicalId('CdkExpress01Igw');
 
     // Name the public route table
     const publicSubnets = vpc.publicSubnets;
     publicSubnets.forEach((subnet, index) => {
       const cfnSubnet = subnet.node.defaultChild as ec2.CfnSubnet;
-      cfnSubnet.overrideLogicalId(`${CONFIG.prefix}-public-subnet-${index === 0 ? '1a' : '1c'}`);
+      cfnSubnet.overrideLogicalId(`CdkExpress01PublicSubnet${index === 0 ? '1a' : '1c'}`);
       
       const routeTable = subnet.node.findChild('RouteTable') as ec2.CfnRouteTable;
-      routeTable.overrideLogicalId(`${CONFIG.prefix}-public-rt-${index === 0 ? '1a' : '1c'}`);
+      routeTable.overrideLogicalId(`CdkExpress01PublicRt${index === 0 ? '1a' : '1c'}`);
     });
 
     return vpc;
@@ -290,7 +290,7 @@ export class InfraAwsCdkVpcAlbAmiS3CloudfrontStack extends cdk.Stack {
 
     // Set the distribution name using CfnDistribution
     const cfnDistribution = distribution.node.defaultChild as cloudfront.CfnDistribution;
-    cfnDistribution.overrideLogicalId(`${CONFIG.prefix}-cf`);
+    cfnDistribution.overrideLogicalId('CdkExpress01Cf');
 
     return { distribution, oac };
   }
@@ -312,7 +312,7 @@ export class InfraAwsCdkVpcAlbAmiS3CloudfrontStack extends cdk.Stack {
 
   private configureOriginAccess(distribution: cloudfront.Distribution, oac: cloudfront.CfnOriginAccessControl): void {
     const cfnDistribution = distribution.node.defaultChild as cloudfront.CfnDistribution;
-    cfnDistribution.overrideLogicalId(`${CONFIG.prefix}-cf`);
+    cfnDistribution.overrideLogicalId('CdkExpress01Cf');
     cfnDistribution.addPropertyOverride('DistributionConfig.Origins.0.S3OriginConfig.OriginAccessIdentity', '');
     cfnDistribution.addPropertyOverride('DistributionConfig.Origins.0.OriginAccessControlId', oac.ref);
   }
