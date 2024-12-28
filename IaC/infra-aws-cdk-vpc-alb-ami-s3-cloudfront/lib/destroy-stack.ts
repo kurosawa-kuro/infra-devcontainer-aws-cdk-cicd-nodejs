@@ -12,42 +12,6 @@ export class DestroyStack extends cdk.Stack {
   constructor(scope: Construct, id: string, props?: cdk.StackProps) {
     super(scope, id, props);
 
-    // Helper function to check if VPC exists
-    const vpcExistsProvider = new cr.Provider(this, 'VpcExistsProvider', {
-      onEventHandler: new cdk.aws_lambda.Function(this, 'VpcExistsHandler', {
-        runtime: cdk.aws_lambda.Runtime.NODEJS_18_X,
-        handler: 'index.handler',
-        code: cdk.aws_lambda.Code.fromInline(`
-          exports.handler = async (event) => {
-            const AWS = require('aws-sdk');
-            const ec2 = new AWS.EC2();
-            try {
-              const vpcs = await ec2.describeVpcs({
-                Filters: [{ Name: 'tag:Name', Values: ['${PREFIX}-vpc'] }]
-              }).promise();
-              return { Data: { exists: vpcs.Vpcs.length > 0, vpcCount: vpcs.Vpcs.length } };
-            } catch (error) {
-              return { Data: { exists: false, vpcCount: 0 } };
-            }
-          };
-        `),
-      }),
-    });
-
-    const vpcExists = new cr.AwsCustomResource(this, 'CheckVpcExists', {
-      onCreate: {
-        service: 'EC2',
-        action: 'describeVpcs',
-        parameters: {
-          Filters: [{ Name: 'tag:Name', Values: [`${PREFIX}-vpc`] }]
-        },
-        physicalResourceId: cr.PhysicalResourceId.of('vpc-exists'),
-      },
-      policy: cr.AwsCustomResourcePolicy.fromSdkCalls({
-        resources: cr.AwsCustomResourcePolicy.ANY_RESOURCE,
-      }),
-    });
-
     // Step 1: Remove CloudFront Distribution and related resources
     const distribution = new cloudfront.CfnDistribution(this, 'DeleteCloudFront', {
       distributionConfig: {
@@ -67,9 +31,6 @@ export class DestroyStack extends cdk.Stack {
         }]
       }
     });
-    distribution.cfnOptions.condition = new cdk.CfnCondition(this, 'CloudFrontExists', {
-      expression: cdk.Fn.conditionNot(cdk.Fn.conditionEquals(distribution.ref, '')),
-    });
     distribution.applyRemovalPolicy(cdk.RemovalPolicy.DESTROY);
 
     // Remove CloudFront Cache Policy
@@ -88,20 +49,18 @@ export class DestroyStack extends cdk.Stack {
         }
       }
     });
-    cachePolicy.cfnOptions.condition = new cdk.CfnCondition(this, 'CachePolicyExists', {
-      expression: cdk.Fn.conditionNot(cdk.Fn.conditionEquals(cachePolicy.ref, '')),
-    });
     cachePolicy.applyRemovalPolicy(cdk.RemovalPolicy.DESTROY);
 
     // Remove CloudFront OAC
-    new cloudfront.CfnOriginAccessControl(this, 'DeleteOAC', {
+    const oac = new cloudfront.CfnOriginAccessControl(this, 'DeleteOAC', {
       originAccessControlConfig: {
         name: `${PREFIX}-oac`,
         originAccessControlOriginType: 's3',
         signingBehavior: 'always',
         signingProtocol: 'sigv4'
       }
-    }).applyRemovalPolicy(cdk.RemovalPolicy.DESTROY);
+    });
+    oac.applyRemovalPolicy(cdk.RemovalPolicy.DESTROY);
 
     // Step 2: Remove WAF WebACL
     const webAclStack = new cdk.Stack(this, `${PREFIX}-WebAclStack`, {
@@ -128,15 +87,7 @@ export class DestroyStack extends cdk.Stack {
     const bucket = new s3.CfnBucket(this, 'DeleteS3', {
       bucketName: `${PREFIX}-s3`
     });
-    bucket.cfnOptions.condition = new cdk.CfnCondition(this, 'S3Exists', {
-      expression: cdk.Fn.conditionNot(cdk.Fn.conditionEquals(bucket.ref, '')),
-    });
     bucket.applyRemovalPolicy(cdk.RemovalPolicy.DESTROY);
-
-    // Only create VPC-dependent resources if VPC exists
-    const vpcDependentCondition = new cdk.CfnCondition(this, 'VpcDependentResourcesCondition', {
-      expression: cdk.Fn.conditionEquals(vpcExists.getResponseField('vpcCount').toString(), '1'),
-    });
 
     // Step 4: Remove ALB and related resources
     const alb = new elbv2.CfnLoadBalancer(this, 'DeleteALB', {
@@ -144,7 +95,6 @@ export class DestroyStack extends cdk.Stack {
       type: 'application',
       subnets: [`${PREFIX}-public-subnet-1a`, `${PREFIX}-public-subnet-1c`]
     });
-    alb.cfnOptions.condition = vpcDependentCondition;
     alb.applyRemovalPolicy(cdk.RemovalPolicy.DESTROY);
 
     // Remove Target Group
@@ -155,7 +105,6 @@ export class DestroyStack extends cdk.Stack {
       targetType: 'instance',
       vpcId: `${PREFIX}-vpc`
     });
-    targetGroup.cfnOptions.condition = vpcDependentCondition;
     targetGroup.applyRemovalPolicy(cdk.RemovalPolicy.DESTROY);
 
     // Step 5: Remove Security Groups
@@ -164,7 +113,6 @@ export class DestroyStack extends cdk.Stack {
       groupDescription: 'Security group for ALB',
       vpcId: `${PREFIX}-vpc`
     });
-    albSg.cfnOptions.condition = vpcDependentCondition;
     albSg.applyRemovalPolicy(cdk.RemovalPolicy.DESTROY);
 
     const appSg = new ec2.CfnSecurityGroup(this, 'DeleteAppSG', {
@@ -172,7 +120,6 @@ export class DestroyStack extends cdk.Stack {
       groupDescription: 'Security group for Application',
       vpcId: `${PREFIX}-vpc`
     });
-    appSg.cfnOptions.condition = vpcDependentCondition;
     appSg.applyRemovalPolicy(cdk.RemovalPolicy.DESTROY);
 
     // Step 6: Remove EC2 Instance
@@ -181,7 +128,6 @@ export class DestroyStack extends cdk.Stack {
       imageId: 'ami-dummy',
       tags: [{ key: 'Name', value: `${PREFIX}-ec2` }]
     });
-    ec2Instance.cfnOptions.condition = vpcDependentCondition;
     ec2Instance.applyRemovalPolicy(cdk.RemovalPolicy.DESTROY);
 
     // Step 7: Remove VPC and related resources
@@ -190,14 +136,12 @@ export class DestroyStack extends cdk.Stack {
       vpcId: `${PREFIX}-vpc`,
       tags: [{ key: 'Name', value: `${PREFIX}-public-rt-1a` }]
     });
-    rt1a.cfnOptions.condition = vpcDependentCondition;
     rt1a.applyRemovalPolicy(cdk.RemovalPolicy.DESTROY);
 
     const rt1c = new ec2.CfnRouteTable(this, 'DeleteRouteTable1c', {
       vpcId: `${PREFIX}-vpc`,
       tags: [{ key: 'Name', value: `${PREFIX}-public-rt-1c` }]
     });
-    rt1c.cfnOptions.condition = vpcDependentCondition;
     rt1c.applyRemovalPolicy(cdk.RemovalPolicy.DESTROY);
 
     // Remove Subnets
@@ -207,7 +151,6 @@ export class DestroyStack extends cdk.Stack {
       availabilityZone: 'ap-northeast-1a',
       tags: [{ key: 'Name', value: `${PREFIX}-public-subnet-1a` }]
     });
-    subnet1a.cfnOptions.condition = vpcDependentCondition;
     subnet1a.applyRemovalPolicy(cdk.RemovalPolicy.DESTROY);
 
     const subnet1c = new ec2.CfnSubnet(this, 'DeleteSubnet1c', {
@@ -216,14 +159,12 @@ export class DestroyStack extends cdk.Stack {
       availabilityZone: 'ap-northeast-1c',
       tags: [{ key: 'Name', value: `${PREFIX}-public-subnet-1c` }]
     });
-    subnet1c.cfnOptions.condition = vpcDependentCondition;
     subnet1c.applyRemovalPolicy(cdk.RemovalPolicy.DESTROY);
 
     // Remove Internet Gateway
     const igw = new ec2.CfnInternetGateway(this, 'DeleteIGW', {
       tags: [{ key: 'Name', value: `${PREFIX}-igw` }]
     });
-    igw.cfnOptions.condition = vpcDependentCondition;
     igw.applyRemovalPolicy(cdk.RemovalPolicy.DESTROY);
 
     // Remove VPC
@@ -233,7 +174,6 @@ export class DestroyStack extends cdk.Stack {
       enableDnsSupport: true,
       tags: [{ key: 'Name', value: `${PREFIX}-vpc` }]
     });
-    vpc.cfnOptions.condition = vpcDependentCondition;
     vpc.applyRemovalPolicy(cdk.RemovalPolicy.DESTROY);
   }
 }
