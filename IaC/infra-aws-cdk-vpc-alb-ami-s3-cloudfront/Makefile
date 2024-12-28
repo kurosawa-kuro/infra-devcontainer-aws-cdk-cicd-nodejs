@@ -15,7 +15,7 @@ DESTROY_FLAGS = --force
 # ===========================================
 PREFIX = cdk-express-01
 MAIN_STACK = InfraAwsCdkVpcAlbAmiS3CloudfrontStack
-DESTROY_STACK = $(PREFIX)-DestroyStack
+DESTROY_STACK = DestroyStack
 WAF_STACK = $(PREFIX)-WebAclStack
 
 # ===========================================
