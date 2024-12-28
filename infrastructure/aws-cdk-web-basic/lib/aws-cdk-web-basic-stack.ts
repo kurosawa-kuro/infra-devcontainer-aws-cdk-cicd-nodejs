@@ -20,7 +20,7 @@ interface ResourceNaming {
   cloudfront: string;
 }
 
-const LOGICAL_PREFIX = 'CdkExpress01';
+const LOGICAL_PREFIX = 'CdkExpress02';
 
 const CONFIG = {
   prefix: LOGICAL_PREFIX.toLowerCase(),
