@@ -33,6 +33,6 @@ destroy:
 	$(CDK) destroy --all $(DESTROY_FLAGS)
 
 # Clean up using destroy stack
-clean-with-destroy-stack: 
-	$(CDK) deploy $(DESTROY_STACK) $(DEPLOY_FLAGS)
+clean-with-destroy-stack:
+	$(CDK) deploy DestroyStack $(DEPLOY_FLAGS)
 	$(CDK) destroy $(DESTROY_STACK) $(DESTROY_FLAGS) 

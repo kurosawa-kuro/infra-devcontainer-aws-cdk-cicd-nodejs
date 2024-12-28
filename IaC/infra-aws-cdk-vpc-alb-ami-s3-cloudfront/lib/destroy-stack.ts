@@ -32,6 +32,38 @@ export class DestroyStack extends cdk.Stack {
       env: { region: 'ap-northeast-1', account: AWS_ACCOUNT_ID },
     });
 
+    // Add validation to prevent deployment if stack is in a failed state
+    new custom.AwsCustomResource(this, 'StackStateValidator', {
+      onCreate: {
+        service: 'CloudFormation',
+        action: 'describeStacks',
+        parameters: {
+          StackName: 'DestroyStack',
+        },
+        physicalResourceId: custom.PhysicalResourceId.of('StateValidatorId'),
+        ignoreErrorCodesMatching: 'ValidationError',
+        outputPaths: ['Stacks.0.StackStatus'],
+      },
+      policy: custom.AwsCustomResourcePolicy.fromSdkCalls({
+        resources: custom.AwsCustomResourcePolicy.ANY_RESOURCE,
+      }),
+    }).node.addDependency(
+      new cdk.CfnRule(this, 'StackStateValidationRule', {
+        assertions: [
+          {
+            assert: cdk.Fn.conditionNot(
+              cdk.Fn.conditionOr(
+                cdk.Fn.conditionEquals(cdk.Fn.ref('StackStateValidator.StackStatus'), 'DELETE_FAILED'),
+                cdk.Fn.conditionEquals(cdk.Fn.ref('StackStateValidator.StackStatus'), 'ROLLBACK_FAILED'),
+                cdk.Fn.conditionEquals(cdk.Fn.ref('StackStateValidator.StackStatus'), 'UPDATE_ROLLBACK_FAILED')
+              )
+            ),
+            assertDescription: 'Stack is in a failed state. Please check the AWS Console and resolve the issues first.',
+          },
+        ],
+      })
+    );
+
     // Create the pre-check function to handle failed stacks
     const preCheckFunction = this.createPreCheckFunction();
 
@@ -56,16 +88,53 @@ export class DestroyStack extends cdk.Stack {
       inlinePolicies: {
         'PreCheckPolicy': new iam.PolicyDocument({
           statements: [
+            // CloudFormation permissions
             new iam.PolicyStatement({
               effect: iam.Effect.ALLOW,
               actions: [
                 'cloudformation:DescribeStacks',
                 'cloudformation:DeleteStack',
+                'cloudformation:ListStacks',
+                'cloudformation:ListStackResources',
+              ],
+              resources: ['*'],
+            }),
+            // S3 permissions for cleaning up buckets
+            new iam.PolicyStatement({
+              effect: iam.Effect.ALLOW,
+              actions: [
+                's3:ListBucket',
+                's3:DeleteObject',
+                's3:DeleteObjectVersion',
+                's3:DeleteBucket',
+              ],
+              resources: ['*'],
+            }),
+            // CloudFront permissions for disabling distributions
+            new iam.PolicyStatement({
+              effect: iam.Effect.ALLOW,
+              actions: [
+                'cloudfront:GetDistribution',
+                'cloudfront:UpdateDistribution',
+                'cloudfront:DeleteDistribution',
+                'cloudfront:GetDistributionConfig',
+              ],
+              resources: ['*'],
+            }),
+            // IAM permissions for cleaning up roles
+            new iam.PolicyStatement({
+              effect: iam.Effect.ALLOW,
+              actions: [
+                'iam:ListAttachedRolePolicies',
+                'iam:DetachRolePolicy',
+                'iam:ListRolePolicies',
+                'iam:DeleteRolePolicy',
+                'iam:DeleteRole',
+                'iam:GetRole',
               ],
               resources: [
-                `arn:aws:cloudformation:ap-northeast-1:${AWS_ACCOUNT_ID}:stack/DestroyStack/*`,
-                `arn:aws:cloudformation:ap-northeast-1:${AWS_ACCOUNT_ID}:stack/${MAIN_STACK}/*`,
-                `arn:aws:cloudformation:us-east-1:${AWS_ACCOUNT_ID}:stack/${MAIN_STACK}/*`
+                `arn:aws:iam::${AWS_ACCOUNT_ID}:role/${PREFIX}-*`,
+                `arn:aws:iam::${AWS_ACCOUNT_ID}:role/cdk-${CDK_ASSETS_BUCKET_PREFIX}-*`
               ],
             }),
           ],
@@ -79,6 +148,10 @@ export class DestroyStack extends cdk.Stack {
       code: cdk.aws_lambda.Code.fromInline(this.getPreCheckFunctionCode()),
       timeout: cdk.Duration.minutes(5),
       role: preCheckRole,
+      environment: {
+        ACCOUNT_ID: AWS_ACCOUNT_ID,
+        PREFIX: PREFIX,
+      },
     });
   }
 
@@ -300,13 +373,121 @@ export class DestroyStack extends cdk.Stack {
     return `
 import boto3
 import json
+import time
+
+def list_all_stacks(cf, region):
+    """List all stacks in the region"""
+    try:
+        stacks = []
+        paginator = cf.get_paginator('list_stacks')
+        for page in paginator.paginate():
+            for stack in page['StackSummaries']:
+                if stack['StackStatus'] != 'DELETE_COMPLETE':
+                    stacks.append({
+                        'stack_name': stack['StackName'],
+                        'status': stack['StackStatus'],
+                        'creation_time': stack['CreationTime'].isoformat(),
+                        'last_updated': stack.get('LastUpdatedTime', '').isoformat() if 'LastUpdatedTime' in stack else None
+                    })
+        return stacks
+    except Exception as e:
+        print(f"Error listing stacks in {region}: {str(e)}")
+        return []
+
+def force_delete_stack(cf, stack_name, region):
+    """Force delete a stack by first removing all resources"""
+    try:
+        # First, try to get all resources in the stack
+        resources = cf.list_stack_resources(StackName=stack_name)['StackResourceSummaries']
+        
+        # Delete resources that might block stack deletion
+        for resource in resources:
+            resource_type = resource['ResourceType']
+            logical_id = resource['LogicalResourceId']
+            physical_id = resource.get('PhysicalResourceId')
+            
+            print(f"Attempting to clean up resource: {logical_id} ({resource_type})")
+            
+            if resource_type == 'AWS::S3::Bucket':
+                s3 = boto3.resource('s3')
+                try:
+                    bucket = s3.Bucket(physical_id)
+                    bucket.objects.all().delete()
+                    bucket.object_versions.all().delete()
+                except Exception as e:
+                    print(f"Error cleaning S3 bucket {physical_id}: {str(e)}")
+            
+            elif resource_type == 'AWS::CloudFront::Distribution':
+                cloudfront = boto3.client('cloudfront')
+                try:
+                    dist = cloudfront.get_distribution(Id=physical_id)
+                    if dist['Distribution']['DistributionConfig']['Enabled']:
+                        cloudfront.update_distribution(
+                            Id=physical_id,
+                            IfMatch=dist['ETag'],
+                            DistributionConfig={
+                                **dist['Distribution']['DistributionConfig'],
+                                'Enabled': False
+                            }
+                        )
+                        while True:
+                            status = cloudfront.get_distribution(Id=physical_id)
+                            if status['Distribution']['Status'] == 'Deployed':
+                                break
+                            time.sleep(30)
+                except Exception as e:
+                    print(f"Error disabling CloudFront distribution {physical_id}: {str(e)}")
+            
+            elif resource_type == 'AWS::IAM::Role':
+                iam = boto3.client('iam')
+                try:
+                    # Detach all policies
+                    attached_policies = iam.list_attached_role_policies(RoleName=physical_id)
+                    for policy in attached_policies['AttachedPolicies']:
+                        iam.detach_role_policy(RoleName=physical_id, PolicyArn=policy['PolicyArn'])
+                    
+                    # Delete inline policies
+                    inline_policies = iam.list_role_policies(RoleName=physical_id)
+                    for policy_name in inline_policies['PolicyNames']:
+                        iam.delete_role_policy(RoleName=physical_id, PolicyName=policy_name)
+                except Exception as e:
+                    print(f"Error cleaning IAM role {physical_id}: {str(e)}")
+    
+    except Exception as e:
+        print(f"Error listing stack resources: {str(e)}")
+    
+    # Finally, attempt to delete the stack
+    try:
+        cf.delete_stack(StackName=stack_name)
+        waiter = cf.get_waiter('stack_delete_complete')
+        waiter.wait(StackName=stack_name, WaiterConfig={'Delay': 10, 'MaxAttempts': 60})
+        print(f"Successfully deleted stack {stack_name} in {region}")
+        return True
+    except Exception as e:
+        print(f"Failed to delete stack {stack_name} in {region}: {str(e)}")
+        return False
 
 def handler(event, context):
     regions = event['regions']
     stack_names = event['stackNames']
     account_id = event['accountId']
     failed_stacks = []
+    all_stacks = {}
     
+    # First, list all stacks in all regions
+    print("=== Current Stacks ===")
+    for region in regions:
+        cf = boto3.client('cloudformation', region_name=region)
+        region_stacks = list_all_stacks(cf, region)
+        all_stacks[region] = region_stacks
+        print(f"\\nRegion: {region}")
+        print("Stack Name | Status | Creation Time | Last Updated")
+        print("-" * 80)
+        for stack in region_stacks:
+            print(f"{stack['stack_name']} | {stack['status']} | {stack['creation_time']} | {stack['last_updated'] or 'N/A'}")
+    print("\\n=== End of Stack List ===\\n")
+    
+    # Then proceed with cleanup of failed stacks
     for region in regions:
         cf = boto3.client('cloudformation', region_name=region)
         for stack_name in stack_names:
@@ -314,7 +495,7 @@ def handler(event, context):
                 response = cf.describe_stacks(StackName=stack_name)
                 for stack in response['Stacks']:
                     status = stack['StackStatus']
-                    if status in ['DELETE_FAILED', 'ROLLBACK_FAILED', 'UPDATE_ROLLBACK_FAILED']:
+                    if status in ['DELETE_FAILED', 'ROLLBACK_FAILED', 'UPDATE_ROLLBACK_FAILED', 'CREATE_FAILED']:
                         failed_stacks.append({
                             'region': region,
                             'stack_name': stack_name,
@@ -323,10 +504,14 @@ def handler(event, context):
                         })
                         print(f"Found failed stack: {stack_name} in {region} with status {status}")
                         print(f"Stack ID: {stack['StackId']}")
-                        cf.delete_stack(StackName=stack_name)
-                        waiter = cf.get_waiter('stack_delete_complete')
-                        waiter.wait(StackName=stack_name)
-                        print(f"Successfully deleted failed stack: {stack_name} in {region}")
+                        
+                        # Try force delete up to 3 times
+                        for attempt in range(3):
+                            print(f"Attempt {attempt + 1} to force delete stack {stack_name}")
+                            if force_delete_stack(cf, stack_name, region):
+                                break
+                            time.sleep(30)  # Wait between attempts
+                            
             except cf.exceptions.ClientError as e:
                 if 'does not exist' not in str(e):
                     print(f"Error checking stack {stack_name} in {region}: {str(e)}")
@@ -335,6 +520,7 @@ def handler(event, context):
         'statusCode': 200,
         'body': json.dumps({
             'message': 'Pre-check completed',
+            'all_stacks': all_stacks,
             'failed_stacks': failed_stacks,
             'account_id': account_id
         })
