@@ -9,6 +9,7 @@ const CDK_TOOLKIT = 'CDKToolkit';
 const CDK_ASSETS_BUCKET_PREFIX = 'cdk-hnb659fds-assets';
 const REGIONS = ['ap-northeast-1', 'us-east-1'];
 const MAIN_STACK = 'InfraAwsCdkVpcAlbAmiS3CloudfrontStack';
+const AWS_ACCOUNT_ID = '476114153361';
 
 interface DestroyStackProps extends cdk.StackProps {
   prefix: string;
@@ -19,16 +20,119 @@ export class DestroyStack extends cdk.Stack {
     super(scope, id, {
       ...props,
       stackName: 'DestroyStack',
-      env: { region: 'ap-northeast-1' },
+      env: { region: 'ap-northeast-1', account: AWS_ACCOUNT_ID },
     });
 
-    const providerRole = this.createCustomResourceRole();
+    this.createPreCheckResource();
+
     const cleanupFunction = this.createCleanupFunction();
     this.addCleanupFunctionPermissions(cleanupFunction);
+    const providerRole = this.createCustomResourceRole(cleanupFunction.functionArn);
     this.createResourceCleanupCustomResource(providerRole, PREFIX);
   }
 
-  private createCustomResourceRole(): iam.Role {
+  private createPreCheckResource(): void {
+    const preCheckRole = new iam.Role(this, 'PreCheckRole', {
+      assumedBy: new iam.ServicePrincipal('lambda.amazonaws.com'),
+      managedPolicies: [
+        iam.ManagedPolicy.fromAwsManagedPolicyName('service-role/AWSLambdaBasicExecutionRole'),
+      ],
+      inlinePolicies: {
+        'PreCheckPolicy': new iam.PolicyDocument({
+          statements: [
+            new iam.PolicyStatement({
+              effect: iam.Effect.ALLOW,
+              actions: [
+                'cloudformation:DescribeStacks',
+                'cloudformation:DeleteStack',
+              ],
+              resources: [
+                `arn:aws:cloudformation:ap-northeast-1:${AWS_ACCOUNT_ID}:stack/DestroyStack/*`,
+                `arn:aws:cloudformation:ap-northeast-1:${AWS_ACCOUNT_ID}:stack/${MAIN_STACK}/*`,
+                `arn:aws:cloudformation:us-east-1:${AWS_ACCOUNT_ID}:stack/${MAIN_STACK}/*`
+              ],
+            }),
+          ],
+        }),
+      },
+    });
+
+    const preCheckFunction = new cdk.aws_lambda.Function(this, 'PreCheckFunction', {
+      runtime: cdk.aws_lambda.Runtime.PYTHON_3_9,
+      handler: 'index.handler',
+      code: cdk.aws_lambda.Code.fromInline(this.getPreCheckFunctionCode()),
+      timeout: cdk.Duration.minutes(5),
+      role: preCheckRole,
+    });
+
+    new custom.AwsCustomResource(this, 'PreCheckCustomResource', {
+      onCreate: {
+        service: 'Lambda',
+        action: 'invoke',
+        parameters: {
+          FunctionName: preCheckFunction.functionName,
+          Payload: JSON.stringify({
+            regions: REGIONS,
+            stackNames: ['DestroyStack', MAIN_STACK],
+            accountId: AWS_ACCOUNT_ID,
+          }),
+        },
+        physicalResourceId: custom.PhysicalResourceId.of('PreCheckId'),
+      },
+      policy: custom.AwsCustomResourcePolicy.fromSdkCalls({
+        resources: [preCheckFunction.functionArn],
+      }),
+    });
+  }
+
+  private getPreCheckFunctionCode(): string {
+    return `
+import boto3
+import json
+
+def handler(event, context):
+    regions = event['regions']
+    stack_names = event['stackNames']
+    account_id = event['accountId']
+    failed_stacks = []
+    
+    for region in regions:
+        cf = boto3.client('cloudformation', region_name=region)
+        for stack_name in stack_names:
+            try:
+                response = cf.describe_stacks(StackName=stack_name)
+                for stack in response['Stacks']:
+                    status = stack['StackStatus']
+                    if status in ['DELETE_FAILED', 'ROLLBACK_FAILED', 'UPDATE_ROLLBACK_FAILED']:
+                        failed_stacks.append({
+                            'region': region,
+                            'stack_name': stack_name,
+                            'status': status,
+                            'stack_id': stack['StackId']
+                        })
+                        print(f"Found failed stack: {stack_name} in {region} with status {status}")
+                        print(f"Stack ID: {stack['StackId']}")
+                        # Force delete the failed stack
+                        cf.delete_stack(StackName=stack_name)
+                        waiter = cf.get_waiter('stack_delete_complete')
+                        waiter.wait(StackName=stack_name)
+                        print(f"Successfully deleted failed stack: {stack_name} in {region}")
+            except cf.exceptions.ClientError as e:
+                if 'does not exist' not in str(e):
+                    print(f"Error checking stack {stack_name} in {region}: {str(e)}")
+    
+    return {
+        'statusCode': 200,
+        'body': json.dumps({
+            'message': 'Pre-check completed',
+            'failed_stacks': failed_stacks,
+            'account_id': account_id
+        })
+    }
+`
+  }
+
+  private createCustomResourceRole(functionArn: string): iam.Role {
     const policyStatements = [
       this.createEC2PolicyStatement(),
       this.createELBPolicyStatement(),
@@ -37,6 +141,14 @@ export class DestroyStack extends cdk.Stack {
       this.createWAFPolicyStatement(),
       this.createIAMPolicyStatement(),
       this.createCloudFormationPolicyStatement(),
+      new iam.PolicyStatement({
+        effect: iam.Effect.ALLOW,
+        actions: ['lambda:InvokeFunction'],
+        resources: [
+          `arn:aws:lambda:ap-northeast-1:${AWS_ACCOUNT_ID}:function:${PREFIX}-cleanupResources`,
+          functionArn
+        ],
+      }),
     ];
 
     return new iam.Role(this, `${LOGICAL_PREFIX}CustomResourceRole`, {
@@ -151,7 +263,10 @@ export class DestroyStack extends cdk.Stack {
         'iam:DetachRolePolicy',
         'iam:GetRole',
       ],
-      resources: ['*'],
+      resources: [
+        `arn:aws:iam::${AWS_ACCOUNT_ID}:role/${PREFIX}-*`,
+        `arn:aws:iam::${AWS_ACCOUNT_ID}:role/cdk-${CDK_ASSETS_BUCKET_PREFIX}-*`
+      ],
     });
   }
 
@@ -163,7 +278,13 @@ export class DestroyStack extends cdk.Stack {
         'cloudformation:DescribeStacks',
         'cloudformation:ListStackResources',
       ],
-      resources: ['*'],
+      resources: [
+        `arn:aws:cloudformation:ap-northeast-1:${AWS_ACCOUNT_ID}:stack/${CDK_TOOLKIT}/*`,
+        `arn:aws:cloudformation:us-east-1:${AWS_ACCOUNT_ID}:stack/${CDK_TOOLKIT}/*`,
+        `arn:aws:cloudformation:ap-northeast-1:${AWS_ACCOUNT_ID}:stack/${MAIN_STACK}/*`,
+        `arn:aws:cloudformation:us-east-1:${AWS_ACCOUNT_ID}:stack/${MAIN_STACK}/*`,
+        `arn:aws:cloudformation:ap-northeast-1:${AWS_ACCOUNT_ID}:stack/DestroyStack/*`
+      ],
     });
   }
 
@@ -203,6 +324,17 @@ export class DestroyStack extends cdk.Stack {
           StackName: 'DestroyStack',
         },
         physicalResourceId: custom.PhysicalResourceId.of('ResourceCleanupId'),
+        ignoreErrorCodesMatching: '.*',
+        outputPaths: ['Stacks.0.StackStatus'],
+      },
+      onUpdate: {
+        service: 'CloudFormation',
+        action: 'describeStacks',
+        parameters: {
+          StackName: 'DestroyStack',
+        },
+        physicalResourceId: custom.PhysicalResourceId.of('ResourceCleanupId'),
+        ignoreErrorCodesMatching: '.*',
       },
       onDelete: {
         service: 'Lambda',
@@ -235,6 +367,19 @@ def handler(event, context):
     regions = event['regions']
     account_id = event['accountId']
     
+    # First, ensure DestroyStack is cleaned up if it exists in a failed state
+    cf_tokyo = boto3.client('cloudformation', region_name='ap-northeast-1')
+    try:
+        stacks = cf_tokyo.describe_stacks(StackName='DestroyStack')
+        if stacks['Stacks'][0]['StackStatus'] in ['DELETE_FAILED', 'ROLLBACK_FAILED', 'UPDATE_ROLLBACK_FAILED']:
+            print("Found DestroyStack in failed state, forcing deletion...")
+            cf_tokyo.delete_stack(StackName='DestroyStack')
+            waiter = cf_tokyo.get_waiter('stack_delete_complete')
+            waiter.wait(StackName='DestroyStack')
+    except cf_tokyo.exceptions.ClientError as e:
+        if 'does not exist' not in str(e):
+            print(f"Error checking DestroyStack status: {str(e)}")
+    
     for region in regions:
         cleanup_resources_in_region(region, prefix, account_id)
     
@@ -252,6 +397,18 @@ def cleanup_resources_in_region(region, prefix, account_id):
     wafv2 = boto3.client('wafv2', region_name='us-east-1')
     iam = boto3.client('iam')
     cf = boto3.client('cloudformation', region_name=region)
+    
+    # Clean up main stack first if it exists
+    try:
+        stacks = cf.describe_stacks(StackName='InfraAwsCdkVpcAlbAmiS3CloudfrontStack')
+        if stacks['Stacks'][0]['StackStatus'] in ['DELETE_FAILED', 'ROLLBACK_FAILED', 'UPDATE_ROLLBACK_FAILED']:
+            print(f"Found main stack in failed state in {region}, forcing deletion...")
+        cf.delete_stack(StackName='InfraAwsCdkVpcAlbAmiS3CloudfrontStack')
+        waiter = cf.get_waiter('stack_delete_complete')
+        waiter.wait(StackName='InfraAwsCdkVpcAlbAmiS3CloudfrontStack')
+    except cf.exceptions.ClientError as e:
+        if 'does not exist' not in str(e):
+            print(f"Error deleting main stack in {region}: {str(e)}")
     
     cleanup_ec2_resources(ec2, prefix)
     cleanup_load_balancers(elb, prefix)
