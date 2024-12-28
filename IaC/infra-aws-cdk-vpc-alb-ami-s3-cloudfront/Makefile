@@ -34,4 +34,14 @@ destroy:
 
 # Clean up using destroy stack
 clean-with-destroy-stack:
-	$(CDK) deploy $(DESTROY_STACK) $(DEPLOY_FLAGS) 
+	@echo "=== Listing failed CloudFormation stacks ==="
+	@aws cloudformation list-stacks --region $(REGION_TOKYO) \
+		--query 'StackSummaries[?StackStatus!=`DELETE_COMPLETE` && StackStatus!=`CREATE_COMPLETE` && StackStatus!=`UPDATE_COMPLETE`].[StackName,StackStatus,StackStatusReason]' \
+		--output table || true
+	@echo "\n=== Attempting to delete DestroyStack ==="
+	@echo "Getting failed resources..."
+	$(eval RETAIN_RESOURCES := $(shell aws cloudformation list-stack-resources --stack-name $(DESTROY_STACK) --region $(REGION_TOKYO) --query 'StackResourceSummaries[?ResourceStatus!=`DELETE_COMPLETE`].LogicalResourceId' --output text || echo ""))
+	@echo "Deleting stack with retained resources: $(RETAIN_RESOURCES)"
+	aws cloudformation delete-stack --stack-name $(DESTROY_STACK) --region $(REGION_TOKYO) --retain-resources $(RETAIN_RESOURCES) || true
+	@echo "Waiting for stack deletion..."
+	aws cloudformation wait stack-delete-complete --stack-name $(DESTROY_STACK) --region $(REGION_TOKYO) || true
