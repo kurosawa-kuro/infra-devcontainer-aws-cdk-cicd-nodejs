@@ -1,40 +1,78 @@
 import * as cdk from 'aws-cdk-lib';
 import { Construct } from 'constructs';
-import * as custom from 'aws-cdk-lib/custom-resources';
-import * as lambda from 'aws-cdk-lib/aws-lambda';
-import * as iam from 'aws-cdk-lib/aws-iam';
+import * as cloudfront from 'aws-cdk-lib/aws-cloudfront';
+import * as s3 from 'aws-cdk-lib/aws-s3';
+import * as ec2 from 'aws-cdk-lib/aws-ec2';
+import * as elbv2 from 'aws-cdk-lib/aws-elasticloadbalancingv2';
 
-/**
- * Constants for stack and resource naming
- */
-const AWS_ACCOUNT_ID = '476114153361';
 const PREFIX = 'cdk-express-01';
-const LOGICAL_PREFIX = 'CdkExpress01';
-const CDK_TOOLKIT = 'CDKToolkit';
-const CDK_ASSETS_BUCKET_PREFIX = 'cdk-hnb659fds-assets';
-const REGIONS = ['ap-northeast-1', 'us-east-1'] as const;
-const MAIN_STACK = 'InfraAwsCdkVpcAlbAmiS3CloudfrontStack';
-const STACK_STATUS_PATTERNS = {
-  FAILED_STATES: ['DELETE_FAILED', 'ROLLBACK_FAILED', 'UPDATE_ROLLBACK_FAILED'] as const
-};
 
-type StackStatus = typeof STACK_STATUS_PATTERNS.FAILED_STATES[number];
-
-interface DestroyStackProps extends cdk.StackProps {
-  prefix?: string;
-}
-
-interface StackInfo {
-  StackName: string;
-  StackStatus: string;
-  StackId: string;
-}
-
-/**
- * Stack for listing and cleaning up failed CloudFormation stacks
- */
 export class DestroyStack extends cdk.Stack {
-  constructor(scope: Construct, id: string, props?: DestroyStackProps) {
+  constructor(scope: Construct, id: string, props?: cdk.StackProps) {
     super(scope, id, props);
+
+    // Step 1: Remove CloudFront Distribution
+    const distribution = new cloudfront.CfnDistribution(this, 'DeleteCloudFront', {
+      distributionConfig: {
+        enabled: false,
+        defaultCacheBehavior: {
+          targetOriginId: 'dummy',
+          viewerProtocolPolicy: 'redirect-to-https',
+          forwardedValues: {
+            queryString: false,
+            cookies: { forward: 'none' }
+          }
+        },
+        origins: [{
+          id: 'dummy',
+          domainName: 'dummy.s3.amazonaws.com',
+          s3OriginConfig: { originAccessIdentity: '' }
+        }]
+      }
+    });
+    distribution.applyRemovalPolicy(cdk.RemovalPolicy.DESTROY);
+
+    // Step 2: Remove WAF WebACL
+    new cdk.CfnResource(this, 'DeleteWebAcl', {
+      type: 'AWS::WAFv2::WebACL',
+      properties: {
+        Name: `${PREFIX}-cf-waf`,
+        Scope: 'CLOUDFRONT',
+        DefaultAction: { Allow: {} },
+        VisibilityConfig: {
+          SampledRequestsEnabled: true,
+          CloudWatchMetricsEnabled: true,
+          MetricName: `${PREFIX}-cf-waf-metric`
+        },
+        Rules: []
+      }
+    }).applyRemovalPolicy(cdk.RemovalPolicy.DESTROY);
+
+    // Step 3: Remove S3 Bucket
+    new s3.CfnBucket(this, 'DeleteS3', {
+      bucketName: `${PREFIX}-s3`
+    }).applyRemovalPolicy(cdk.RemovalPolicy.DESTROY);
+
+    // Step 4: Remove ALB
+    new elbv2.CfnLoadBalancer(this, 'DeleteALB', {
+      name: `${PREFIX}-alb`,
+      type: 'application',
+      subnets: [`${PREFIX}-public-subnet-1a`, `${PREFIX}-public-subnet-1c`]
+    }).applyRemovalPolicy(cdk.RemovalPolicy.DESTROY);
+
+    // Step 5: Remove EC2 Instance
+    new ec2.CfnInstance(this, 'DeleteEC2', {
+      instanceType: 't2.micro',
+      imageId: 'ami-dummy',
+      tags: [{ key: 'Name', value: `${PREFIX}-ec2` }]
+    }).applyRemovalPolicy(cdk.RemovalPolicy.DESTROY);
+
+    // Step 6: Remove VPC
+    new ec2.CfnVPC(this, 'DeleteVPC', {
+      cidrBlock: '10.0.0.0/16',
+      enableDnsHostnames: true,
+      enableDnsSupport: true,
+      tags: [{ key: 'Name', value: `${PREFIX}-vpc` }]
+    }).applyRemovalPolicy(cdk.RemovalPolicy.DESTROY);
   }
 }

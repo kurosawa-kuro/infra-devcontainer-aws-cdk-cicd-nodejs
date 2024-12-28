@@ -4,17 +4,13 @@ import { InfraAwsCdkVpcAlbAmiS3CloudfrontStack } from '../lib/infra-aws-cdk-vpc-
 import { DestroyStack } from '../lib/destroy-stack';
 
 const app = new cdk.App();
+
 new InfraAwsCdkVpcAlbAmiS3CloudfrontStack(app, 'InfraAwsCdkVpcAlbAmiS3CloudfrontStack', {
-  env: {
-    account: process.env.CDK_DEFAULT_ACCOUNT,
-    region: process.env.CDK_DEFAULT_REGION
-  }
+  env: { region: 'ap-northeast-1' }
 });
 
 new DestroyStack(app, 'DestroyStack', {
-  prefix: 'cdk-express-01',
-  env: {
-    account: process.env.CDK_DEFAULT_ACCOUNT,
-    region: 'ap-northeast-1'
-  }
+  env: { region: 'ap-northeast-1' }
 });
+
+app.synth();

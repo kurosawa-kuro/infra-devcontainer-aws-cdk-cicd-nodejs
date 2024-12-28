@@ -30,7 +30,7 @@ first-deploy:
 
 # Destroy all stacks
 destroy:
-	$(CDK) destroy --all $(DESTROY_FLAGS)
+	$(CDK) deploy DestroyStack $(DEPLOY_FLAGS) 
 
 # Clean up using destroy stack
 clean-with-destroy-stack:
