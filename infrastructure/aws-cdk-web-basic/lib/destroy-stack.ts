@@ -8,8 +8,7 @@ import * as cr from 'aws-cdk-lib/custom-resources';
 
 const PREFIX = 'cdk-express-01';
 
-// destroy-aws-cdk-web-basic-stack
-export class DestroyAwsCdkWebBasicStack extends cdk.Stack {
+export class DestroyStack extends cdk.Stack {
   constructor(scope: Construct, id: string, props?: cdk.StackProps) {
     super(scope, id, props);
 
