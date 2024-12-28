@@ -113,3 +113,7 @@ batch-s3-log:
 batch-s3-log-now:
 	@echo "=== Running S3 Log Batch Process (Immediate) ==="
 	npm run batch:s3-log:now
+
+# ファイル構造表示
+tree:
+	tree -I "node_modules" | cat
