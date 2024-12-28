@@ -23,15 +23,15 @@ WAF_STACK = $(PREFIX)-WebAclStack
 # ===========================================
 .PHONY: first-deploy destroy clean-with-destroy-stack
 
-# Bootstrap both regions and deploy all stacks
+# Bootstrap both regions and deploy main stack
 first-deploy:
 	$(CDK) bootstrap aws://$(AWS_ACCOUNT_ID)/$(REGION_TOKYO) aws://$(AWS_ACCOUNT_ID)/$(REGION_VIRGINIA) && \
-	$(CDK) deploy --all $(DEPLOY_FLAGS)
+	$(CDK) deploy $(MAIN_STACK) $(WAF_STACK) $(DEPLOY_FLAGS)
 
 # Destroy all stacks
 destroy:
 	$(MAKE) clean-with-destroy-stack
-	$(CDK) deploy DestroyStack $(DEPLOY_FLAGS)
+	$(CDK) deploy $(DESTROY_STACK) $(DEPLOY_FLAGS)
 
 # Clean up using destroy stack
 clean-with-destroy-stack:
