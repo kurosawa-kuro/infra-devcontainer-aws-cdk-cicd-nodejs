@@ -135,9 +135,9 @@ export class AwsCdkWebBasicStack extends cdk.Stack {
   }
 
   private createSecurityGroups() {
-    const albSg = new ec2.SecurityGroup(this, 'CdkExpress01AlbSg', {
+    const albSg = new ec2.SecurityGroup(this, `${LOGICAL_PREFIX}AlbSg`, {
       vpc: this.vpc,
-      securityGroupName: 'CdkExpress01AlbSg',
+      securityGroupName: `${LOGICAL_PREFIX}AlbSg`,
       description: 'Security group for ALB',
       allowAllOutbound: true,
     });
@@ -148,9 +148,9 @@ export class AwsCdkWebBasicStack extends cdk.Stack {
       'Allow HTTP'
     );
 
-    const appSg = new ec2.SecurityGroup(this, 'CdkExpress01AppSg', {
+    const appSg = new ec2.SecurityGroup(this, `${LOGICAL_PREFIX}AppSg`, {
       vpc: this.vpc,
-      securityGroupName: 'CdkExpress01AppSg',
+      securityGroupName: `${LOGICAL_PREFIX}AppSg`,
       description: 'Security group for App',
       allowAllOutbound: true,
     });
@@ -216,7 +216,7 @@ export class AwsCdkWebBasicStack extends cdk.Stack {
       port: CONFIG.app.port,
       protocol: elbv2.ApplicationProtocol.HTTP,
       targetType: elbv2.TargetType.INSTANCE,
-      targetGroupName: 'CdkExpress01Tg',
+      targetGroupName: `${LOGICAL_PREFIX}Tg`,
       healthCheck: {
         path: CONFIG.app.healthCheckPath,
         port: 'traffic-port',
@@ -282,7 +282,7 @@ export class AwsCdkWebBasicStack extends cdk.Stack {
   private createOriginAccessControl(): cloudfront.CfnOriginAccessControl {
     return new cloudfront.CfnOriginAccessControl(this, 'CloudFrontOAC', {
       originAccessControlConfig: {
-        name: 'CdkExpress01Oac',
+        name: `${LOGICAL_PREFIX}Oac`,
         originAccessControlOriginType: 's3',
         signingBehavior: 'always',
         signingProtocol: 'sigv4'
@@ -292,7 +292,7 @@ export class AwsCdkWebBasicStack extends cdk.Stack {
 
   private createDistribution(webAcl: wafv2.CfnWebACL, oac: cloudfront.CfnOriginAccessControl): cloudfront.Distribution {
     const cachePolicy = new cloudfront.CachePolicy(this, 'CachingOptimized', {
-      cachePolicyName: 'CdkExpress01CachePolicy',
+      cachePolicyName: `${LOGICAL_PREFIX}CachePolicy`,
       comment: 'Caching optimized for S3 static content',
       defaultTtl: CONFIG.cloudfront.cacheDuration.default,
       maxTtl: CONFIG.cloudfront.cacheDuration.max,
