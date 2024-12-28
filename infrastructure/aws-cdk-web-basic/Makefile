@@ -13,7 +13,7 @@ DESTROY_FLAGS = --force
 # ===========================================
 # Stack and Resource Names
 # ===========================================
-PREFIX = cdk-express-01
+PREFIX = CdkExpress01
 MAIN_STACK = AwsCdkWebBasicStack
 DESTROY_STACK = DestroyAwsCdkWebBasicStack
 WAF_STACK = $(PREFIX)-WebAclStack
