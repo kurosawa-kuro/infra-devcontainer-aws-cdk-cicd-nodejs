@@ -4,15 +4,47 @@ import * as cloudfront from 'aws-cdk-lib/aws-cloudfront';
 import * as s3 from 'aws-cdk-lib/aws-s3';
 import * as ec2 from 'aws-cdk-lib/aws-ec2';
 import * as elbv2 from 'aws-cdk-lib/aws-elasticloadbalancingv2';
-import * as cr from 'aws-cdk-lib/custom-resources';
 
 const PREFIX = 'cdk-express-01';
 
+interface ResourceConfig {
+  prefix: string;
+  vpcCidr: string;
+  subnet1aCidr: string;
+  subnet1cCidr: string;
+}
+
 export class DestroyStack extends cdk.Stack {
+  private readonly config: ResourceConfig;
+
   constructor(scope: Construct, id: string, props?: cdk.StackProps) {
     super(scope, id, props);
 
-    // Step 1: Remove CloudFront Distribution and related resources
+    this.config = {
+      prefix: PREFIX,
+      vpcCidr: '10.0.0.0/16',
+      subnet1aCidr: '10.0.1.0/24',
+      subnet1cCidr: '10.0.2.0/24'
+    };
+
+    this.destroyCloudFrontResources();
+    this.destroyWAFResources();
+    this.destroyS3Resources();
+    this.destroyLoadBalancerResources();
+    this.destroySecurityGroups();
+    this.destroyEC2Resources();
+    this.destroyNetworkResources();
+  }
+
+  private applyDestroyPolicy(resource: cdk.CfnResource) {
+    resource.applyRemovalPolicy(cdk.RemovalPolicy.DESTROY);
+  }
+
+  private addNameTag(name: string): cdk.CfnTag[] {
+    return [{ key: 'Name', value: `${this.config.prefix}-${name}` }];
+  }
+
+  private destroyCloudFrontResources(): void {
     const distribution = new cloudfront.CfnDistribution(this, 'DeleteCloudFront', {
       distributionConfig: {
         enabled: false,
@@ -31,12 +63,11 @@ export class DestroyStack extends cdk.Stack {
         }]
       }
     });
-    distribution.applyRemovalPolicy(cdk.RemovalPolicy.DESTROY);
+    this.applyDestroyPolicy(distribution);
 
-    // Remove CloudFront Cache Policy
     const cachePolicy = new cloudfront.CfnCachePolicy(this, 'DeleteCachePolicy', {
       cachePolicyConfig: {
-        name: `${PREFIX}-cache-policy`,
+        name: `${this.config.prefix}-cache-policy`,
         defaultTtl: cdk.Duration.days(1).toSeconds(),
         minTtl: cdk.Duration.seconds(1).toSeconds(),
         maxTtl: cdk.Duration.days(365).toSeconds(),
@@ -49,131 +80,135 @@ export class DestroyStack extends cdk.Stack {
         }
       }
     });
-    cachePolicy.applyRemovalPolicy(cdk.RemovalPolicy.DESTROY);
+    this.applyDestroyPolicy(cachePolicy);
 
-    // Remove CloudFront OAC
     const oac = new cloudfront.CfnOriginAccessControl(this, 'DeleteOAC', {
       originAccessControlConfig: {
-        name: `${PREFIX}-oac`,
+        name: `${this.config.prefix}-oac`,
         originAccessControlOriginType: 's3',
         signingBehavior: 'always',
         signingProtocol: 'sigv4'
       }
     });
-    oac.applyRemovalPolicy(cdk.RemovalPolicy.DESTROY);
+    this.applyDestroyPolicy(oac);
+  }
 
-    // Step 2: Remove WAF WebACL
-    const webAclStack = new cdk.Stack(this, `${PREFIX}-WebAclStack`, {
+  private destroyWAFResources(): void {
+    const webAclStack = new cdk.Stack(this, `${this.config.prefix}-WebAclStack`, {
       env: { region: 'us-east-1' },
       crossRegionReferences: true,
     });
 
-    new cdk.CfnResource(webAclStack, 'DeleteWebAcl', {
+    const webAcl = new cdk.CfnResource(webAclStack, 'DeleteWebAcl', {
       type: 'AWS::WAFv2::WebACL',
       properties: {
-        Name: `${PREFIX}-cf-waf`,
+        Name: `${this.config.prefix}-cf-waf`,
         Scope: 'CLOUDFRONT',
         DefaultAction: { Allow: {} },
         VisibilityConfig: {
           SampledRequestsEnabled: true,
           CloudWatchMetricsEnabled: true,
-          MetricName: `${PREFIX}-cf-waf-metric`
+          MetricName: `${this.config.prefix}-cf-waf-metric`
         },
         Rules: []
       }
-    }).applyRemovalPolicy(cdk.RemovalPolicy.DESTROY);
+    });
+    this.applyDestroyPolicy(webAcl);
+  }
 
-    // Step 3: Remove S3 Bucket
+  private destroyS3Resources(): void {
     const bucket = new s3.CfnBucket(this, 'DeleteS3', {
-      bucketName: `${PREFIX}-s3`
+      bucketName: `${this.config.prefix}-s3`
     });
-    bucket.applyRemovalPolicy(cdk.RemovalPolicy.DESTROY);
+    this.applyDestroyPolicy(bucket);
+  }
 
-    // Step 4: Remove ALB and related resources
+  private destroyLoadBalancerResources(): void {
     const alb = new elbv2.CfnLoadBalancer(this, 'DeleteALB', {
-      name: `${PREFIX}-alb`,
+      name: `${this.config.prefix}-alb`,
       type: 'application',
-      subnets: [`${PREFIX}-public-subnet-1a`, `${PREFIX}-public-subnet-1c`]
+      subnets: [
+        `${this.config.prefix}-public-subnet-1a`,
+        `${this.config.prefix}-public-subnet-1c`
+      ]
     });
-    alb.applyRemovalPolicy(cdk.RemovalPolicy.DESTROY);
+    this.applyDestroyPolicy(alb);
 
-    // Remove Target Group
     const targetGroup = new elbv2.CfnTargetGroup(this, 'DeleteTargetGroup', {
-      name: `${PREFIX}-tg`,
+      name: `${this.config.prefix}-tg`,
       protocol: 'HTTP',
       port: 80,
       targetType: 'instance',
-      vpcId: `${PREFIX}-vpc`
+      vpcId: `${this.config.prefix}-vpc`
     });
-    targetGroup.applyRemovalPolicy(cdk.RemovalPolicy.DESTROY);
+    this.applyDestroyPolicy(targetGroup);
+  }
 
-    // Step 5: Remove Security Groups
+  private destroySecurityGroups(): void {
     const albSg = new ec2.CfnSecurityGroup(this, 'DeleteAlbSG', {
-      groupName: `${PREFIX}-alb-sg`,
+      groupName: `${this.config.prefix}-alb-sg`,
       groupDescription: 'Security group for ALB',
-      vpcId: `${PREFIX}-vpc`
+      vpcId: `${this.config.prefix}-vpc`
     });
-    albSg.applyRemovalPolicy(cdk.RemovalPolicy.DESTROY);
+    this.applyDestroyPolicy(albSg);
 
     const appSg = new ec2.CfnSecurityGroup(this, 'DeleteAppSG', {
-      groupName: `${PREFIX}-app-sg`,
+      groupName: `${this.config.prefix}-app-sg`,
       groupDescription: 'Security group for Application',
-      vpcId: `${PREFIX}-vpc`
+      vpcId: `${this.config.prefix}-vpc`
     });
-    appSg.applyRemovalPolicy(cdk.RemovalPolicy.DESTROY);
+    this.applyDestroyPolicy(appSg);
+  }
 
-    // Step 6: Remove EC2 Instance (but preserve AMI)
+  private destroyEC2Resources(): void {
     const ec2Instance = new ec2.CfnInstance(this, 'DeleteEC2', {
       instanceType: 't2.micro',
       imageId: 'ami-dummy',
-      tags: [{ key: 'Name', value: `${PREFIX}-ec2` }]
+      tags: this.addNameTag('ec2')
     });
-    ec2Instance.applyRemovalPolicy(cdk.RemovalPolicy.DESTROY);
+    this.applyDestroyPolicy(ec2Instance);
+  }
 
-    // Step 7: Remove VPC and related resources
-    // Remove Route Tables
-    const rt1a = new ec2.CfnRouteTable(this, 'DeleteRouteTable1a', {
-      vpcId: `${PREFIX}-vpc`,
-      tags: [{ key: 'Name', value: `${PREFIX}-public-rt-1a` }]
-    });
-    rt1a.applyRemovalPolicy(cdk.RemovalPolicy.DESTROY);
-
-    const rt1c = new ec2.CfnRouteTable(this, 'DeleteRouteTable1c', {
-      vpcId: `${PREFIX}-vpc`,
-      tags: [{ key: 'Name', value: `${PREFIX}-public-rt-1c` }]
-    });
-    rt1c.applyRemovalPolicy(cdk.RemovalPolicy.DESTROY);
-
-    // Remove Subnets
-    const subnet1a = new ec2.CfnSubnet(this, 'DeleteSubnet1a', {
-      vpcId: `${PREFIX}-vpc`,
-      cidrBlock: '10.0.1.0/24',
-      availabilityZone: 'ap-northeast-1a',
-      tags: [{ key: 'Name', value: `${PREFIX}-public-subnet-1a` }]
-    });
-    subnet1a.applyRemovalPolicy(cdk.RemovalPolicy.DESTROY);
-
-    const subnet1c = new ec2.CfnSubnet(this, 'DeleteSubnet1c', {
-      vpcId: `${PREFIX}-vpc`,
-      cidrBlock: '10.0.2.0/24',
-      availabilityZone: 'ap-northeast-1c',
-      tags: [{ key: 'Name', value: `${PREFIX}-public-subnet-1c` }]
-    });
-    subnet1c.applyRemovalPolicy(cdk.RemovalPolicy.DESTROY);
-
-    // Remove Internet Gateway
-    const igw = new ec2.CfnInternetGateway(this, 'DeleteIGW', {
-      tags: [{ key: 'Name', value: `${PREFIX}-igw` }]
-    });
-    igw.applyRemovalPolicy(cdk.RemovalPolicy.DESTROY);
-
-    // Remove VPC
+  private destroyNetworkResources(): void {
     const vpc = new ec2.CfnVPC(this, 'DeleteVPC', {
-      cidrBlock: '10.0.0.0/16',
+      cidrBlock: this.config.vpcCidr,
       enableDnsHostnames: true,
       enableDnsSupport: true,
-      tags: [{ key: 'Name', value: `${PREFIX}-vpc` }]
+      tags: this.addNameTag('vpc')
     });
-    vpc.applyRemovalPolicy(cdk.RemovalPolicy.DESTROY);
+    this.applyDestroyPolicy(vpc);
+
+    const subnet1a = new ec2.CfnSubnet(this, 'DeleteSubnet1a', {
+      vpcId: `${this.config.prefix}-vpc`,
+      cidrBlock: this.config.subnet1aCidr,
+      availabilityZone: 'ap-northeast-1a',
+      tags: this.addNameTag('public-subnet-1a')
+    });
+    this.applyDestroyPolicy(subnet1a);
+
+    const subnet1c = new ec2.CfnSubnet(this, 'DeleteSubnet1c', {
+      vpcId: `${this.config.prefix}-vpc`,
+      cidrBlock: this.config.subnet1cCidr,
+      availabilityZone: 'ap-northeast-1c',
+      tags: this.addNameTag('public-subnet-1c')
+    });
+    this.applyDestroyPolicy(subnet1c);
+
+    const rt1a = new ec2.CfnRouteTable(this, 'DeleteRouteTable1a', {
+      vpcId: `${this.config.prefix}-vpc`,
+      tags: this.addNameTag('public-rt-1a')
+    });
+    this.applyDestroyPolicy(rt1a);
+
+    const rt1c = new ec2.CfnRouteTable(this, 'DeleteRouteTable1c', {
+      vpcId: `${this.config.prefix}-vpc`,
+      tags: this.addNameTag('public-rt-1c')
+    });
+    this.applyDestroyPolicy(rt1c);
+
+    const igw = new ec2.CfnInternetGateway(this, 'DeleteIGW', {
+      tags: this.addNameTag('igw')
+    });
+    this.applyDestroyPolicy(igw);
   }
 }
