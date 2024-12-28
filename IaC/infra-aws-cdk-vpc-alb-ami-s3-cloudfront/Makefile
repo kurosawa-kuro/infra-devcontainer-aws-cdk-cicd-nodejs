@@ -31,7 +31,7 @@ first-deploy:
 # Destroy all stacks
 destroy:
 	$(MAKE) clean-with-destroy-stack
-	$(CDK) destroy DestroyStack $(DESTROY_FLAGS)
+	$(CDK) deploy DestroyStack $(DEPLOY_FLAGS)
 
 # Clean up using destroy stack
 clean-with-destroy-stack:
