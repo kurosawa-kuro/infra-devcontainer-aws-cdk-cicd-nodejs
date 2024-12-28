@@ -122,7 +122,7 @@ export class DestroyStack extends cdk.Stack {
     });
     appSg.applyRemovalPolicy(cdk.RemovalPolicy.DESTROY);
 
-    // Step 6: Remove EC2 Instance
+    // Step 6: Remove EC2 Instance (but preserve AMI)
     const ec2Instance = new ec2.CfnInstance(this, 'DeleteEC2', {
       instanceType: 't2.micro',
       imageId: 'ami-dummy',
