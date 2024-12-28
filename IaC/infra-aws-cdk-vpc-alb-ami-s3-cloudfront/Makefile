@@ -34,5 +34,4 @@ destroy:
 
 # Clean up using destroy stack
 clean-with-destroy-stack:
-	$(CDK) destroy $(DESTROY_STACK) $(DESTROY_FLAGS) || true
 	$(CDK) deploy $(DESTROY_STACK) $(DEPLOY_FLAGS) 

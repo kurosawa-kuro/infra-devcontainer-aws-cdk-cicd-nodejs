@@ -22,11 +22,14 @@ interface DestroyStackProps extends cdk.StackProps {
 }
 
 /**
- * Stack for destroying resources and managing failed stacks
+ * Stack for listing failed CloudFormation stacks
  */
 export class DestroyStack extends cdk.Stack {
   constructor(scope: Construct, id: string, props: DestroyStackProps) {
-    super(scope, id, props);
+    // Generate a unique stack name with timestamp
+    const timestamp = Math.floor(Date.now() / 1000);
+    const uniqueId = `${id}-${timestamp}`;
+    super(scope, uniqueId, props);
 
     // Create a custom resource to list failed stacks
     const listFailedStacks = new custom.AwsCustomResource(this, 'ListFailedStacks', {
@@ -36,8 +39,15 @@ export class DestroyStack extends cdk.Stack {
         parameters: {
           StackStatusFilter: [...STACK_STATUS_PATTERNS.FAILED_STATES]
         },
-        physicalResourceId: custom.PhysicalResourceId.of('ListFailedStacks'),
-        region: 'ap-northeast-1'
+        physicalResourceId: custom.PhysicalResourceId.of(`ListFailedStacks-${timestamp}`)
+      },
+      onUpdate: {
+        service: 'CloudFormation',
+        action: 'listStacks',
+        parameters: {
+          StackStatusFilter: [...STACK_STATUS_PATTERNS.FAILED_STATES]
+        },
+        physicalResourceId: custom.PhysicalResourceId.of(`ListFailedStacks-${timestamp}`)
       },
       policy: custom.AwsCustomResourcePolicy.fromStatements([
         new iam.PolicyStatement({
