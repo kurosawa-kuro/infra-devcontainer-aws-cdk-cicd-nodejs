@@ -20,11 +20,10 @@ interface ResourceNaming {
   cloudfront: string;
 }
 
-const PREFIX = 'cdk-express-01';
 const LOGICAL_PREFIX = 'CdkExpress01';
 
 const CONFIG = {
-  prefix: PREFIX,
+  prefix: LOGICAL_PREFIX.toLowerCase(),
   region: 'ap-northeast-1',
   naming: {
     vpc: `${LOGICAL_PREFIX}Vpc`,

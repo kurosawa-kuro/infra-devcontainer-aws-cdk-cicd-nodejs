@@ -6,7 +6,7 @@ import * as ec2 from 'aws-cdk-lib/aws-ec2';
 import * as elbv2 from 'aws-cdk-lib/aws-elasticloadbalancingv2';
 import * as cr from 'aws-cdk-lib/custom-resources';
 
-const PREFIX = 'cdk-express-01';
+const PREFIX = 'CdkExpress01';
 
 export class DestroyStack extends cdk.Stack {
   constructor(scope: Construct, id: string, props?: cdk.StackProps) {

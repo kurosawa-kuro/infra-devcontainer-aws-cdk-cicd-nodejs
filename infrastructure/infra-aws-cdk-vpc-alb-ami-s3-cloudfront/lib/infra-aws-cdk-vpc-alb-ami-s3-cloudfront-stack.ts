@@ -20,7 +20,7 @@ interface ResourceNaming {
   cloudfront: string;
 }
 
-const PREFIX = 'cdk-express-01';
+const PREFIX = 'CdkExpress01';
 const LOGICAL_PREFIX = 'CdkExpress01';
 
 const CONFIG = {
