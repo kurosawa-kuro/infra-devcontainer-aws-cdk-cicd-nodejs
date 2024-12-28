@@ -3,18 +3,27 @@ import { Construct } from 'constructs';
 import * as custom from 'aws-cdk-lib/custom-resources';
 import * as iam from 'aws-cdk-lib/aws-iam';
 
+/**
+ * Constants for stack and resource naming
+ */
+const AWS_ACCOUNT_ID = '476114153361';
 const PREFIX = 'cdk-express-01';
 const LOGICAL_PREFIX = 'CdkExpress01';
 const CDK_TOOLKIT = 'CDKToolkit';
 const CDK_ASSETS_BUCKET_PREFIX = 'cdk-hnb659fds-assets';
-const REGIONS = ['ap-northeast-1', 'us-east-1'];
+const REGIONS = ['ap-northeast-1', 'us-east-1'] as const;
 const MAIN_STACK = 'InfraAwsCdkVpcAlbAmiS3CloudfrontStack';
-const AWS_ACCOUNT_ID = '476114153361';
+const STACK_STATUS_PATTERNS = {
+  FAILED_STATES: ['DELETE_FAILED', 'ROLLBACK_FAILED', 'UPDATE_ROLLBACK_FAILED'] as const
+};
 
 interface DestroyStackProps extends cdk.StackProps {
   prefix: string;
 }
 
+/**
+ * Stack for cleaning up all resources created by the main stack
+ */
 export class DestroyStack extends cdk.Stack {
   constructor(scope: Construct, id: string, props: DestroyStackProps) {
     super(scope, id, {
@@ -23,15 +32,22 @@ export class DestroyStack extends cdk.Stack {
       env: { region: 'ap-northeast-1', account: AWS_ACCOUNT_ID },
     });
 
-    this.createPreCheckResource();
+    // Create the pre-check function to handle failed stacks
+    const preCheckFunction = this.createPreCheckFunction();
 
+    // Create the main cleanup function
     const cleanupFunction = this.createCleanupFunction();
     this.addCleanupFunctionPermissions(cleanupFunction);
+
+    // Create the custom resource role and cleanup resource
     const providerRole = this.createCustomResourceRole(cleanupFunction.functionArn);
-    this.createResourceCleanupCustomResource(providerRole, PREFIX);
+    this.createResourceCleanupCustomResource(providerRole, preCheckFunction);
   }
 
-  private createPreCheckResource(): void {
+  /**
+   * Creates a Lambda function to check for and handle failed stacks
+   */
+  private createPreCheckFunction(): cdk.aws_lambda.Function {
     const preCheckRole = new iam.Role(this, 'PreCheckRole', {
       assumedBy: new iam.ServicePrincipal('lambda.amazonaws.com'),
       managedPolicies: [
@@ -57,15 +73,194 @@ export class DestroyStack extends cdk.Stack {
       },
     });
 
-    const preCheckFunction = new cdk.aws_lambda.Function(this, 'PreCheckFunction', {
+    return new cdk.aws_lambda.Function(this, 'PreCheckFunction', {
       runtime: cdk.aws_lambda.Runtime.PYTHON_3_9,
       handler: 'index.handler',
       code: cdk.aws_lambda.Code.fromInline(this.getPreCheckFunctionCode()),
       timeout: cdk.Duration.minutes(5),
       role: preCheckRole,
     });
+  }
 
-    new custom.AwsCustomResource(this, 'PreCheckCustomResource', {
+  /**
+   * Creates the main cleanup Lambda function
+   */
+  private createCleanupFunction(): cdk.aws_lambda.Function {
+    return new cdk.aws_lambda.Function(this, `${LOGICAL_PREFIX}CleanupFunction`, {
+      functionName: `${PREFIX}-cleanupResources`,
+      runtime: cdk.aws_lambda.Runtime.PYTHON_3_9,
+      handler: 'index.handler',
+      code: cdk.aws_lambda.Code.fromInline(this.getCleanupFunctionCode()),
+      timeout: cdk.Duration.minutes(15),
+      memorySize: 512,
+    });
+  }
+
+  /**
+   * Adds required permissions to the cleanup function
+   */
+  private addCleanupFunctionPermissions(cleanupFunction: cdk.aws_lambda.Function): void {
+    cleanupFunction.addToRolePolicy(
+      new iam.PolicyStatement({
+        effect: iam.Effect.ALLOW,
+        actions: [
+          'ec2:*',
+          'elasticloadbalancing:*',
+          's3:*',
+          'cloudfront:*',
+          'wafv2:*',
+          'iam:*',
+          'cloudformation:*',
+        ],
+        resources: ['*'],
+      })
+    );
+  }
+
+  /**
+   * Creates the custom resource role with necessary permissions
+   */
+  private createCustomResourceRole(functionArn: string): iam.Role {
+    const policyStatements = [
+      // EC2 permissions
+      new iam.PolicyStatement({
+        effect: iam.Effect.ALLOW,
+        actions: [
+          'ec2:DescribeInstances',
+          'ec2:TerminateInstances',
+          'ec2:DeleteSecurityGroup',
+          'ec2:DescribeSecurityGroups',
+          'ec2:DeleteVpc',
+          'ec2:DescribeVpcs',
+          'ec2:DetachInternetGateway',
+          'ec2:DeleteInternetGateway',
+          'ec2:DescribeInternetGateways',
+          'ec2:DeleteSubnet',
+          'ec2:DescribeSubnets',
+          'ec2:DeleteRouteTable',
+          'ec2:DisassociateRouteTable',
+          'ec2:DescribeRouteTables',
+          'ec2:DeleteNetworkInterface',
+          'ec2:DescribeNetworkInterfaces',
+          'ec2:RevokeSecurityGroupIngress',
+          'ec2:RevokeSecurityGroupEgress',
+        ],
+        resources: ['*'],
+      }),
+      // ELB permissions
+      new iam.PolicyStatement({
+        effect: iam.Effect.ALLOW,
+        actions: [
+          'elasticloadbalancing:DeleteLoadBalancer',
+          'elasticloadbalancing:DescribeLoadBalancers',
+          'elasticloadbalancing:DeleteTargetGroup',
+          'elasticloadbalancing:DescribeTargetGroups',
+          'elasticloadbalancing:ModifyLoadBalancerAttributes',
+          'elasticloadbalancing:DeleteListener',
+        ],
+        resources: ['*'],
+      }),
+      // S3 permissions
+      new iam.PolicyStatement({
+        effect: iam.Effect.ALLOW,
+        actions: [
+          's3:DeleteObject',
+          's3:DeleteObjectVersion',
+          's3:ListBucket',
+          's3:ListBucketVersions',
+          's3:DeleteBucket',
+          's3:GetObject',
+          's3:ListAllMyBuckets',
+        ],
+        resources: ['*'],
+      }),
+      // CloudFront permissions
+      new iam.PolicyStatement({
+        effect: iam.Effect.ALLOW,
+        actions: [
+          'cloudfront:DeleteDistribution',
+          'cloudfront:GetDistribution',
+          'cloudfront:ListDistributions',
+          'cloudfront:UpdateDistribution',
+          'cloudfront:GetDistributionConfig',
+          'cloudfront:TagResource',
+        ],
+        resources: ['*'],
+      }),
+      // WAF permissions
+      new iam.PolicyStatement({
+        effect: iam.Effect.ALLOW,
+        actions: [
+          'wafv2:DeleteWebACL',
+          'wafv2:GetWebACL',
+          'wafv2:ListWebACLs',
+          'wafv2:UpdateWebACL',
+          'wafv2:ListTagsForResource',
+        ],
+        resources: ['*'],
+      }),
+      // IAM permissions
+      new iam.PolicyStatement({
+        effect: iam.Effect.ALLOW,
+        actions: [
+          'iam:DeleteRole',
+          'iam:DeleteRolePolicy',
+          'iam:ListRolePolicies',
+          'iam:ListAttachedRolePolicies',
+          'iam:DetachRolePolicy',
+          'iam:GetRole',
+        ],
+        resources: [
+          `arn:aws:iam::${AWS_ACCOUNT_ID}:role/${PREFIX}-*`,
+          `arn:aws:iam::${AWS_ACCOUNT_ID}:role/cdk-${CDK_ASSETS_BUCKET_PREFIX}-*`
+        ],
+      }),
+      // CloudFormation permissions
+      new iam.PolicyStatement({
+        effect: iam.Effect.ALLOW,
+        actions: [
+          'cloudformation:DeleteStack',
+          'cloudformation:DescribeStacks',
+          'cloudformation:ListStackResources',
+        ],
+        resources: [
+          `arn:aws:cloudformation:ap-northeast-1:${AWS_ACCOUNT_ID}:stack/${CDK_TOOLKIT}/*`,
+          `arn:aws:cloudformation:us-east-1:${AWS_ACCOUNT_ID}:stack/${CDK_TOOLKIT}/*`,
+          `arn:aws:cloudformation:ap-northeast-1:${AWS_ACCOUNT_ID}:stack/${MAIN_STACK}/*`,
+          `arn:aws:cloudformation:us-east-1:${AWS_ACCOUNT_ID}:stack/${MAIN_STACK}/*`,
+          `arn:aws:cloudformation:ap-northeast-1:${AWS_ACCOUNT_ID}:stack/DestroyStack/*`
+        ],
+      }),
+      // Lambda invoke permissions
+      new iam.PolicyStatement({
+        effect: iam.Effect.ALLOW,
+        actions: ['lambda:InvokeFunction'],
+        resources: [
+          `arn:aws:lambda:ap-northeast-1:${AWS_ACCOUNT_ID}:function:${PREFIX}-cleanupResources`,
+          functionArn
+        ],
+      }),
+    ];
+
+    return new iam.Role(this, `${LOGICAL_PREFIX}CustomResourceRole`, {
+      roleName: `${PREFIX}-custom-resource-role`,
+      assumedBy: new iam.ServicePrincipal('lambda.amazonaws.com'),
+      managedPolicies: [
+        iam.ManagedPolicy.fromAwsManagedPolicyName('service-role/AWSLambdaBasicExecutionRole'),
+      ],
+      inlinePolicies: {
+        'ResourceCleanup': new iam.PolicyDocument({
+          statements: policyStatements,
+        }),
+      },
+    });
+  }
+
+  /**
+   * Creates the custom resource for cleanup orchestration
+   */
+  private createResourceCleanupCustomResource(providerRole: iam.Role, preCheckFunction: cdk.aws_lambda.Function): void {
+    new custom.AwsCustomResource(this, 'ResourceCleanup', {
       onCreate: {
         service: 'Lambda',
         action: 'invoke',
@@ -79,12 +274,28 @@ export class DestroyStack extends cdk.Stack {
         },
         physicalResourceId: custom.PhysicalResourceId.of('PreCheckId'),
       },
+      onDelete: {
+        service: 'Lambda',
+        action: 'invoke',
+        parameters: {
+          FunctionName: `${PREFIX}-cleanupResources`,
+          Payload: JSON.stringify({
+            prefix: PREFIX,
+            regions: REGIONS,
+            accountId: this.account,
+          }),
+        },
+      },
       policy: custom.AwsCustomResourcePolicy.fromSdkCalls({
-        resources: [preCheckFunction.functionArn],
+        resources: custom.AwsCustomResourcePolicy.ANY_RESOURCE,
       }),
+      role: providerRole,
     });
   }
 
+  /**
+   * Gets the code for the pre-check Lambda function
+   */
   private getPreCheckFunctionCode(): string {
     return `
 import boto3
@@ -112,7 +323,6 @@ def handler(event, context):
                         })
                         print(f"Found failed stack: {stack_name} in {region} with status {status}")
                         print(f"Stack ID: {stack['StackId']}")
-                        # Force delete the failed stack
                         cf.delete_stack(StackName=stack_name)
                         waiter = cf.get_waiter('stack_delete_complete')
                         waiter.wait(StackName=stack_name)
@@ -129,256 +339,22 @@ def handler(event, context):
             'account_id': account_id
         })
     }
-`
+`;
   }
 
-  private createCustomResourceRole(functionArn: string): iam.Role {
-    const policyStatements = [
-      this.createEC2PolicyStatement(),
-      this.createELBPolicyStatement(),
-      this.createS3PolicyStatement(),
-      this.createCloudFrontPolicyStatement(),
-      this.createWAFPolicyStatement(),
-      this.createIAMPolicyStatement(),
-      this.createCloudFormationPolicyStatement(),
-      new iam.PolicyStatement({
-        effect: iam.Effect.ALLOW,
-        actions: ['lambda:InvokeFunction'],
-        resources: [
-          `arn:aws:lambda:ap-northeast-1:${AWS_ACCOUNT_ID}:function:${PREFIX}-cleanupResources`,
-          functionArn
-        ],
-      }),
-    ];
-
-    return new iam.Role(this, `${LOGICAL_PREFIX}CustomResourceRole`, {
-      roleName: `${PREFIX}-custom-resource-role`,
-      assumedBy: new iam.ServicePrincipal('lambda.amazonaws.com'),
-      managedPolicies: [
-        iam.ManagedPolicy.fromAwsManagedPolicyName('service-role/AWSLambdaBasicExecutionRole'),
-      ],
-      inlinePolicies: {
-        'ResourceCleanup': new iam.PolicyDocument({
-          statements: policyStatements,
-        }),
-      },
-    });
-  }
-
-  private createEC2PolicyStatement(): iam.PolicyStatement {
-    return new iam.PolicyStatement({
-      effect: iam.Effect.ALLOW,
-      actions: [
-        'ec2:DescribeInstances',
-        'ec2:TerminateInstances',
-        'ec2:DeleteSecurityGroup',
-        'ec2:DescribeSecurityGroups',
-        'ec2:DeleteVpc',
-        'ec2:DescribeVpcs',
-        'ec2:DetachInternetGateway',
-        'ec2:DeleteInternetGateway',
-        'ec2:DescribeInternetGateways',
-        'ec2:DeleteSubnet',
-        'ec2:DescribeSubnets',
-        'ec2:DeleteRouteTable',
-        'ec2:DisassociateRouteTable',
-        'ec2:DescribeRouteTables',
-        'ec2:DeleteNetworkInterface',
-        'ec2:DescribeNetworkInterfaces',
-        'ec2:RevokeSecurityGroupIngress',
-        'ec2:RevokeSecurityGroupEgress',
-      ],
-      resources: ['*'],
-    });
-  }
-
-  private createELBPolicyStatement(): iam.PolicyStatement {
-    return new iam.PolicyStatement({
-      effect: iam.Effect.ALLOW,
-      actions: [
-        'elasticloadbalancing:DeleteLoadBalancer',
-        'elasticloadbalancing:DescribeLoadBalancers',
-        'elasticloadbalancing:DeleteTargetGroup',
-        'elasticloadbalancing:DescribeTargetGroups',
-        'elasticloadbalancing:ModifyLoadBalancerAttributes',
-        'elasticloadbalancing:DeleteListener',
-      ],
-      resources: ['*'],
-    });
-  }
-
-  private createS3PolicyStatement(): iam.PolicyStatement {
-    return new iam.PolicyStatement({
-      effect: iam.Effect.ALLOW,
-      actions: [
-        's3:DeleteObject',
-        's3:DeleteObjectVersion',
-        's3:ListBucket',
-        's3:ListBucketVersions',
-        's3:DeleteBucket',
-        's3:GetObject',
-        's3:ListAllMyBuckets',
-      ],
-      resources: ['*'],
-    });
-  }
-
-  private createCloudFrontPolicyStatement(): iam.PolicyStatement {
-    return new iam.PolicyStatement({
-      effect: iam.Effect.ALLOW,
-      actions: [
-        'cloudfront:DeleteDistribution',
-        'cloudfront:GetDistribution',
-        'cloudfront:ListDistributions',
-        'cloudfront:UpdateDistribution',
-        'cloudfront:GetDistributionConfig',
-        'cloudfront:TagResource',
-      ],
-      resources: ['*'],
-    });
-  }
-
-  private createWAFPolicyStatement(): iam.PolicyStatement {
-    return new iam.PolicyStatement({
-      effect: iam.Effect.ALLOW,
-      actions: [
-        'wafv2:DeleteWebACL',
-        'wafv2:GetWebACL',
-        'wafv2:ListWebACLs',
-        'wafv2:UpdateWebACL',
-        'wafv2:ListTagsForResource',
-      ],
-      resources: ['*'],
-    });
-  }
-
-  private createIAMPolicyStatement(): iam.PolicyStatement {
-    return new iam.PolicyStatement({
-      effect: iam.Effect.ALLOW,
-      actions: [
-        'iam:DeleteRole',
-        'iam:DeleteRolePolicy',
-        'iam:ListRolePolicies',
-        'iam:ListAttachedRolePolicies',
-        'iam:DetachRolePolicy',
-        'iam:GetRole',
-      ],
-      resources: [
-        `arn:aws:iam::${AWS_ACCOUNT_ID}:role/${PREFIX}-*`,
-        `arn:aws:iam::${AWS_ACCOUNT_ID}:role/cdk-${CDK_ASSETS_BUCKET_PREFIX}-*`
-      ],
-    });
-  }
-
-  private createCloudFormationPolicyStatement(): iam.PolicyStatement {
-    return new iam.PolicyStatement({
-      effect: iam.Effect.ALLOW,
-      actions: [
-        'cloudformation:DeleteStack',
-        'cloudformation:DescribeStacks',
-        'cloudformation:ListStackResources',
-      ],
-      resources: [
-        `arn:aws:cloudformation:ap-northeast-1:${AWS_ACCOUNT_ID}:stack/${CDK_TOOLKIT}/*`,
-        `arn:aws:cloudformation:us-east-1:${AWS_ACCOUNT_ID}:stack/${CDK_TOOLKIT}/*`,
-        `arn:aws:cloudformation:ap-northeast-1:${AWS_ACCOUNT_ID}:stack/${MAIN_STACK}/*`,
-        `arn:aws:cloudformation:us-east-1:${AWS_ACCOUNT_ID}:stack/${MAIN_STACK}/*`,
-        `arn:aws:cloudformation:ap-northeast-1:${AWS_ACCOUNT_ID}:stack/DestroyStack/*`
-      ],
-    });
-  }
-
-  private createCleanupFunction(): cdk.aws_lambda.Function {
-    return new cdk.aws_lambda.Function(this, `${LOGICAL_PREFIX}CleanupFunction`, {
-      functionName: `${PREFIX}-cleanupResources`,
-      runtime: cdk.aws_lambda.Runtime.PYTHON_3_9,
-      handler: 'index.handler',
-      code: cdk.aws_lambda.Code.fromInline(this.getCleanupFunctionCode()),
-      timeout: cdk.Duration.minutes(15),
-      memorySize: 512,
-    });
-  }
-
-  private addCleanupFunctionPermissions(cleanupFunction: cdk.aws_lambda.Function): void {
-    cleanupFunction.addToRolePolicy(new iam.PolicyStatement({
-      effect: iam.Effect.ALLOW,
-      actions: [
-        'ec2:*',
-        'elasticloadbalancing:*',
-        's3:*',
-        'cloudfront:*',
-        'wafv2:*',
-        'iam:*',
-        'cloudformation:*',
-      ],
-      resources: ['*'],
-    }));
-  }
-
-  private createResourceCleanupCustomResource(providerRole: iam.Role, prefix: string): void {
-    new custom.AwsCustomResource(this, 'ResourceCleanup', {
-      onCreate: {
-        service: 'CloudFormation',
-        action: 'describeStacks',
-        parameters: {
-          StackName: 'DestroyStack',
-        },
-        physicalResourceId: custom.PhysicalResourceId.of('ResourceCleanupId'),
-        ignoreErrorCodesMatching: '.*',
-        outputPaths: ['Stacks.0.StackStatus'],
-      },
-      onUpdate: {
-        service: 'CloudFormation',
-        action: 'describeStacks',
-        parameters: {
-          StackName: 'DestroyStack',
-        },
-        physicalResourceId: custom.PhysicalResourceId.of('ResourceCleanupId'),
-        ignoreErrorCodesMatching: '.*',
-      },
-      onDelete: {
-        service: 'Lambda',
-        action: 'invoke',
-        parameters: {
-          FunctionName: `${PREFIX}-cleanupResources`,
-          Payload: JSON.stringify({
-            prefix: PREFIX,
-            regions: REGIONS,
-            accountId: this.account,
-          }),
-        },
-      },
-      policy: custom.AwsCustomResourcePolicy.fromSdkCalls({
-        resources: custom.AwsCustomResourcePolicy.ANY_RESOURCE,
-      }),
-      role: providerRole,
-    });
-  }
-
+  /**
+   * Gets the code for the cleanup Lambda function
+   */
   private getCleanupFunctionCode(): string {
     return `
 import boto3
 import json
 import time
-import os
 
 def handler(event, context):
     prefix = event['prefix']
     regions = event['regions']
     account_id = event['accountId']
-    
-    # First, ensure DestroyStack is cleaned up if it exists in a failed state
-    cf_tokyo = boto3.client('cloudformation', region_name='ap-northeast-1')
-    try:
-        stacks = cf_tokyo.describe_stacks(StackName='DestroyStack')
-        if stacks['Stacks'][0]['StackStatus'] in ['DELETE_FAILED', 'ROLLBACK_FAILED', 'UPDATE_ROLLBACK_FAILED']:
-            print("Found DestroyStack in failed state, forcing deletion...")
-            cf_tokyo.delete_stack(StackName='DestroyStack')
-            waiter = cf_tokyo.get_waiter('stack_delete_complete')
-            waiter.wait(StackName='DestroyStack')
-    except cf_tokyo.exceptions.ClientError as e:
-        if 'does not exist' not in str(e):
-            print(f"Error checking DestroyStack status: {str(e)}")
     
     for region in regions:
         cleanup_resources_in_region(region, prefix, account_id)
@@ -451,7 +427,7 @@ def cleanup_target_groups(elb, prefix):
 def cleanup_s3_buckets(s3, prefix, account_id, region):
     buckets = s3.list_buckets()
     for bucket in buckets['Buckets']:
-        if prefix in bucket['Name'] or f"{CDK_ASSETS_BUCKET_PREFIX}-{account_id}" in bucket['Name']:
+        if prefix in bucket['Name'] or f"cdk-hnb659fds-assets-{account_id}" in bucket['Name']:
             try:
                 empty_and_delete_bucket(s3, bucket['Name'], region)
             except Exception as e:
@@ -577,7 +553,7 @@ def cleanup_cdk_toolkit_resources(iam, cf, account_id, region):
         print(f"Error deleting CDK Toolkit stack in {region}: {str(e)}")
 
 def delete_cdk_toolkit_role(iam, account_id, region):
-    role_name = f'cdk-{CDK_ASSETS_BUCKET_PREFIX}-cfn-exec-role-{account_id}-{region}'
+    role_name = f'cdk-hnb659fds-cfn-exec-role-{account_id}-{region}'
     role = iam.get_role(RoleName=role_name)
     
     detach_role_policies(iam, role_name)
@@ -601,9 +577,9 @@ def delete_role_inline_policies(iam, role_name):
         )
 
 def delete_cdk_toolkit_stack(cf):
-    cf.delete_stack(StackName=CDK_TOOLKIT)
+    cf.delete_stack(StackName='CDKToolkit')
     waiter = cf.get_waiter('stack_delete_complete')
-    waiter.wait(StackName=CDK_TOOLKIT)
-`
+    waiter.wait(StackName='CDKToolkit')
+`;
   }
 }
