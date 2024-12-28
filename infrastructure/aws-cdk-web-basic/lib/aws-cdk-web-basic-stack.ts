@@ -104,13 +104,13 @@ export class AwsCdkWebBasicStack extends cdk.Stack {
   }
 
   private createVpc(): ec2.Vpc {
-    const vpc = new ec2.Vpc(this, 'AppVpc', {
+    const vpc = new ec2.Vpc(this, CONFIG.naming.vpc, {
       vpcName: CONFIG.naming.vpc,
       ipAddresses: ec2.IpAddresses.cidr(CONFIG.vpc.cidr),
       maxAzs: CONFIG.vpc.maxAzs,
       natGateways: 0,
       subnetConfiguration: [{
-        name: `${CONFIG.prefix}-public-subnet`,
+        name: 'Public',
         subnetType: ec2.SubnetType.PUBLIC,
         mapPublicIpOnLaunch: true,
         cidrMask: CONFIG.vpc.subnetMask
@@ -135,9 +135,9 @@ export class AwsCdkWebBasicStack extends cdk.Stack {
   }
 
   private createSecurityGroups() {
-    const albSg = new ec2.SecurityGroup(this, 'AlbSecurityGroup', {
+    const albSg = new ec2.SecurityGroup(this, 'CdkExpress01AlbSg', {
       vpc: this.vpc,
-      securityGroupName: `${CONFIG.prefix}-alb-sg`,
+      securityGroupName: 'CdkExpress01AlbSg',
       description: 'Security group for ALB',
       allowAllOutbound: true,
     });
@@ -148,9 +148,9 @@ export class AwsCdkWebBasicStack extends cdk.Stack {
       'Allow HTTP'
     );
 
-    const appSg = new ec2.SecurityGroup(this, 'AppSecurityGroup', {
+    const appSg = new ec2.SecurityGroup(this, 'CdkExpress01AppSg', {
       vpc: this.vpc,
-      securityGroupName: `${CONFIG.prefix}-app-sg`,
+      securityGroupName: 'CdkExpress01AppSg',
       description: 'Security group for App',
       allowAllOutbound: true,
     });
@@ -216,7 +216,7 @@ export class AwsCdkWebBasicStack extends cdk.Stack {
       port: CONFIG.app.port,
       protocol: elbv2.ApplicationProtocol.HTTP,
       targetType: elbv2.TargetType.INSTANCE,
-      targetGroupName: `${CONFIG.prefix}-tg`,
+      targetGroupName: 'CdkExpress01Tg',
       healthCheck: {
         path: CONFIG.app.healthCheckPath,
         port: 'traffic-port',
@@ -282,7 +282,7 @@ export class AwsCdkWebBasicStack extends cdk.Stack {
   private createOriginAccessControl(): cloudfront.CfnOriginAccessControl {
     return new cloudfront.CfnOriginAccessControl(this, 'CloudFrontOAC', {
       originAccessControlConfig: {
-        name: `${CONFIG.prefix}-oac`,
+        name: 'CdkExpress01Oac',
         originAccessControlOriginType: 's3',
         signingBehavior: 'always',
         signingProtocol: 'sigv4'
@@ -292,7 +292,7 @@ export class AwsCdkWebBasicStack extends cdk.Stack {
 
   private createDistribution(webAcl: wafv2.CfnWebACL, oac: cloudfront.CfnOriginAccessControl): cloudfront.Distribution {
     const cachePolicy = new cloudfront.CachePolicy(this, 'CachingOptimized', {
-      cachePolicyName: `${CONFIG.prefix}-cache-policy`,
+      cachePolicyName: 'CdkExpress01CachePolicy',
       comment: 'Caching optimized for S3 static content',
       defaultTtl: CONFIG.cloudfront.cacheDuration.default,
       maxTtl: CONFIG.cloudfront.cacheDuration.max,
@@ -304,7 +304,7 @@ export class AwsCdkWebBasicStack extends cdk.Stack {
       queryStringBehavior: cloudfront.CacheQueryStringBehavior.none(),
     });
 
-    const distribution = new cloudfront.Distribution(this, 'StaticContentDistribution', {
+    const distribution = new cloudfront.Distribution(this, CONFIG.naming.cloudfront, {
       defaultBehavior: {
         origin: new origins.S3Origin(this.bucket),
         viewerProtocolPolicy: cloudfront.ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
