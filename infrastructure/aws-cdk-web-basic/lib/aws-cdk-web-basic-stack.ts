@@ -377,7 +377,7 @@ export class AwsCdkWebBasicStack extends cdk.Stack {
     });
 
     new cdk.CfnOutput(this, 'AlbEndpoint', {
-      value: this.alb.loadBalancerDnsName,
+      value: `http://${this.alb.loadBalancerDnsName}`,
       description: 'Application Load Balancer Endpoint',
       exportName: `${CONFIG.prefix}-alb-endpoint`,
     });
