@@ -8,6 +8,9 @@ import * as cloudfront from 'aws-cdk-lib/aws-cloudfront';
 import * as origins from 'aws-cdk-lib/aws-cloudfront-origins';
 import * as wafv2 from 'aws-cdk-lib/aws-wafv2';
 import * as iam from 'aws-cdk-lib/aws-iam';
+import * as lambda from 'aws-cdk-lib/aws-lambda';
+import * as sns from 'aws-cdk-lib/aws-sns';
+import * as subscriptions from 'aws-cdk-lib/aws-sns-subscriptions';
 
 interface ResourceNaming {
   vpc: string;
@@ -62,9 +65,14 @@ const CONFIG = {
       min: cdk.Duration.hours(1),
     }
   },
+  slack: {
+    webhookUrl: 'tk-qu31607',
+    channelId: 'C086SMP8YSY',
+  },
 } as const;
 
 export class AwsCdkWebBasicStack extends cdk.Stack {
+  public readonly notificationTopicArn: string;
   private readonly app: cdk.App;
   private readonly vpc: ec2.Vpc;
   private readonly albSg: ec2.SecurityGroup;
@@ -73,6 +81,7 @@ export class AwsCdkWebBasicStack extends cdk.Stack {
   private readonly alb: elbv2.ApplicationLoadBalancer;
   private readonly bucket: s3.Bucket;
   private readonly distribution: cloudfront.Distribution;
+  private readonly notificationTopic: sns.Topic;
 
   constructor(scope: Construct, id: string, props?: cdk.StackProps) {
     super(scope, id, {
@@ -98,6 +107,10 @@ export class AwsCdkWebBasicStack extends cdk.Stack {
     this.bucket = this.createS3Bucket();
     const webAcl = this.createWebAcl();
     this.distribution = this.createCloudFrontDistribution(webAcl);
+
+    // Notification Components
+    this.notificationTopic = this.createNotificationTopic();
+    this.notificationTopicArn = this.notificationTopic.topicArn;
 
     this.addOutputs();
   }
@@ -348,6 +361,13 @@ export class AwsCdkWebBasicStack extends cdk.Stack {
     cfnDistribution.addPropertyOverride('DistributionConfig.Origins.0.OriginAccessControlId', oac.ref);
   }
 
+  private createNotificationTopic(): sns.Topic {
+    return new sns.Topic(this, 'NotificationTopic', {
+      topicName: `${CONFIG.prefix}-notification-topic`,
+      displayName: 'Deployment Notification Topic',
+    });
+  }
+
   private addOutputs(): void {
     // Resource IDs
     new cdk.CfnOutput(this, 'VpcId', {
@@ -426,6 +446,35 @@ export class AwsCdkWebBasicStack extends cdk.Stack {
       value: `STORAGE_CDN_DISTRIBUTION_ID=${this.distribution.distributionId}`,
       description: 'Environment variable for CloudFront Distribution ID',
       exportName: `${CONFIG.prefix}-env-cdn-distribution-id`,
+    });
+
+    // Send notification after all resources are created
+    new cdk.CfnOutput(this, 'DeploymentNotification', {
+      value: JSON.stringify({
+        stackName: this.stackName,
+        region: this.region,
+        albEndpoint: this.alb.loadBalancerDnsName,
+        cloudFrontEndpoint: this.distribution.distributionDomainName,
+        ec2PublicIp: this.instance.instancePublicIp,
+      }),
+      description: 'Deployment notification data',
+    }).node.addDependency(this.notificationTopic);
+
+    // Publish to SNS topic
+    this.notificationTopic.addToResourcePolicy(
+      new iam.PolicyStatement({
+        effect: iam.Effect.ALLOW,
+        principals: [new iam.ServicePrincipal('cloudformation.amazonaws.com')],
+        actions: ['sns:Publish'],
+        resources: [this.notificationTopic.topicArn],
+      })
+    );
+
+    // Output SNS Topic ARN
+    new cdk.CfnOutput(this, 'NotificationTopicArn', {
+      value: this.notificationTopic.topicArn,
+      description: 'SNS Topic ARN for notifications',
+      exportName: `${CONFIG.prefix}-notification-topic-arn`,
     });
   }
 }
