@@ -83,3 +83,17 @@ destroy:
 	$(call send_notification)
 	@printf "\033[32m=== Destroy process completed ===\033[0m\n"
 	@printf "\033[32m=============================================\033[0m\n"
+
+# ===========================================
+# Success Marking
+# ===========================================
+SUCCESS_DATE := $(shell date +%Y%m%d)
+SUCCESS_TAG := success-$(SUCCESS_DATE)
+SUCCESS_MESSAGE := "Successful on $(shell date '+%b %d, %Y')"
+
+mark-success:
+	@printf "\033[32m=== Marking successful configuration ===\033[0m\n"
+	@git tag -a "$(SUCCESS_TAG)" -m $(SUCCESS_MESSAGE)
+	@git push origin $(SUCCESS_TAG)
+	@printf "\033[32m=== Success marker added ===\033[0m\n"
+	@printf "\033[32m=============================================\033[0m\n"
