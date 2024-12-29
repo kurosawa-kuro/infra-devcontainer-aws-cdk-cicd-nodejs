@@ -1,23 +1,51 @@
 // notify.js
 
-const axios = require('axios');
+const https = require('https');
 
-const WEBHOOK_URL = 'https://hooks.slack.com/services/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';
+exports.handler = async (event) => {
+  const SLACK_WEBHOOK_URL = process.env.SLACK_WEBHOOK_URL;
+  const stackName = process.env.STACK_NAME;
 
-async function sendSlackNotification() {
-  try {
-    const response = await axios.post(WEBHOOK_URL, {
-      text: 'テスト通知です！',
+  if (!SLACK_WEBHOOK_URL) {
+    throw new Error('SLACK_WEBHOOK_URL environment variable is not set');
+  }
+
+  const message = {
+    text: `🎉 Stack deployment successful!\nStack: ${stackName}\nTimestamp: ${new Date().toISOString()}`,
+  };
+
+  const options = {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+  };
+
+  return new Promise((resolve, reject) => {
+    const req = https.request(SLACK_WEBHOOK_URL, options, (res) => {
+      let data = '';
+      
+      res.on('data', (chunk) => {
+        data += chunk;
+      });
+      
+      res.on('end', () => {
+        if (res.statusCode === 200) {
+          resolve({
+            statusCode: 200,
+            body: 'Message sent to Slack successfully',
+          });
+        } else {
+          reject(new Error(`Failed to send message to Slack: ${res.statusCode} ${data}`));
+        }
+      });
     });
 
-    if (response.status === 200) {
-      console.log('通知送信成功');
-    } else {
-      console.error('通知送信失敗:', response.statusText);
-    }
-  } catch (error) {
-    console.error('エラー発生:', error);
-  }
-}
+    req.on('error', (error) => {
+      reject(error);
+    });
 
-sendSlackNotification();
+    req.write(JSON.stringify(message));
+    req.end();
+  });
+};
