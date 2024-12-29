@@ -1,85 +1,98 @@
+/**
+ * AWS CDK Stack for deploying a containerized web application using Fargate
+ * This stack creates the following resources:
+ * - VPC with public subnets
+ * - ECS Fargate cluster and service
+ * - Application Load Balancer
+ * - ECR repository
+ * - S3 bucket for static content
+ * - CloudFront distribution
+ * - WAF for CloudFront
+ */
+
 import * as cdk from 'aws-cdk-lib';
 import { Construct } from 'constructs';
 import * as ec2 from 'aws-cdk-lib/aws-ec2';
 import * as ecs from 'aws-cdk-lib/aws-ecs';
 import * as ecr from 'aws-cdk-lib/aws-ecr';
 import * as elbv2 from 'aws-cdk-lib/aws-elasticloadbalancingv2';
-import * as targets from 'aws-cdk-lib/aws-elasticloadbalancingv2-targets';
 import * as s3 from 'aws-cdk-lib/aws-s3';
 import * as cloudfront from 'aws-cdk-lib/aws-cloudfront';
 import * as origins from 'aws-cdk-lib/aws-cloudfront-origins';
 import * as wafv2 from 'aws-cdk-lib/aws-wafv2';
 import * as iam from 'aws-cdk-lib/aws-iam';
 import * as logs from 'aws-cdk-lib/aws-logs';
-import * as rds from 'aws-cdk-lib/aws-rds';
 
-// Configuration types
-interface StackConfig {
-  prefix: string;
-  region: string;
-  accountId: string;
-  resourceNames: ResourceNames;
-  vpc: VpcConfig;
-  app: AppConfig;
-  healthCheck: HealthCheckConfig;
-  cloudfront: CloudFrontConfig;
-  ecs: EcsConfig;
+// #region Configuration Types
+namespace Config {
+  export interface Stack {
+    prefix: string;
+    region: string;
+    accountId: string;
+    resourceNames: ResourceNames;
+    vpc: VpcConfig;
+    app: AppConfig;
+    healthCheck: HealthCheckConfig;
+    cloudfront: CloudFrontConfig;
+    ecs: EcsConfig;
+  }
+
+  export interface ResourceNames {
+    vpc: string;
+    igw: string;
+    getSubnetId: (index: number) => string;
+    getRouteTableId: (index: number) => string;
+    ecr: string;
+    ecsCluster: string;
+    ecsService: string;
+    ecsTaskDefinition: string;
+    alb: string;
+    s3: string;
+    cloudfront: string;
+  }
+
+  export interface VpcConfig {
+    cidr: string;
+    maxAzs: number;
+    subnetMask: number;
+  }
+
+  export interface AppConfig {
+    port: number;
+    healthCheckPath: string;
+    containerName: string;
+    imageTag: string;
+    envVariables: { [key: string]: string };
+  }
+
+  export interface EcsConfig {
+    taskCount: number;
+    cpu: number;
+    memory: number;
+    logRetentionDays: number;
+  }
+
+  export interface HealthCheckConfig {
+    healthyThreshold: number;
+    unhealthyThreshold: number;
+    timeout: number;
+    interval: number;
+  }
+
+  export interface CloudFrontConfig {
+    comment: string;
+    cacheDuration: {
+      default: cdk.Duration;
+      max: cdk.Duration;
+      min: cdk.Duration;
+    };
+  }
 }
+// #endregion
 
-interface ResourceNames {
-  vpc: string;
-  igw: string;
-  getSubnetId: (index: number) => string;
-  getRouteTableId: (index: number) => string;
-  ecr: string;
-  ecsCluster: string;
-  ecsService: string;
-  ecsTaskDefinition: string;
-  alb: string;
-  s3: string;
-  cloudfront: string;
-}
-
-interface VpcConfig {
-  cidr: string;
-  maxAzs: number;
-  subnetMask: number;
-}
-
-interface AppConfig {
-  port: number;
-  healthCheckPath: string;
-  containerName: string;
-  imageTag: string;
-  envVariables: { [key: string]: string };
-}
-
-interface EcsConfig {
-  taskCount: number;
-  cpu: number;
-  memory: number;
-  logRetentionDays: number;
-}
-
-interface HealthCheckConfig {
-  healthyThreshold: number;
-  unhealthyThreshold: number;
-  timeout: number;
-  interval: number;
-}
-
-interface CloudFrontConfig {
-  comment: string;
-  cacheDuration: {
-    default: cdk.Duration;
-    max: cdk.Duration;
-    min: cdk.Duration;
-  };
-}
-
-// Stack configuration
-const LOGICAL_PREFIX = 'aws-fargate-express-02';
-const CONFIG: StackConfig = {
+// #region Stack Configuration
+const LOGICAL_PREFIX = 'FargateExpress01';
+const CONFIG: Config.Stack = {
   prefix: LOGICAL_PREFIX.toLowerCase(),
   region: 'ap-northeast-1',
   accountId: '476114153361',
@@ -97,7 +110,7 @@ const CONFIG: StackConfig = {
     cloudfront: `${LOGICAL_PREFIX}-cf`,
   },
   vpc: {
-    cidr: '10.1.0.0/16',
+    cidr: '10.4.0.0/16',
     maxAzs: 2,
     subnetMask: 24,
   },
@@ -107,8 +120,7 @@ const CONFIG: StackConfig = {
     containerName: 'fargate-express-02',
     imageTag: 'latest',
     envVariables: {
-      APP_ENV: 'production',
-      DATABASE_URL: 'postgresql://neondb_owslmode=require'
+      APP_ENV: 'production'
     }
   },
   ecs: {
@@ -132,23 +144,28 @@ const CONFIG: StackConfig = {
     }
   },
 };
+// #endregion
+
+// #region Stack Resources Interface
+interface StackResources {
+  vpc: ec2.Vpc;
+  securityGroups: {
+    alb: ec2.SecurityGroup;
+    app: ec2.SecurityGroup;
+  };
+  ecr: ecr.Repository;
+  cluster: ecs.Cluster;
+  taskDefinition: ecs.FargateTaskDefinition;
+  service: ecs.FargateService;
+  alb: elbv2.ApplicationLoadBalancer;
+  bucket: s3.Bucket;
+  distribution: cloudfront.Distribution;
+}
+// #endregion
 
 export class AwsCdkWebFargateStack extends cdk.Stack {
   private readonly app: cdk.App;
-  private readonly resources: {
-    vpc: ec2.Vpc;
-    securityGroups: {
-      alb: ec2.SecurityGroup;
-      app: ec2.SecurityGroup;
-    };
-    ecr: ecr.Repository;
-    cluster: ecs.Cluster;
-    taskDefinition: ecs.FargateTaskDefinition;
-    service: ecs.FargateService;
-    alb: elbv2.ApplicationLoadBalancer;
-    bucket: s3.Bucket;
-    distribution: cloudfront.Distribution;
-  };
+  private readonly resources: StackResources;
 
   constructor(scope: Construct, id: string, props?: cdk.StackProps) {
     super(scope, id, {
@@ -158,17 +175,18 @@ export class AwsCdkWebFargateStack extends cdk.Stack {
     });
 
     this.app = scope as cdk.App;
-    this.resources = this.createResources();
-    this.addOutputs();
+    this.resources = this.createInfrastructure();
+    this.addStackOutputs();
   }
 
-  private createResources() {
+  // #region Infrastructure Creation
+  private createInfrastructure(): StackResources {
     // Network Infrastructure
-    const vpc = this.createVpc();
+    const vpc = this.createVpcInfrastructure();
     const securityGroups = this.createSecurityGroups(vpc);
 
-    // Container Registry and Cluster
-    const repository = this.createEcrRepository();
+    // Container Infrastructure
+    const repository = this.createContainerRegistry();
     const cluster = this.createEcsCluster(vpc);
     const taskDefinition = this.createTaskDefinition();
     
@@ -178,10 +196,10 @@ export class AwsCdkWebFargateStack extends cdk.Stack {
     // ECS Service
     const service = this.createEcsService(cluster, taskDefinition, vpc, securityGroups.app, alb);
 
-    // Storage and CDN
-    const bucket = this.createS3Bucket();
+    // Content Delivery Infrastructure
+    const bucket = this.createStorageBucket();
     const webAcl = this.createWebAcl();
-    const distribution = this.createCloudFrontDistribution(bucket, webAcl);
+    const distribution = this.createContentDeliveryNetwork(bucket, webAcl);
 
     return {
       vpc,
@@ -195,8 +213,10 @@ export class AwsCdkWebFargateStack extends cdk.Stack {
       distribution,
     };
   }
+  // #endregion
 
-  private createVpc(): ec2.Vpc {
+  // #region Network Infrastructure
+  private createVpcInfrastructure(): ec2.Vpc {
     const vpc = new ec2.Vpc(this, CONFIG.resourceNames.vpc, {
       vpcName: CONFIG.resourceNames.vpc,
       ipAddresses: ec2.IpAddresses.cidr(CONFIG.vpc.cidr),
@@ -216,15 +236,12 @@ export class AwsCdkWebFargateStack extends cdk.Stack {
   }
 
   private configureVpcComponents(vpc: ec2.Vpc): void {
-    // Set VPC logical ID
     const cfnVpc = vpc.node.defaultChild as ec2.CfnVPC;
     cfnVpc?.overrideLogicalId(CONFIG.resourceNames.vpc);
 
-    // Create and attach IGW
     const igw = this.createInternetGateway();
     const vpcGatewayAttachment = this.attachInternetGateway(vpc, igw);
 
-    // Configure subnets and routing
     vpc.publicSubnets.forEach((subnet, index) => {
       this.configurePublicSubnet(subnet, index, igw, vpcGatewayAttachment);
     });
@@ -318,8 +335,10 @@ export class AwsCdkWebFargateStack extends cdk.Stack {
 
     return { alb: albSg, app: appSg };
   }
+  // #endregion
 
-  private createEcrRepository(): ecr.Repository {
+  // #region Container Infrastructure
+  private createContainerRegistry(): ecr.Repository {
     return new ecr.Repository(this, 'AppRepository', {
       repositoryName: CONFIG.resourceNames.ecr,
       removalPolicy: cdk.RemovalPolicy.DESTROY,
@@ -371,7 +390,22 @@ export class AwsCdkWebFargateStack extends cdk.Stack {
     securityGroup: ec2.SecurityGroup,
     alb: elbv2.ApplicationLoadBalancer
   ): ecs.FargateService {
-    const targetGroup = new elbv2.ApplicationTargetGroup(this, 'AppTargetGroup', {
+    const targetGroup = this.createTargetGroup(vpc);
+    this.configureAlbListener(alb, targetGroup);
+
+    return new ecs.FargateService(this, 'AppService', {
+      cluster,
+      serviceName: CONFIG.resourceNames.ecsService,
+      taskDefinition,
+      desiredCount: CONFIG.ecs.taskCount,
+      securityGroups: [securityGroup],
+      assignPublicIp: true,
+      vpcSubnets: { subnetType: ec2.SubnetType.PUBLIC },
+    });
+  }
+
+  private createTargetGroup(vpc: ec2.Vpc): elbv2.ApplicationTargetGroup {
+    return new elbv2.ApplicationTargetGroup(this, 'AppTargetGroup', {
       vpc,
       port: CONFIG.app.port,
       protocol: elbv2.ApplicationProtocol.HTTP,
@@ -386,24 +420,21 @@ export class AwsCdkWebFargateStack extends cdk.Stack {
         interval: cdk.Duration.seconds(CONFIG.healthCheck.interval),
       }
     });
+  }
 
+  private configureAlbListener(
+    alb: elbv2.ApplicationLoadBalancer,
+    targetGroup: elbv2.ApplicationTargetGroup
+  ): void {
     alb.addListener('HttpListener', {
       port: 80,
       defaultTargetGroups: [targetGroup],
     });
-
-    return new ecs.FargateService(this, 'AppService', {
-      cluster,
-      serviceName: CONFIG.resourceNames.ecsService,
-      taskDefinition,
-      desiredCount: CONFIG.ecs.taskCount,
-      securityGroups: [securityGroup],
-      assignPublicIp: true,
-      vpcSubnets: { subnetType: ec2.SubnetType.PUBLIC },
-    });
   }
+  // #endregion
 
-  private createS3Bucket(): s3.Bucket {
+  // #region Content Delivery Infrastructure
+  private createStorageBucket(): s3.Bucket {
     return new s3.Bucket(this, 'StaticContentBucket', {
       bucketName: `${CONFIG.prefix}-s3`,
       autoDeleteObjects: true,
@@ -443,19 +474,11 @@ export class AwsCdkWebFargateStack extends cdk.Stack {
     });
   }
 
-  private createCloudFrontDistribution(
+  private createContentDeliveryNetwork(
     bucket: s3.Bucket,
     webAcl: wafv2.CfnWebACL
   ): cloudfront.Distribution {
-    const oac = new cloudfront.CfnOriginAccessControl(this, 'CloudFrontOAC', {
-      originAccessControlConfig: {
-        name: `${CONFIG.prefix}-oac`,
-        originAccessControlOriginType: 's3',
-        signingBehavior: 'always',
-        signingProtocol: 'sigv4'
-      }
-    });
-
+    const oac = this.createOriginAccessControl();
     const cachePolicy = this.createCachePolicy();
     const distribution = this.createDistribution(bucket, webAcl, cachePolicy);
     
@@ -463,6 +486,17 @@ export class AwsCdkWebFargateStack extends cdk.Stack {
     this.configureOriginAccess(distribution, oac);
     
     return distribution;
+  }
+
+  private createOriginAccessControl(): cloudfront.CfnOriginAccessControl {
+    return new cloudfront.CfnOriginAccessControl(this, 'CloudFrontOAC', {
+      originAccessControlConfig: {
+        name: `${CONFIG.prefix}-oac`,
+        originAccessControlOriginType: 's3',
+        signingBehavior: 'always',
+        signingProtocol: 'sigv4'
+      }
+    });
   }
 
   private createCachePolicy(): cloudfront.CachePolicy {
@@ -532,8 +566,10 @@ export class AwsCdkWebFargateStack extends cdk.Stack {
     cfnDistribution.addPropertyOverride('DistributionConfig.Origins.0.S3OriginConfig.OriginAccessIdentity', '');
     cfnDistribution.addPropertyOverride('DistributionConfig.Origins.0.OriginAccessControlId', oac.ref);
   }
+  // #endregion
 
-  private addOutputs(): void {
+  // #region Stack Outputs
+  private addStackOutputs(): void {
     this.addResourceIdOutputs();
     this.addEndpointOutputs();
     this.addResourceNameOutputs();
@@ -622,6 +658,7 @@ export class AwsCdkWebFargateStack extends cdk.Stack {
       exportName: `${CONFIG.prefix}-env-cdn-distribution-id`,
     });
   }
+  // #endregion
 
   private createLoadBalancer(vpc: ec2.Vpc, securityGroup: ec2.SecurityGroup): elbv2.ApplicationLoadBalancer {
     return new elbv2.ApplicationLoadBalancer(this, 'AppLoadBalancer', {
