@@ -8,6 +8,7 @@ import * as cloudfront from 'aws-cdk-lib/aws-cloudfront';
 import * as origins from 'aws-cdk-lib/aws-cloudfront-origins';
 import * as wafv2 from 'aws-cdk-lib/aws-wafv2';
 import * as iam from 'aws-cdk-lib/aws-iam';
+import { Fn } from 'aws-cdk-lib';
 
 interface ResourceNaming {
   vpc: string;
@@ -20,7 +21,7 @@ interface ResourceNaming {
   cloudfront: string;
 }
 
-const LOGICAL_PREFIX = 'CdkExpress02';
+const LOGICAL_PREFIX = 'CdkExpress04';
 
 const CONFIG = {
   prefix: LOGICAL_PREFIX.toLowerCase(),
@@ -36,7 +37,7 @@ const CONFIG = {
     cloudfront: `${LOGICAL_PREFIX}Cf`
   } as ResourceNaming,
   vpc: {
-    cidr: '10.0.0.0/16',
+    cidr: '10.1.0.0/16',
     maxAzs: 2,
     subnetMask: 24,
   },
@@ -103,34 +104,60 @@ export class AwsCdkWebBasicStack extends cdk.Stack {
   }
 
   private createVpc(): ec2.Vpc {
-    const vpc = new ec2.Vpc(this, 'AppVpc', {
+    const vpc = new ec2.Vpc(this, CONFIG.naming.vpc, {
       vpcName: CONFIG.naming.vpc,
       ipAddresses: ec2.IpAddresses.cidr(CONFIG.vpc.cidr),
       maxAzs: CONFIG.vpc.maxAzs,
       natGateways: 0,
       subnetConfiguration: [{
-        name: `${CONFIG.prefix}-public-subnet`,
+        name: 'Public',
         subnetType: ec2.SubnetType.PUBLIC,
         mapPublicIpOnLaunch: true,
         cidrMask: CONFIG.vpc.subnetMask
       }],
+      createInternetGateway: false
     });
 
-    this.configureVpcResources(vpc);
-    return vpc;
-  }
+    // Set VPC logical ID
+    const cfnVpc = vpc.node.defaultChild as ec2.CfnVPC;
+    if (cfnVpc) {
+      cfnVpc.overrideLogicalId(CONFIG.naming.vpc);
+    }
 
-  private configureVpcResources(vpc: ec2.Vpc): void {
-    const igw = vpc.node.findChild('IGW') as ec2.CfnInternetGateway;
+    // Create IGW explicitly
+    const igw = new ec2.CfnInternetGateway(this, 'IGW', {
+      tags: [{
+        key: 'Name',
+        value: CONFIG.naming.igw
+      }]
+    });
     igw.overrideLogicalId(CONFIG.naming.igw);
 
+    // Attach IGW to VPC with explicit logical ID
+    const vpcGatewayAttachment = new ec2.CfnVPCGatewayAttachment(this, 'VPCGW', {
+      vpcId: vpc.vpcId,
+      internetGatewayId: igw.ref
+    });
+    vpcGatewayAttachment.overrideLogicalId(`${CONFIG.naming.vpc}GatewayAttachment`);
+
+    // Add routes to the IGW for each public subnet
     vpc.publicSubnets.forEach((subnet, index) => {
       const cfnSubnet = subnet.node.defaultChild as ec2.CfnSubnet;
       cfnSubnet.overrideLogicalId(CONFIG.naming.getSubnetId(index));
       
       const routeTable = subnet.node.findChild('RouteTable') as ec2.CfnRouteTable;
       routeTable.overrideLogicalId(CONFIG.naming.getRouteTableId(index));
+
+      const publicRoute = new ec2.CfnRoute(this, `PublicRoute${index}`, {
+        routeTableId: routeTable.ref,
+        destinationCidrBlock: '0.0.0.0/0',
+        gatewayId: igw.ref,
+      });
+      publicRoute.overrideLogicalId(`${CONFIG.naming.vpc}PublicRoute${index === 0 ? '1a' : '1c'}`);
+      publicRoute.addDependency(vpcGatewayAttachment);
     });
+
+    return vpc;
   }
 
   private createSecurityGroups() {
