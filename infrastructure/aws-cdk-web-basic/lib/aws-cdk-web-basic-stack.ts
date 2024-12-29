@@ -8,9 +8,19 @@ import * as cloudfront from 'aws-cdk-lib/aws-cloudfront';
 import * as origins from 'aws-cdk-lib/aws-cloudfront-origins';
 import * as wafv2 from 'aws-cdk-lib/aws-wafv2';
 import * as iam from 'aws-cdk-lib/aws-iam';
-import { Fn } from 'aws-cdk-lib';
 
-interface ResourceNaming {
+// Configuration types
+interface StackConfig {
+  prefix: string;
+  region: string;
+  resourceNames: ResourceNames;
+  vpc: VpcConfig;
+  app: AppConfig;
+  healthCheck: HealthCheckConfig;
+  cloudfront: CloudFrontConfig;
+}
+
+interface ResourceNames {
   vpc: string;
   igw: string;
   getSubnetId: (index: number) => string;
@@ -21,12 +31,43 @@ interface ResourceNaming {
   cloudfront: string;
 }
 
-const LOGICAL_PREFIX = 'CdkExpress04';
+interface VpcConfig {
+  cidr: string;
+  maxAzs: number;
+  subnetMask: number;
+}
 
-const CONFIG = {
+interface AppConfig {
+  port: number;
+  healthCheckPath: string;
+  ami: string;
+  instanceType: ec2.InstanceType;
+  keyName: string;
+  volumeSize: number;
+}
+
+interface HealthCheckConfig {
+  healthyThreshold: number;
+  unhealthyThreshold: number;
+  timeout: number;
+  interval: number;
+}
+
+interface CloudFrontConfig {
+  comment: string;
+  cacheDuration: {
+    default: cdk.Duration;
+    max: cdk.Duration;
+    min: cdk.Duration;
+  };
+}
+
+// Stack configuration
+const LOGICAL_PREFIX = 'CdkExpress04';
+const CONFIG: StackConfig = {
   prefix: LOGICAL_PREFIX.toLowerCase(),
   region: 'ap-northeast-1',
-  naming: {
+  resourceNames: {
     vpc: `${LOGICAL_PREFIX}Vpc`,
     igw: `${LOGICAL_PREFIX}Igw`,
     getSubnetId: (index: number) => `${LOGICAL_PREFIX}PublicSubnet${index === 0 ? '1a' : '1c'}`,
@@ -35,7 +76,7 @@ const CONFIG = {
     alb: `${LOGICAL_PREFIX}Alb`,
     s3: `${LOGICAL_PREFIX}S3`,
     cloudfront: `${LOGICAL_PREFIX}Cf`
-  } as ResourceNaming,
+  },
   vpc: {
     cidr: '10.1.0.0/16',
     maxAzs: 2,
@@ -63,17 +104,21 @@ const CONFIG = {
       min: cdk.Duration.hours(1),
     }
   },
-} as const;
+};
 
 export class AwsCdkWebBasicStack extends cdk.Stack {
   private readonly app: cdk.App;
-  private readonly vpc: ec2.Vpc;
-  private readonly albSg: ec2.SecurityGroup;
-  private readonly appSg: ec2.SecurityGroup;
-  private readonly instance: ec2.Instance;
-  private readonly alb: elbv2.ApplicationLoadBalancer;
-  private readonly bucket: s3.Bucket;
-  private readonly distribution: cloudfront.Distribution;
+  private readonly resources: {
+    vpc: ec2.Vpc;
+    securityGroups: {
+      alb: ec2.SecurityGroup;
+      app: ec2.SecurityGroup;
+    };
+    instance: ec2.Instance;
+    alb: elbv2.ApplicationLoadBalancer;
+    bucket: s3.Bucket;
+    distribution: cloudfront.Distribution;
+  };
 
   constructor(scope: Construct, id: string, props?: cdk.StackProps) {
     super(scope, id, {
@@ -83,34 +128,43 @@ export class AwsCdkWebBasicStack extends cdk.Stack {
     });
 
     this.app = scope as cdk.App;
-
-    // Infrastructure Creation
-    this.vpc = this.createVpc();
-    const securityGroups = this.createSecurityGroups();
-    this.albSg = securityGroups.albSg;
-    this.appSg = securityGroups.appSg;
-
-    // Application Components
-    this.instance = this.createEc2Instance();
-    this.alb = this.createLoadBalancer();
-    this.configureLoadBalancer();
-
-    // Storage and CDN
-    this.bucket = this.createS3Bucket();
-    const webAcl = this.createWebAcl();
-    this.distribution = this.createCloudFrontDistribution(webAcl);
-
+    this.resources = this.createResources();
     this.addOutputs();
   }
 
+  private createResources() {
+    // Network Infrastructure
+    const vpc = this.createVpc();
+    const securityGroups = this.createSecurityGroups(vpc);
+
+    // Compute Resources
+    const instance = this.createEc2Instance(vpc, securityGroups.app);
+    const alb = this.createLoadBalancer(vpc, securityGroups.alb);
+    this.configureLoadBalancer(alb, vpc, instance);
+
+    // Storage and CDN
+    const bucket = this.createS3Bucket();
+    const webAcl = this.createWebAcl();
+    const distribution = this.createCloudFrontDistribution(bucket, webAcl);
+
+    return {
+      vpc,
+      securityGroups,
+      instance,
+      alb,
+      bucket,
+      distribution,
+    };
+  }
+
   private createVpc(): ec2.Vpc {
-    const vpc = new ec2.Vpc(this, CONFIG.naming.vpc, {
-      vpcName: CONFIG.naming.vpc,
+    const vpc = new ec2.Vpc(this, CONFIG.resourceNames.vpc, {
+      vpcName: CONFIG.resourceNames.vpc,
       ipAddresses: ec2.IpAddresses.cidr(CONFIG.vpc.cidr),
       maxAzs: CONFIG.vpc.maxAzs,
       natGateways: 0,
       subnetConfiguration: [{
-        name: `${CONFIG.naming.vpc}Public`,
+        name: `${CONFIG.resourceNames.vpc}Public`,
         subnetType: ec2.SubnetType.PUBLIC,
         mapPublicIpOnLaunch: true,
         cidrMask: CONFIG.vpc.subnetMask
@@ -118,69 +172,87 @@ export class AwsCdkWebBasicStack extends cdk.Stack {
       createInternetGateway: false
     });
 
-    // Set VPC logical ID
-    const cfnVpc = vpc.node.defaultChild as ec2.CfnVPC;
-    if (cfnVpc) {
-      cfnVpc.overrideLogicalId(CONFIG.naming.vpc);
-    }
-
-    // Create IGW explicitly
-    const igw = new ec2.CfnInternetGateway(this, 'IGW', {
-      tags: [{
-        key: 'Name',
-        value: CONFIG.naming.igw
-      }]
-    });
-    igw.overrideLogicalId(CONFIG.naming.igw);
-
-    // Attach IGW to VPC with explicit logical ID
-    const vpcGatewayAttachment = new ec2.CfnVPCGatewayAttachment(this, 'VPCGW', {
-      vpcId: vpc.vpcId,
-      internetGatewayId: igw.ref
-    });
-    vpcGatewayAttachment.overrideLogicalId(`${CONFIG.naming.vpc}GatewayAttachment`);
-
-    // Configure subnets with correct naming and tags
-    vpc.publicSubnets.forEach((subnet, index) => {
-      const cfnSubnet = subnet.node.defaultChild as ec2.CfnSubnet;
-      const subnetLogicalId = CONFIG.naming.getSubnetId(index);
-      
-      // Override subnet logical ID
-      cfnSubnet.overrideLogicalId(subnetLogicalId);
-      
-      // Set subnet tags including Name tag
-      cfnSubnet.addPropertyOverride('Tags', [
-        { Key: 'Name', Value: subnetLogicalId },
-        { Key: 'aws-cdk:subnet-name', Value: `${CONFIG.naming.vpc}Public` },
-        { Key: 'aws-cdk:subnet-type', Value: 'Public' }
-      ]);
-
-      // Configure route table with correct naming
-      const routeTable = subnet.node.findChild('RouteTable') as ec2.CfnRouteTable;
-      const routeTableId = CONFIG.naming.getRouteTableId(index);
-      routeTable.overrideLogicalId(routeTableId);
-      
-      // Set route table tags
-      routeTable.addPropertyOverride('Tags', [
-        { Key: 'Name', Value: routeTableId }
-      ]);
-
-      // Create and configure public route
-      const publicRoute = new ec2.CfnRoute(this, `PublicRoute${index}`, {
-        routeTableId: routeTable.ref,
-        destinationCidrBlock: '0.0.0.0/0',
-        gatewayId: igw.ref,
-      });
-      publicRoute.overrideLogicalId(`${CONFIG.naming.vpc}PublicRoute${index === 0 ? '1a' : '1c'}`);
-      publicRoute.addDependency(vpcGatewayAttachment);
-    });
-
+    this.configureVpcComponents(vpc);
     return vpc;
   }
 
-  private createSecurityGroups() {
+  private configureVpcComponents(vpc: ec2.Vpc): void {
+    // Set VPC logical ID
+    const cfnVpc = vpc.node.defaultChild as ec2.CfnVPC;
+    cfnVpc?.overrideLogicalId(CONFIG.resourceNames.vpc);
+
+    // Create and attach IGW
+    const igw = this.createInternetGateway();
+    const vpcGatewayAttachment = this.attachInternetGateway(vpc, igw);
+
+    // Configure subnets and routing
+    vpc.publicSubnets.forEach((subnet, index) => {
+      this.configurePublicSubnet(subnet, index, igw, vpcGatewayAttachment);
+    });
+  }
+
+  private createInternetGateway(): ec2.CfnInternetGateway {
+    const igw = new ec2.CfnInternetGateway(this, 'IGW', {
+      tags: [{ key: 'Name', value: CONFIG.resourceNames.igw }]
+    });
+    igw.overrideLogicalId(CONFIG.resourceNames.igw);
+    return igw;
+  }
+
+  private attachInternetGateway(vpc: ec2.Vpc, igw: ec2.CfnInternetGateway): ec2.CfnVPCGatewayAttachment {
+    const attachment = new ec2.CfnVPCGatewayAttachment(this, 'VPCGW', {
+      vpcId: vpc.vpcId,
+      internetGatewayId: igw.ref
+    });
+    attachment.overrideLogicalId(`${CONFIG.resourceNames.vpc}GatewayAttachment`);
+    return attachment;
+  }
+
+  private configurePublicSubnet(
+    subnet: ec2.IPublicSubnet,
+    index: number,
+    igw: ec2.CfnInternetGateway,
+    vpcGatewayAttachment: ec2.CfnVPCGatewayAttachment
+  ): void {
+    const cfnSubnet = subnet.node.defaultChild as ec2.CfnSubnet;
+    const subnetLogicalId = CONFIG.resourceNames.getSubnetId(index);
+    
+    cfnSubnet.overrideLogicalId(subnetLogicalId);
+    cfnSubnet.addPropertyOverride('Tags', [
+      { Key: 'Name', Value: subnetLogicalId },
+      { Key: 'aws-cdk:subnet-name', Value: `${CONFIG.resourceNames.vpc}Public` },
+      { Key: 'aws-cdk:subnet-type', Value: 'Public' }
+    ]);
+
+    this.configureRouteTable(subnet, index, igw, vpcGatewayAttachment);
+  }
+
+  private configureRouteTable(
+    subnet: ec2.IPublicSubnet,
+    index: number,
+    igw: ec2.CfnInternetGateway,
+    vpcGatewayAttachment: ec2.CfnVPCGatewayAttachment
+  ): void {
+    const routeTable = subnet.node.findChild('RouteTable') as ec2.CfnRouteTable;
+    const routeTableId = CONFIG.resourceNames.getRouteTableId(index);
+    
+    routeTable.overrideLogicalId(routeTableId);
+    routeTable.addPropertyOverride('Tags', [
+      { Key: 'Name', Value: routeTableId }
+    ]);
+
+    const publicRoute = new ec2.CfnRoute(this, `PublicRoute${index}`, {
+      routeTableId: routeTable.ref,
+      destinationCidrBlock: '0.0.0.0/0',
+      gatewayId: igw.ref,
+    });
+    publicRoute.overrideLogicalId(`${CONFIG.resourceNames.vpc}PublicRoute${index === 0 ? '1a' : '1c'}`);
+    publicRoute.addDependency(vpcGatewayAttachment);
+  }
+
+  private createSecurityGroups(vpc: ec2.Vpc) {
     const albSg = new ec2.SecurityGroup(this, 'AlbSecurityGroup', {
-      vpc: this.vpc,
+      vpc,
       securityGroupName: `${CONFIG.prefix}-alb-sg`,
       description: 'Security group for ALB',
       allowAllOutbound: true,
@@ -193,18 +265,12 @@ export class AwsCdkWebBasicStack extends cdk.Stack {
     );
 
     const appSg = new ec2.SecurityGroup(this, 'AppSecurityGroup', {
-      vpc: this.vpc,
+      vpc,
       securityGroupName: `${CONFIG.prefix}-app-sg`,
       description: 'Security group for App',
       allowAllOutbound: true,
     });
 
-    this.configureAppSecurityGroupRules(appSg, albSg);
-
-    return { albSg, appSg };
-  }
-
-  private configureAppSecurityGroupRules(appSg: ec2.SecurityGroup, albSg: ec2.SecurityGroup): void {
     appSg.addIngressRule(
       ec2.Peer.securityGroupId(albSg.securityGroupId),
       ec2.Port.tcp(CONFIG.app.port),
@@ -216,19 +282,21 @@ export class AwsCdkWebBasicStack extends cdk.Stack {
       ec2.Port.tcp(22),
       'Allow SSH'
     );
+
+    return { alb: albSg, app: appSg };
   }
 
-  private createEc2Instance(): ec2.Instance {
+  private createEc2Instance(vpc: ec2.Vpc, securityGroup: ec2.SecurityGroup): ec2.Instance {
     return new ec2.Instance(this, 'AppInstance', {
-      vpc: this.vpc,
+      vpc,
       instanceType: CONFIG.app.instanceType,
       machineImage: ec2.MachineImage.genericLinux({
         [CONFIG.region]: CONFIG.app.ami,
       }),
-      securityGroup: this.appSg,
+      securityGroup,
       keyPair: ec2.KeyPair.fromKeyPairName(this, 'KeyPair', CONFIG.app.keyName),
       vpcSubnets: { subnetType: ec2.SubnetType.PUBLIC },
-      instanceName: CONFIG.naming.ec2,
+      instanceName: CONFIG.resourceNames.ec2,
       blockDevices: [{
         deviceName: '/dev/xvda',
         volume: ec2.BlockDeviceVolume.ebs(CONFIG.app.volumeSize),
@@ -236,27 +304,23 @@ export class AwsCdkWebBasicStack extends cdk.Stack {
     });
   }
 
-  private createLoadBalancer(): elbv2.ApplicationLoadBalancer {
+  private createLoadBalancer(vpc: ec2.Vpc, securityGroup: ec2.SecurityGroup): elbv2.ApplicationLoadBalancer {
     return new elbv2.ApplicationLoadBalancer(this, 'AppLoadBalancer', {
-      vpc: this.vpc,
+      vpc,
       internetFacing: true,
-      loadBalancerName: CONFIG.naming.alb,
-      securityGroup: this.albSg,
+      loadBalancerName: CONFIG.resourceNames.alb,
+      securityGroup,
       vpcSubnets: { subnetType: ec2.SubnetType.PUBLIC }
     });
   }
 
-  private configureLoadBalancer(): void {
-    const targetGroup = this.createTargetGroup();
-    this.alb.addListener('HttpListener', {
-      port: 80,
-      defaultTargetGroups: [targetGroup],
-    });
-  }
-
-  private createTargetGroup(): elbv2.ApplicationTargetGroup {
+  private configureLoadBalancer(
+    alb: elbv2.ApplicationLoadBalancer,
+    vpc: ec2.Vpc,
+    instance: ec2.Instance
+  ): void {
     const targetGroup = new elbv2.ApplicationTargetGroup(this, 'AppTargetGroup', {
-      vpc: this.vpc,
+      vpc,
       port: CONFIG.app.port,
       protocol: elbv2.ApplicationProtocol.HTTP,
       targetType: elbv2.TargetType.INSTANCE,
@@ -271,8 +335,12 @@ export class AwsCdkWebBasicStack extends cdk.Stack {
       }
     });
 
-    targetGroup.addTarget(new targets.InstanceTarget(this.instance));
-    return targetGroup;
+    targetGroup.addTarget(new targets.InstanceTarget(instance));
+    
+    alb.addListener('HttpListener', {
+      port: 80,
+      defaultTargetGroups: [targetGroup],
+    });
   }
 
   private createS3Bucket(): s3.Bucket {
@@ -315,16 +383,11 @@ export class AwsCdkWebBasicStack extends cdk.Stack {
     });
   }
 
-  private createCloudFrontDistribution(webAcl: wafv2.CfnWebACL): cloudfront.Distribution {
-    const oac = this.createOriginAccessControl();
-    const distribution = this.createDistribution(webAcl, oac);
-    this.configureBucketPolicy(distribution);
-    this.configureOriginAccess(distribution, oac);
-    return distribution;
-  }
-
-  private createOriginAccessControl(): cloudfront.CfnOriginAccessControl {
-    return new cloudfront.CfnOriginAccessControl(this, 'CloudFrontOAC', {
+  private createCloudFrontDistribution(
+    bucket: s3.Bucket,
+    webAcl: wafv2.CfnWebACL
+  ): cloudfront.Distribution {
+    const oac = new cloudfront.CfnOriginAccessControl(this, 'CloudFrontOAC', {
       originAccessControlConfig: {
         name: `${CONFIG.prefix}-oac`,
         originAccessControlOriginType: 's3',
@@ -332,10 +395,18 @@ export class AwsCdkWebBasicStack extends cdk.Stack {
         signingProtocol: 'sigv4'
       }
     });
+
+    const cachePolicy = this.createCachePolicy();
+    const distribution = this.createDistribution(bucket, webAcl, cachePolicy);
+    
+    this.configureBucketPolicy(bucket, distribution);
+    this.configureOriginAccess(distribution, oac);
+    
+    return distribution;
   }
 
-  private createDistribution(webAcl: wafv2.CfnWebACL, oac: cloudfront.CfnOriginAccessControl): cloudfront.Distribution {
-    const cachePolicy = new cloudfront.CachePolicy(this, 'CachingOptimized', {
+  private createCachePolicy(): cloudfront.CachePolicy {
+    return new cloudfront.CachePolicy(this, 'CachingOptimized', {
       cachePolicyName: `${CONFIG.prefix}-cache-policy`,
       comment: 'Caching optimized for S3 static content',
       defaultTtl: CONFIG.cloudfront.cacheDuration.default,
@@ -347,10 +418,16 @@ export class AwsCdkWebBasicStack extends cdk.Stack {
       headerBehavior: cloudfront.CacheHeaderBehavior.none(),
       queryStringBehavior: cloudfront.CacheQueryStringBehavior.none(),
     });
+  }
 
+  private createDistribution(
+    bucket: s3.Bucket,
+    webAcl: wafv2.CfnWebACL,
+    cachePolicy: cloudfront.CachePolicy
+  ): cloudfront.Distribution {
     const distribution = new cloudfront.Distribution(this, 'StaticContentDistribution', {
       defaultBehavior: {
-        origin: new origins.S3Origin(this.bucket),
+        origin: new origins.S3Origin(bucket),
         viewerProtocolPolicy: cloudfront.ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
         allowedMethods: cloudfront.AllowedMethods.ALLOW_ALL,
         cachedMethods: cloudfront.CachedMethods.CACHE_GET_HEAD,
@@ -367,74 +444,86 @@ export class AwsCdkWebBasicStack extends cdk.Stack {
     });
 
     const cfnDistribution = distribution.node.defaultChild as cloudfront.CfnDistribution;
-    cfnDistribution.overrideLogicalId(CONFIG.naming.cloudfront);
+    cfnDistribution.overrideLogicalId(CONFIG.resourceNames.cloudfront);
 
     return distribution;
   }
 
-  private configureBucketPolicy(distribution: cloudfront.Distribution): void {
+  private configureBucketPolicy(bucket: s3.Bucket, distribution: cloudfront.Distribution): void {
     const bucketPolicyStatement = new iam.PolicyStatement({
       actions: ['s3:GetObject'],
       effect: iam.Effect.ALLOW,
       principals: [new iam.ServicePrincipal('cloudfront.amazonaws.com')],
-      resources: [`${this.bucket.bucketArn}/*`],
+      resources: [`${bucket.bucketArn}/*`],
       conditions: {
         StringEquals: {
           'AWS:SourceArn': `arn:aws:cloudfront::${this.account}:distribution/${distribution.distributionId}`
         }
       }
     });
-    this.bucket.addToResourcePolicy(bucketPolicyStatement);
+    bucket.addToResourcePolicy(bucketPolicyStatement);
   }
 
-  private configureOriginAccess(distribution: cloudfront.Distribution, oac: cloudfront.CfnOriginAccessControl): void {
+  private configureOriginAccess(
+    distribution: cloudfront.Distribution,
+    oac: cloudfront.CfnOriginAccessControl
+  ): void {
     const cfnDistribution = distribution.node.defaultChild as cloudfront.CfnDistribution;
     cfnDistribution.addPropertyOverride('DistributionConfig.Origins.0.S3OriginConfig.OriginAccessIdentity', '');
     cfnDistribution.addPropertyOverride('DistributionConfig.Origins.0.OriginAccessControlId', oac.ref);
   }
 
   private addOutputs(): void {
-    // Resource IDs
+    this.addResourceIdOutputs();
+    this.addEndpointOutputs();
+    this.addResourceNameOutputs();
+    this.addEnvironmentVariableOutputs();
+    this.addNotificationCommandOutput();
+  }
+
+  private addResourceIdOutputs(): void {
     new cdk.CfnOutput(this, 'VpcId', {
-      value: this.vpc.vpcId,
+      value: this.resources.vpc.vpcId,
       description: 'VPC ID',
       exportName: `${CONFIG.prefix}-vpc-id`,
     });
 
     new cdk.CfnOutput(this, 'Ec2InstanceId', {
-      value: this.instance.instanceId,
+      value: this.resources.instance.instanceId,
       description: 'EC2 Instance ID',
       exportName: `${CONFIG.prefix}-ec2-instance-id`,
     });
 
     new cdk.CfnOutput(this, 'CloudFrontDistributionId', {
-      value: this.distribution.distributionId,
+      value: this.resources.distribution.distributionId,
       description: 'CloudFront Distribution ID',
       exportName: `${CONFIG.prefix}-cloudfront-distribution-id`,
     });
+  }
 
-    // Endpoints
+  private addEndpointOutputs(): void {
     new cdk.CfnOutput(this, 'Ec2PublicIp', {
-      value: this.instance.instancePublicIp,
+      value: this.resources.instance.instancePublicIp,
       description: 'EC2 Instance Public IP',
       exportName: `${CONFIG.prefix}-ec2-public-ip`,
     });
 
     new cdk.CfnOutput(this, 'AlbEndpoint', {
-      value: this.alb.loadBalancerDnsName,
+      value: this.resources.alb.loadBalancerDnsName,
       description: 'Application Load Balancer Endpoint',
       exportName: `${CONFIG.prefix}-alb-endpoint`,
     });
 
     new cdk.CfnOutput(this, 'CloudFrontEndpoint', {
-      value: this.distribution.distributionDomainName,
+      value: this.resources.distribution.distributionDomainName,
       description: 'CloudFront Distribution Endpoint',
       exportName: `${CONFIG.prefix}-cloudfront-endpoint`,
     });
+  }
 
-    // Resource Names
+  private addResourceNameOutputs(): void {
     new cdk.CfnOutput(this, 'S3BucketName', {
-      value: this.bucket.bucketName,
+      value: this.resources.bucket.bucketName,
       description: 'S3 Bucket Name',
       exportName: `${CONFIG.prefix}-s3-bucket-name`,
     });
@@ -453,27 +542,29 @@ export class AwsCdkWebBasicStack extends cdk.Stack {
       description: 'Physical resource names used in this stack',
       exportName: `${CONFIG.prefix}-resource-names`,
     });
+  }
 
-    // Environment Variables
+  private addEnvironmentVariableOutputs(): void {
     new cdk.CfnOutput(this, 'EnvVarS3Bucket', {
-      value: `STORAGE_S3_BUCKET=${this.bucket.bucketName}`,
+      value: `STORAGE_S3_BUCKET=${this.resources.bucket.bucketName}`,
       description: 'Environment variable for S3 bucket name',
       exportName: `${CONFIG.prefix}-env-s3-bucket`,
     });
 
     new cdk.CfnOutput(this, 'EnvVarCdnUrl', {
-      value: `STORAGE_CDN_URL=https://${this.distribution.distributionDomainName}`,
+      value: `STORAGE_CDN_URL=https://${this.resources.distribution.distributionDomainName}`,
       description: 'Environment variable for CloudFront URL',
       exportName: `${CONFIG.prefix}-env-cdn-url`,
     });
 
     new cdk.CfnOutput(this, 'EnvVarCdnDistributionId', {
-      value: `STORAGE_CDN_DISTRIBUTION_ID=${this.distribution.distributionId}`,
+      value: `STORAGE_CDN_DISTRIBUTION_ID=${this.resources.distribution.distributionId}`,
       description: 'Environment variable for CloudFront Distribution ID',
       exportName: `${CONFIG.prefix}-env-cdn-distribution-id`,
     });
+  }
 
-    // Add Lambda invocation command as the final output
+  private addNotificationCommandOutput(): void {
     new cdk.CfnOutput(this, 'NotificationCommand', {
       value: 'aws lambda invoke --function-name arn:aws:lambda:ap-northeast-1:476114153361:function:slackNotification --payload \'{}\' response.json',
       description: 'Command to invoke Slack notification Lambda',
