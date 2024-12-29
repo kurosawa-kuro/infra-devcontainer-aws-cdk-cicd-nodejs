@@ -24,7 +24,6 @@ interface StackConfig {
   healthCheck: HealthCheckConfig;
   cloudfront: CloudFrontConfig;
   ecs: EcsConfig;
-  rds: RdsConfig;
 }
 
 interface ResourceNames {
@@ -39,7 +38,6 @@ interface ResourceNames {
   alb: string;
   s3: string;
   cloudfront: string;
-  rds: string;
 }
 
 interface VpcConfig {
@@ -61,13 +59,6 @@ interface EcsConfig {
   cpu: number;
   memory: number;
   logRetentionDays: number;
-}
-
-interface RdsConfig {
-  instanceType: ec2.InstanceType;
-  engine: rds.IInstanceEngine;
-  storageGb: number;
-  multiAz: boolean;
 }
 
 interface HealthCheckConfig {
@@ -104,7 +95,6 @@ const CONFIG: StackConfig = {
     alb: `${LOGICAL_PREFIX}-alb`,
     s3: `${LOGICAL_PREFIX}-s3`,
     cloudfront: `${LOGICAL_PREFIX}-cf`,
-    rds: `${LOGICAL_PREFIX}-db`
   },
   vpc: {
     cidr: '10.1.0.0/16',
@@ -126,12 +116,6 @@ const CONFIG: StackConfig = {
     cpu: 256,
     memory: 512,
     logRetentionDays: 30
-  },
-  rds: {
-    instanceType: ec2.InstanceType.of(ec2.InstanceClass.T3, ec2.InstanceSize.MICRO),
-    engine: rds.DatabaseInstanceEngine.postgres({ version: rds.PostgresEngineVersion.VER_14 }),
-    storageGb: 20,
-    multiAz: false
   },
   healthCheck: {
     healthyThreshold: 2,
@@ -156,7 +140,6 @@ export class AwsCdkWebFargateStack extends cdk.Stack {
     securityGroups: {
       alb: ec2.SecurityGroup;
       app: ec2.SecurityGroup;
-      rds: ec2.SecurityGroup;
     };
     ecr: ecr.Repository;
     cluster: ecs.Cluster;
@@ -165,7 +148,6 @@ export class AwsCdkWebFargateStack extends cdk.Stack {
     alb: elbv2.ApplicationLoadBalancer;
     bucket: s3.Bucket;
     distribution: cloudfront.Distribution;
-    database: rds.DatabaseInstance;
   };
 
   constructor(scope: Construct, id: string, props?: cdk.StackProps) {
@@ -196,9 +178,6 @@ export class AwsCdkWebFargateStack extends cdk.Stack {
     // ECS Service
     const service = this.createEcsService(cluster, taskDefinition, vpc, securityGroups.app, alb);
 
-    // Database
-    const database = this.createDatabase(vpc, securityGroups.rds);
-
     // Storage and CDN
     const bucket = this.createS3Bucket();
     const webAcl = this.createWebAcl();
@@ -214,7 +193,6 @@ export class AwsCdkWebFargateStack extends cdk.Stack {
       alb,
       bucket,
       distribution,
-      database,
     };
   }
 
@@ -338,20 +316,7 @@ export class AwsCdkWebFargateStack extends cdk.Stack {
       'Allow from ALB'
     );
 
-    const rdsSg = new ec2.SecurityGroup(this, 'RdsSecurityGroup', {
-      vpc,
-      securityGroupName: `${CONFIG.prefix}-rds-sg`,
-      description: 'Security group for RDS',
-      allowAllOutbound: false,
-    });
-
-    rdsSg.addIngressRule(
-      ec2.Peer.securityGroupId(appSg.securityGroupId),
-      ec2.Port.tcp(5432),
-      'Allow from Fargate tasks'
-    );
-
-    return { alb: albSg, app: appSg, rds: rdsSg };
+    return { alb: albSg, app: appSg };
   }
 
   private createEcrRepository(): ecr.Repository {
@@ -435,32 +400,6 @@ export class AwsCdkWebFargateStack extends cdk.Stack {
       securityGroups: [securityGroup],
       assignPublicIp: true,
       vpcSubnets: { subnetType: ec2.SubnetType.PUBLIC },
-    });
-  }
-
-  private createDatabase(vpc: ec2.Vpc, securityGroup: ec2.SecurityGroup): rds.DatabaseInstance {
-    return new rds.DatabaseInstance(this, 'Database', {
-      vpc,
-      vpcSubnets: { subnetType: ec2.SubnetType.PRIVATE_WITH_EGRESS },
-      engine: CONFIG.rds.engine,
-      instanceType: CONFIG.rds.instanceType,
-      allocatedStorage: CONFIG.rds.storageGb,
-      multiAz: CONFIG.rds.multiAz,
-      databaseName: 'app',
-      securityGroups: [securityGroup],
-      removalPolicy: cdk.RemovalPolicy.DESTROY,
-      deletionProtection: false,
-      publiclyAccessible: false,
-    });
-  }
-
-  private createLoadBalancer(vpc: ec2.Vpc, securityGroup: ec2.SecurityGroup): elbv2.ApplicationLoadBalancer {
-    return new elbv2.ApplicationLoadBalancer(this, 'AppLoadBalancer', {
-      vpc,
-      internetFacing: true,
-      loadBalancerName: CONFIG.resourceNames.alb,
-      securityGroup,
-      vpcSubnets: { subnetType: ec2.SubnetType.PUBLIC }
     });
   }
 
@@ -639,12 +578,6 @@ export class AwsCdkWebFargateStack extends cdk.Stack {
       description: 'CloudFront Distribution Endpoint',
       exportName: `${CONFIG.prefix}-cloudfront-endpoint`,
     });
-
-    new cdk.CfnOutput(this, 'DatabaseEndpoint', {
-      value: this.resources.database.instanceEndpoint.hostname,
-      description: 'RDS Database Endpoint',
-      exportName: `${CONFIG.prefix}-database-endpoint`,
-    });
   }
 
   private addResourceNameOutputs(): void {
@@ -663,8 +596,7 @@ export class AwsCdkWebFargateStack extends cdk.Stack {
         `Task Definition: ${CONFIG.resourceNames.ecsTaskDefinition}`,
         `ALB: ${CONFIG.prefix}-alb`,
         `S3: ${CONFIG.prefix}-s3`,
-        `CloudFront: ${CONFIG.prefix}-cf`,
-        `RDS: ${CONFIG.prefix}-db`
+        `CloudFront: ${CONFIG.prefix}-cf`
       ].join('\n'),
       description: 'Physical resource names used in this stack',
       exportName: `${CONFIG.prefix}-resource-names`,
@@ -688,6 +620,16 @@ export class AwsCdkWebFargateStack extends cdk.Stack {
       value: `STORAGE_CDN_DISTRIBUTION_ID=${this.resources.distribution.distributionId}`,
       description: 'Environment variable for CloudFront Distribution ID',
       exportName: `${CONFIG.prefix}-env-cdn-distribution-id`,
+    });
+  }
+
+  private createLoadBalancer(vpc: ec2.Vpc, securityGroup: ec2.SecurityGroup): elbv2.ApplicationLoadBalancer {
+    return new elbv2.ApplicationLoadBalancer(this, 'AppLoadBalancer', {
+      vpc,
+      internetFacing: true,
+      loadBalancerName: CONFIG.resourceNames.alb,
+      securityGroup,
+      vpcSubnets: { subnetType: ec2.SubnetType.PUBLIC }
     });
   }
 }
