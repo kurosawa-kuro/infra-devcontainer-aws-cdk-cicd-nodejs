@@ -30,4 +30,4 @@ COPY --from=builder /app/src ./src
 EXPOSE 8080
 
 # package.jsonのスクリプトを使用して起動
-CMD ["npm", "run", "docker-start"]
+CMD ["npm", "run", "docker:start"]
