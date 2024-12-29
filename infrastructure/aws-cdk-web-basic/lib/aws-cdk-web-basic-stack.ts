@@ -110,7 +110,7 @@ export class AwsCdkWebBasicStack extends cdk.Stack {
       maxAzs: CONFIG.vpc.maxAzs,
       natGateways: 0,
       subnetConfiguration: [{
-        name: 'Public',
+        name: `${CONFIG.naming.vpc}Public`,
         subnetType: ec2.SubnetType.PUBLIC,
         mapPublicIpOnLaunch: true,
         cidrMask: CONFIG.vpc.subnetMask
@@ -140,14 +140,32 @@ export class AwsCdkWebBasicStack extends cdk.Stack {
     });
     vpcGatewayAttachment.overrideLogicalId(`${CONFIG.naming.vpc}GatewayAttachment`);
 
-    // Add routes to the IGW for each public subnet
+    // Configure subnets with correct naming and tags
     vpc.publicSubnets.forEach((subnet, index) => {
       const cfnSubnet = subnet.node.defaultChild as ec2.CfnSubnet;
-      cfnSubnet.overrideLogicalId(CONFIG.naming.getSubnetId(index));
+      const subnetLogicalId = CONFIG.naming.getSubnetId(index);
       
-      const routeTable = subnet.node.findChild('RouteTable') as ec2.CfnRouteTable;
-      routeTable.overrideLogicalId(CONFIG.naming.getRouteTableId(index));
+      // Override subnet logical ID
+      cfnSubnet.overrideLogicalId(subnetLogicalId);
+      
+      // Set subnet tags including Name tag
+      cfnSubnet.addPropertyOverride('Tags', [
+        { Key: 'Name', Value: subnetLogicalId },
+        { Key: 'aws-cdk:subnet-name', Value: `${CONFIG.naming.vpc}Public` },
+        { Key: 'aws-cdk:subnet-type', Value: 'Public' }
+      ]);
 
+      // Configure route table with correct naming
+      const routeTable = subnet.node.findChild('RouteTable') as ec2.CfnRouteTable;
+      const routeTableId = CONFIG.naming.getRouteTableId(index);
+      routeTable.overrideLogicalId(routeTableId);
+      
+      // Set route table tags
+      routeTable.addPropertyOverride('Tags', [
+        { Key: 'Name', Value: routeTableId }
+      ]);
+
+      // Create and configure public route
       const publicRoute = new ec2.CfnRoute(this, `PublicRoute${index}`, {
         routeTableId: routeTable.ref,
         destinationCidrBlock: '0.0.0.0/0',
