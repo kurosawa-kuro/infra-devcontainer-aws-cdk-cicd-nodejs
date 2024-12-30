@@ -22,6 +22,7 @@ import * as origins from 'aws-cdk-lib/aws-cloudfront-origins';
 import * as wafv2 from 'aws-cdk-lib/aws-wafv2';
 import * as iam from 'aws-cdk-lib/aws-iam';
 import * as logs from 'aws-cdk-lib/aws-logs';
+import * as ssm from 'aws-cdk-lib/aws-ssm';
 
 // #region Configuration Types
 const ECR_REPOSITORY = '476114153361.dkr.ecr.ap-northeast-1.amazonaws.com/aws-fargate-express-01-repository';
@@ -122,8 +123,7 @@ const CONFIG: Config.Stack = {
     containerName: 'FargateExpress01',
     imageTag: 'latest',
     envVariables: {
-      APP_ENV: 'production',
-      DATABASE_URL: "postgresql://neondb_owner:Nrp3FfO1goiB@ep-noisy-cherry-a7rp6riz.ap-southeast-2.aws.neon.tech/neondb?sslmode=require"
+      APP_ENV: 'production'
     }
   },
   ecs: {
@@ -371,6 +371,20 @@ export class AwsCdkWebFargateStack extends cdk.Stack {
       })
     );
 
+    // Add Parameter Store permissions to task execution role
+    taskDefinition.addToExecutionRolePolicy(
+      new iam.PolicyStatement({
+        effect: iam.Effect.ALLOW,
+        actions: [
+          'ssm:GetParameters',
+          'ssm:GetParameter'
+        ],
+        resources: [
+          `arn:aws:ssm:${this.region}:${this.account}:parameter/fargateexpress02/prod/*`
+        ]
+      })
+    );
+
     const logGroup = new logs.LogGroup(this, 'AppLogGroup', {
       logGroupName: `/ecs/${CONFIG.resourceNames.ecsTaskDefinition}`,
       retention: CONFIG.ecs.logRetentionDays,
@@ -381,7 +395,17 @@ export class AwsCdkWebFargateStack extends cdk.Stack {
       containerName: CONFIG.app.containerName,
       image: ecs.ContainerImage.fromRegistry(ECR_REPOSITORY),
       portMappings: [{ containerPort: CONFIG.app.port }],
-      environment: CONFIG.app.envVariables,
+      environment: {
+        APP_ENV: 'production'
+      },
+      secrets: {
+        DATABASE_URL: ecs.Secret.fromSsmParameter(
+          ssm.StringParameter.fromSecureStringParameterAttributes(this, 'DatabaseUrlParam', {
+            parameterName: '/fargateexpress02/prod/database-url',
+            version: 1
+          })
+        )
+      },
       logging: ecs.LogDrivers.awsLogs({
         streamPrefix: 'ecs',
         logGroup,
