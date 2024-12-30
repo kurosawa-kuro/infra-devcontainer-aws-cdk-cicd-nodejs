@@ -307,6 +307,7 @@ export class AwsCdkWebFargateStack extends cdk.Stack {
   }
 
   private createSecurityGroups(vpc: ec2.Vpc) {
+    // ALBのセキュリティグループ
     const albSg = new ec2.SecurityGroup(this, 'AlbSecurityGroup', {
       vpc,
       securityGroupName: `${CONFIG.prefix}albsg`,
@@ -314,12 +315,14 @@ export class AwsCdkWebFargateStack extends cdk.Stack {
       allowAllOutbound: true,
     });
 
+    // インターネットからALBへの80ポートアクセスを許可
     albSg.addIngressRule(
       ec2.Peer.anyIpv4(),
       ec2.Port.tcp(80),
-      'Allow HTTP'
+      'Allow HTTP from anywhere'
     );
 
+    // アプリケーションのセキュリティグループ
     const appSg = new ec2.SecurityGroup(this, 'AppSecurityGroup', {
       vpc,
       securityGroupName: `${CONFIG.prefix}appsg`,
@@ -327,10 +330,11 @@ export class AwsCdkWebFargateStack extends cdk.Stack {
       allowAllOutbound: true,
     });
 
+    // ALBからアプリケーションへの8080ポートアクセスを許可
     appSg.addIngressRule(
       ec2.Peer.securityGroupId(albSg.securityGroupId),
-      ec2.Port.tcp(CONFIG.app.port),
-      'Allow from ALB'
+      ec2.Port.tcp(CONFIG.app.port),  // 8080
+      'Allow ingress from ALB'
     );
 
     return { alb: albSg, app: appSg };
