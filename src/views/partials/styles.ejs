@@ -1,0 +1,237 @@
+<style>
+    :root {
+        --primary-color: #007bff;
+        --border-color: #eee;
+        --bg-color: #f5f5f5;
+        --text-color: #666;
+        --sidebar-width: 200px;
+    }
+    
+    body {
+        font-family: Arial, sans-serif;
+        margin: 0;
+        padding: 0;
+        line-height: 1.6;
+        min-height: 100vh;
+        display: flex;
+    }
+
+    /* サイドバー */
+    .sidebar {
+        width: var(--sidebar-width);
+        background-color: #2c3e50;
+        color: white;
+        padding: 20px;
+        position: fixed;
+        height: 100vh;
+        box-sizing: border-box;
+    }
+
+    .sidebar h2 {
+        color: white;
+        margin-bottom: 20px;
+        font-size: 1.2em;
+    }
+
+    .nav {
+        list-style: none;
+        padding: 0;
+        margin: 0;
+    }
+
+    .nav li {
+        margin-bottom: 10px;
+    }
+
+    .nav a {
+        color: white;
+        text-decoration: none;
+        display: block;
+        padding: 10px;
+        border-radius: 5px;
+        transition: background-color 0.2s;
+    }
+
+    .nav a:hover {
+        background-color: #34495e;
+    }
+
+    .nav a.active {
+        background-color: var(--primary-color);
+    }
+
+    /* メインコンテンツ */
+    .main {
+        flex: 1;
+        margin-left: var(--sidebar-width);
+        padding: 20px;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        width: calc(100% - var(--sidebar-width));
+        box-sizing: border-box;
+    }
+
+    .main > * {
+        width: 100%;
+        max-width: 800px;
+    }
+
+    .main-content {
+        background-color: var(--bg-color);
+        padding: 20px;
+        border-radius: 5px;
+        margin: 20px 0;
+        width: 100%;
+    }
+
+    .feature-list {
+        list-style: none;
+        padding: 0;
+        color: var(--text-color);
+    }
+
+    .feature-list li::before {
+        content: "✓ ";
+        color: green;
+    }
+
+    .feature-list li.pending::before {
+        content: "- ";
+        color: var(--text-color);
+    }
+
+    /* システム状態 */
+    .status-panel {
+        background-color: var(--bg-color);
+        padding: 15px;
+        border-radius: 5px;
+        margin: 20px 0;
+        width: 100%;
+    }
+    .status-panel button {
+        padding: 5px 10px;
+        margin-right: 10px;
+        background-color: var(--primary-color);
+        color: white;
+        border: none;
+        border-radius: 3px;
+        cursor: pointer;
+    }
+    .status-panel button:hover {
+        background-color: #0056b3;
+    }
+    .status-check {
+        display: flex;
+        gap: 10px;
+        margin-bottom: 10px;
+    }
+
+    /* 投稿フォーム */
+    .post-form {
+        background-color: var(--bg-color);
+        padding: 20px;
+        border-radius: 5px;
+        margin: 20px 0;
+        width: 100%;
+    }
+    .post-form input[type="text"] {
+        width: 100%;
+        padding: 8px;
+        margin-bottom: 10px;
+        border: 1px solid var(--border-color);
+        border-radius: 3px;
+    }
+    .post-form input[type="file"] {
+        margin: 10px 0;
+    }
+    .post-form button {
+        background-color: var(--primary-color);
+        color: white;
+        border: none;
+        padding: 8px 15px;
+        border-radius: 3px;
+        cursor: pointer;
+        transition: background-color 0.2s;
+    }
+    .post-form button:hover {
+        background-color: #0056b3;
+    }
+    .image-preview {
+        max-width: 200px;
+        max-height: 200px;
+        margin: 10px 0;
+        display: none;
+        border-radius: 5px;
+        border: 1px solid var(--border-color);
+    }
+
+    /* 投稿一覧 */
+    .posts {
+        list-style: none;
+        padding: 0;
+        width: 100%;
+    }
+    .post-item {
+        background-color: var(--bg-color);
+        padding: 15px;
+        border-radius: 5px;
+        margin-bottom: 15px;
+    }
+    .post-title {
+        font-size: 1.1em;
+        margin-bottom: 5px;
+        color: #333;
+    }
+    .post-image-container {
+        margin: 10px 0;
+        text-align: center;
+        background-color: white;
+        padding: 10px;
+        border-radius: 5px;
+        border: 1px solid var(--border-color);
+    }
+    .post-image {
+        max-width: 100%;
+        max-height: 400px;
+        border-radius: 8px;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+    }
+    .post-date {
+        color: var(--text-color);
+        font-size: 0.9em;
+        margin-top: 8px;
+    }
+
+    /* レスポンシブデザイン */
+    @media (max-width: 768px) {
+        body {
+            flex-direction: column;
+        }
+
+        .sidebar {
+            width: 100%;
+            height: auto;
+            position: relative;
+        }
+
+        .main {
+            margin-left: 0;
+            padding: 20px;
+        }
+
+        .nav {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+
+        .nav li {
+            margin: 0;
+        }
+
+        .post-form input[type="text"] {
+            width: 100%;
+        }
+    }
+</style> 

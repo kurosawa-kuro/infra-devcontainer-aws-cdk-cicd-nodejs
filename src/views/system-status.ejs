@@ -1,227 +1,58 @@
-<!DOCTYPE html>
-<html lang="ja">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>システム状態 - 検証用ウェブ アプリ</title>
-    <style>
-        :root {
-            --primary-color: #007bff;
-            --border-color: #eee;
-            --bg-color: #f5f5f5;
-            --text-color: #666;
-            --sidebar-width: 200px;
-        }
+<%- contentFor('body') %>
+<h1>システム状態</h1>
+
+<ul class="feature-list">
+    <li>データベース接続確認</li>
+    <li>CRUD操作の実装</li>
+    <li>AWS S3への画像アップロード</li>
+    <li>PostgreSQLとPrisma</li>
+    <li class="pending">認証・認可 (実装予定)</li>
+</ul>
+
+<div class="status-panel">
+    <h3>システム状態</h3>
+    <div class="status-check">
+        <button onclick="checkHealth()">ヘルスチェック実行</button>
+        <span id="last-check"></span>
+    </div>
+    <p>API状態: <span id="api-health">未確認</span></p>
+    <p>データベース状態: <span id="db-health">未確認</span></p>
+</div>
+
+<script>
+    async function checkHealth() {
+        const button = document.querySelector('.status-check button');
+        button.disabled = true;
         
-        body {
-            font-family: Arial, sans-serif;
-            margin: 0;
-            padding: 0;
-            line-height: 1.6;
-            min-height: 100vh;
-            display: flex;
+        try {
+            const [apiRes, dbRes] = await Promise.all([
+                fetch('/health'),
+                fetch('/health-db')
+            ]);
+
+            const [apiData, dbData] = await Promise.all([
+                apiRes.json(),
+                dbRes.json()
+            ]);
+
+            updateStatus('api-health', apiData.status === 'healthy');
+            updateStatus('db-health', dbData.status === 'healthy');
+            
+            document.getElementById('last-check').textContent = 
+                `最終確認: ${new Date().toLocaleString('ja-JP')}`;
+
+        } catch (error) {
+            console.error('ヘルスチェックエラー:', error);
+            updateStatus('api-health', false);
+            updateStatus('db-health', false);
+        } finally {
+            button.disabled = false;
         }
+    }
 
-        /* サイドバー */
-        .sidebar {
-            width: var(--sidebar-width);
-            background-color: #2c3e50;
-            color: white;
-            padding: 20px;
-            position: fixed;
-            height: 100vh;
-            box-sizing: border-box;
-        }
-
-        .sidebar h2 {
-            color: white;
-            margin-bottom: 20px;
-            font-size: 1.2em;
-        }
-
-        .nav {
-            list-style: none;
-            padding: 0;
-            margin: 0;
-        }
-
-        .nav li {
-            margin-bottom: 10px;
-        }
-
-        .nav a {
-            color: white;
-            text-decoration: none;
-            display: block;
-            padding: 10px;
-            border-radius: 5px;
-            transition: background-color 0.2s;
-        }
-
-        .nav a:hover {
-            background-color: #34495e;
-        }
-
-        .nav a.active {
-            background-color: var(--primary-color);
-        }
-
-        /* メインコンテンツ */
-        .main {
-            flex: 1;
-            margin-left: var(--sidebar-width);
-            padding: 20px;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            width: calc(100% - var(--sidebar-width));
-            box-sizing: border-box;
-        }
-
-        .main > * {
-            width: 100%;
-            max-width: 800px;
-        }
-
-        /* 機能一覧 */
-        .feature-list {
-            list-style: none;
-            padding: 0;
-            color: var(--text-color);
-            width: 100%;
-        }
-        .feature-list li::before {
-            content: "✓ ";
-            color: green;
-        }
-        .feature-list li.pending::before {
-            content: "- ";
-            color: var(--text-color);
-        }
-
-        /* システム状態 */
-        .status-panel {
-            background-color: var(--bg-color);
-            padding: 15px;
-            border-radius: 5px;
-            margin: 20px 0;
-            width: 100%;
-        }
-        .status-panel button {
-            padding: 5px 10px;
-            margin-right: 10px;
-            background-color: var(--primary-color);
-            color: white;
-            border: none;
-            border-radius: 3px;
-            cursor: pointer;
-        }
-        .status-panel button:hover {
-            background-color: #0056b3;
-        }
-        .status-check {
-            display: flex;
-            gap: 10px;
-            margin-bottom: 10px;
-        }
-
-        /* レスポンシブデザイン */
-        @media (max-width: 768px) {
-            body {
-                flex-direction: column;
-            }
-
-            .sidebar {
-                width: 100%;
-                height: auto;
-                position: relative;
-            }
-
-            .main {
-                margin-left: 0;
-                padding: 20px;
-            }
-
-            .nav {
-                display: flex;
-                flex-wrap: wrap;
-                gap: 10px;
-            }
-
-            .nav li {
-                margin: 0;
-            }
-        }
-    </style>
-</head>
-<body>
-    <nav class="sidebar">
-        <h2>メニュー</h2>
-        <ul class="nav">
-            <li><a href="/">ホーム</a></li>
-            <li><a href="/system-status" class="active">システム状態</a></li>
-            <li><a href="/microposts">投稿一覧</a></li>
-        </ul>
-    </nav>
-
-    <main class="main">
-        <h1>システム状態</h1>
-        
-        <ul class="feature-list">
-            <li>データベース接続確認</li>
-            <li>CRUD操作の実装</li>
-            <li>AWS S3への画像アップロード</li>
-            <li>PostgreSQLとPrisma</li>
-            <li class="pending">認証・認可 (実装予定)</li>
-        </ul>
-        
-        <div class="status-panel">
-            <h3>システム状態</h3>
-            <div class="status-check">
-                <button onclick="checkHealth()">ヘルスチェック実行</button>
-                <span id="last-check"></span>
-            </div>
-            <p>API状態: <span id="api-health">未確認</span></p>
-            <p>データベース状態: <span id="db-health">未確認</span></p>
-        </div>
-
-        <script>
-            async function checkHealth() {
-                const button = document.querySelector('.status-check button');
-                button.disabled = true;
-                
-                try {
-                    const [apiRes, dbRes] = await Promise.all([
-                        fetch('/health'),
-                        fetch('/health-db')
-                    ]);
-
-                    const [apiData, dbData] = await Promise.all([
-                        apiRes.json(),
-                        dbRes.json()
-                    ]);
-
-                    updateStatus('api-health', apiData.status === 'healthy');
-                    updateStatus('db-health', dbData.status === 'healthy');
-                    
-                    document.getElementById('last-check').textContent = 
-                        `最終確認: ${new Date().toLocaleString('ja-JP')}`;
-
-                } catch (error) {
-                    console.error('ヘルスチェックエラー:', error);
-                    updateStatus('api-health', false);
-                    updateStatus('db-health', false);
-                } finally {
-                    button.disabled = false;
-                }
-            }
-
-            function updateStatus(elementId, isHealthy) {
-                const element = document.getElementById(elementId);
-                element.textContent = isHealthy ? '正常' : '異常';
-                element.style.color = isHealthy ? 'green' : 'red';
-            }
-        </script>
-    </main>
-</body>
-</html> 
+    function updateStatus(elementId, isHealthy) {
+        const element = document.getElementById(elementId);
+        element.textContent = isHealthy ? '正常' : '異常';
+        element.style.color = isHealthy ? 'green' : 'red';
+    }
+</script> 

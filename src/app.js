@@ -10,6 +10,7 @@ const { S3Client } = require('@aws-sdk/client-s3');
 const multerS3 = require('multer-s3');
 const fs = require('fs');
 const axios = require('axios');
+const expressLayouts = require('express-ejs-layouts');
 require('dotenv').config();
 
 // ロギングシステムの設定と管理
@@ -301,10 +302,12 @@ class Application {
   }
 
   setupBasicMiddleware() {
-    this.app.use(express.json());
-    this.app.use(express.urlencoded({ extended: true }));
     this.app.set('view engine', 'ejs');
     this.app.set('views', path.join(__dirname, 'views'));
+    this.app.use(expressLayouts);
+    this.app.set('layout', 'layouts/main');
+    this.app.use(express.json());
+    this.app.use(express.urlencoded({ extended: true }));
   }
 
   setupErrorLogging() {
@@ -340,19 +343,31 @@ class Application {
   }
 
   setupMainRoutes(upload) {
-    this.app.get('/', (_, res) => {
-      res.render('index');
+    this.app.get('/', (req, res) => {
+      res.render('index', {
+        title: 'ホーム',
+        path: req.path
+      });
     });
 
-    this.app.get('/system-status', (_, res) => {
-      res.render('system-status');
-    });
+    this.app.get('/system-status', asyncHandler(async (req, res) => {
+      const metadata = await this.getInstanceMetadata();
+      res.render('system-status', {
+        title: 'システム状態',
+        path: req.path,
+        metadata
+      });
+    }));
 
-    this.app.get('/microposts', asyncHandler(async (_, res) => {
+    this.app.get('/microposts', asyncHandler(async (req, res) => {
       const microposts = await this.prisma.micropost.findMany({
         orderBy: { createdAt: 'desc' }
       });
-      res.render('microposts', { microposts });
+      res.render('microposts', { 
+        microposts,
+        title: '投稿一覧',
+        path: req.path
+      });
     }));
 
     this.app.post('/microposts', upload.single('image'), asyncHandler(async (req, res) => {
@@ -393,6 +408,13 @@ class Application {
   }
 
   async getInstanceMetadata() {
+    if (process.env.NODE_ENV === 'development') {
+      return {
+        publicIp: 'localhost',
+        privateIp: 'localhost'
+      };
+    }
+
     try {
       const [publicIpResponse, privateIpResponse] = await Promise.all([
         axios.get('http://169.254.169.254/latest/meta-data/public-ipv4', { timeout: 2000 }),
@@ -405,7 +427,7 @@ class Application {
     } catch (error) {
       console.warn('Failed to fetch EC2 metadata:', error.message);
       return {
-        publicIp: '13.114.210.249',
+        publicIp: 'localhost',
         privateIp: 'localhost'
       };
     }
