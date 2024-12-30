@@ -1,53 +1,114 @@
 <%- contentFor('body') %>
-<div class="max-w-4xl mx-auto">
-    <h1 class="text-3xl font-bold text-gray-900 mb-8">検証用ウェブ アプリ</h1>
+<div class="max-w-5xl mx-auto">
+    <div class="mb-12">
+        <h1 class="text-4xl font-bold mb-4">検証用ウェブ アプリ</h1>
+        <p class="text-text text-lg">シンプルで使いやすい機能を提供する実験的なウェブアプリケーション</p>
+    </div>
 
-    <div class="bg-bg rounded-lg shadow-sm p-6 mb-8">
-        <h2 class="text-xl font-semibold text-gray-900 mb-4">機能一覧</h2>
-        <ul class="space-y-2 text-text">
-            <li class="flex items-center">
-                <svg class="w-5 h-5 text-green-500 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
-                </svg>
-                データベース接続確認
-            </li>
-            <li class="flex items-center">
-                <svg class="w-5 h-5 text-green-500 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
-                </svg>
-                CRUD操作の実装
-            </li>
-            <li class="flex items-center">
-                <svg class="w-5 h-5 text-green-500 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
-                </svg>
-                AWS S3への画像アップロード
-            </li>
-            <li class="flex items-center">
-                <svg class="w-5 h-5 text-green-500 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
-                </svg>
-                PostgreSQLとPrisma
-            </li>
-            <li class="flex items-center text-text">
-                <svg class="w-5 h-5 text-gray-400 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
-                </svg>
-                認証・認可 (実装予定)
-            </li>
-        </ul>
+    <div class="grid gap-6 mb-12">
+        <div class="section">
+            <h2 class="text-2xl font-semibold mb-6">機能一覧</h2>
+            <div class="grid gap-4">
+                <div class="flex items-start space-x-4 p-4 bg-bg rounded-lg">
+                    <div class="flex-shrink-0">
+                        <div class="w-10 h-10 rounded-full bg-green-100 flex items-center justify-center">
+                            <svg class="w-6 h-6 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+                            </svg>
+                        </div>
+                    </div>
+                    <div>
+                        <h3 class="font-medium">データベース接続確認</h3>
+                        <p class="text-text mt-1">PostgreSQLデータベースとの接続状態を監視</p>
+                    </div>
+                </div>
 
-        <h2 class="text-xl font-semibold text-gray-900 mt-8 mb-4">使用方法</h2>
-        <p class="text-text mb-4">このアプリケーションは以下の機能を提供しています：</p>
-        <ul class="space-y-2">
-            <li>
-                <a href="/system-status" class="text-primary hover:underline">システム状態</a>
-                - システムの健全性を確認できます
-            </li>
-            <li>
-                <a href="/microposts" class="text-primary hover:underline">投稿一覧</a>
-                - 画像付きの投稿を作成・閲覧できます
-            </li>
-        </ul>
+                <div class="flex items-start space-x-4 p-4 bg-bg rounded-lg">
+                    <div class="flex-shrink-0">
+                        <div class="w-10 h-10 rounded-full bg-green-100 flex items-center justify-center">
+                            <svg class="w-6 h-6 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+                            </svg>
+                        </div>
+                    </div>
+                    <div>
+                        <h3 class="font-medium">CRUD操作の実装</h3>
+                        <p class="text-text mt-1">基本的なデータ操作機能を提供</p>
+                    </div>
+                </div>
+
+                <div class="flex items-start space-x-4 p-4 bg-bg rounded-lg">
+                    <div class="flex-shrink-0">
+                        <div class="w-10 h-10 rounded-full bg-green-100 flex items-center justify-center">
+                            <svg class="w-6 h-6 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+                            </svg>
+                        </div>
+                    </div>
+                    <div>
+                        <h3 class="font-medium">AWS S3への画像アップロード</h3>
+                        <p class="text-text mt-1">クラウドストレージを活用した画像管理</p>
+                    </div>
+                </div>
+
+                <div class="flex items-start space-x-4 p-4 bg-bg rounded-lg">
+                    <div class="flex-shrink-0">
+                        <div class="w-10 h-10 rounded-full bg-green-100 flex items-center justify-center">
+                            <svg class="w-6 h-6 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+                            </svg>
+                        </div>
+                    </div>
+                    <div>
+                        <h3 class="font-medium">PostgreSQLとPrisma</h3>
+                        <p class="text-text mt-1">モダンなORMを使用したデータベース操作</p>
+                    </div>
+                </div>
+
+                <div class="flex items-start space-x-4 p-4 bg-bg rounded-lg">
+                    <div class="flex-shrink-0">
+                        <div class="w-10 h-10 rounded-full bg-gray-100 flex items-center justify-center">
+                            <svg class="w-6 h-6 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                            </svg>
+                        </div>
+                    </div>
+                    <div>
+                        <h3 class="font-medium">認証・認可 (実装予定)</h3>
+                        <p class="text-text mt-1">セキュアなユーザー認証システム</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="section">
+            <h2 class="text-2xl font-semibold mb-6">使用方法</h2>
+            <p class="text-text mb-6">このアプリケーションは以下の機能を提供しています：</p>
+            <div class="grid gap-4">
+                <a href="/system-status" class="card hover:shadow-airbnb group">
+                    <div class="flex items-center justify-between">
+                        <div>
+                            <h3 class="font-medium group-hover:text-primary transition-colors">システム状態</h3>
+                            <p class="text-text mt-1">システムの健全性を確認できます</p>
+                        </div>
+                        <svg class="w-6 h-6 text-text group-hover:text-primary transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
+                        </svg>
+                    </div>
+                </a>
+
+                <a href="/microposts" class="card hover:shadow-airbnb group">
+                    <div class="flex items-center justify-between">
+                        <div>
+                            <h3 class="font-medium group-hover:text-primary transition-colors">投稿一覧</h3>
+                            <p class="text-text mt-1">画像付きの投稿を作成・閲覧できます</p>
+                        </div>
+                        <svg class="w-6 h-6 text-text group-hover:text-primary transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
+                        </svg>
+                    </div>
+                </a>
+            </div>
+        </div>
     </div>
 </div> 

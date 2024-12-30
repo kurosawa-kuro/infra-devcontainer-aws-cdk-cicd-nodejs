@@ -2,16 +2,39 @@
 @tailwind components;
 @tailwind utilities;
 
+@layer base {
+  body {
+    @apply text-text-dark;
+  }
+  h1 {
+    @apply text-2xl font-bold text-text-dark;
+  }
+  h2 {
+    @apply text-xl font-semibold text-text-dark;
+  }
+  h3 {
+    @apply text-lg font-semibold text-text-dark;
+  }
+}
+
 @layer components {
-  .btn {
-    @apply bg-primary text-white px-4 py-2 rounded hover:bg-blue-600 transition-colors;
+  .btn-primary {
+    @apply bg-primary text-white px-6 py-3 rounded-lg font-medium hover:bg-opacity-90 transition-colors;
   }
   
-  .form-input {
-    @apply w-full p-2 border border-border rounded mb-3;
+  .btn-secondary {
+    @apply bg-white text-text-dark px-6 py-3 rounded-lg font-medium border border-border hover:border-text transition-colors;
+  }
+  
+  .input-text {
+    @apply w-full px-4 py-3 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent;
   }
   
   .card {
-    @apply bg-bg p-5 rounded shadow-sm mb-4;
+    @apply bg-white p-6 rounded-airbnb shadow-airbnb-sm hover:shadow-airbnb transition-shadow;
+  }
+  
+  .section {
+    @apply bg-white p-6 rounded-airbnb border border-border;
   }
 } 

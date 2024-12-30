@@ -1,22 +1,36 @@
-<nav class="fixed top-0 left-0 bottom-0 w-64 hidden lg:block bg-secondary">
-    <div class="px-6 py-4">
-        <h2 class="text-lg font-semibold text-white mb-4">メニュー</h2>
+<nav class="fixed top-0 left-0 bottom-0 w-72 hidden lg:block bg-white border-r border-border">
+    <div class="px-8 py-6">
+        <div class="flex items-center mb-8">
+            <svg class="w-8 h-8 text-primary" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M12 2L2 8.5V22H22V8.5L12 2ZM12 4.25L19.5 9.25V20H4.5V9.25L12 4.25Z"/>
+            </svg>
+            <h2 class="ml-3 text-xl font-semibold text-text-dark">検証用アプリ</h2>
+        </div>
         <ul class="space-y-2">
             <li>
                 <a href="/" 
-                   class="block px-4 py-2 rounded-md text-white hover:bg-gray-700 transition-colors <%= path === '/' ? 'bg-primary' : '' %>">
+                   class="flex items-center px-4 py-3 rounded-airbnb text-text-dark hover:bg-bg transition-colors <%= path === '/' ? 'bg-bg font-medium' : '' %>">
+                    <svg class="w-5 h-5 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"/>
+                    </svg>
                     ホーム
                 </a>
             </li>
             <li>
                 <a href="/system-status" 
-                   class="block px-4 py-2 rounded-md text-white hover:bg-gray-700 transition-colors <%= path === '/system-status' ? 'bg-primary' : '' %>">
+                   class="flex items-center px-4 py-3 rounded-airbnb text-text-dark hover:bg-bg transition-colors <%= path === '/system-status' ? 'bg-bg font-medium' : '' %>">
+                    <svg class="w-5 h-5 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                    </svg>
                     システム状態
                 </a>
             </li>
             <li>
                 <a href="/microposts" 
-                   class="block px-4 py-2 rounded-md text-white hover:bg-gray-700 transition-colors <%= path === '/microposts' ? 'bg-primary' : '' %>">
+                   class="flex items-center px-4 py-3 rounded-airbnb text-text-dark hover:bg-bg transition-colors <%= path === '/microposts' ? 'bg-bg font-medium' : '' %>">
+                    <svg class="w-5 h-5 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/>
+                    </svg>
                     投稿一覧
                 </a>
             </li>
@@ -25,26 +39,42 @@
 </nav>
 
 <!-- モバイルメニュー -->
-<div class="lg:hidden bg-secondary p-4">
-    <h2 class="text-lg font-semibold text-white mb-4">メニュー</h2>
-    <ul class="flex flex-wrap gap-2">
-        <li>
-            <a href="/" 
-               class="block px-4 py-2 rounded-md text-white hover:bg-gray-700 transition-colors <%= path === '/' ? 'bg-primary' : '' %>">
-                ホーム
-            </a>
-        </li>
-        <li>
-            <a href="/system-status" 
-               class="block px-4 py-2 rounded-md text-white hover:bg-gray-700 transition-colors <%= path === '/system-status' ? 'bg-primary' : '' %>">
-                システム状態
-            </a>
-        </li>
-        <li>
-            <a href="/microposts" 
-               class="block px-4 py-2 rounded-md text-white hover:bg-gray-700 transition-colors <%= path === '/microposts' ? 'bg-primary' : '' %>">
-                投稿一覧
-            </a>
-        </li>
-    </ul>
+<div class="lg:hidden bg-white border-b border-border">
+    <div class="px-6 py-4">
+        <div class="flex items-center mb-4">
+            <svg class="w-8 h-8 text-primary" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M12 2L2 8.5V22H22V8.5L12 2ZM12 4.25L19.5 9.25V20H4.5V9.25L12 4.25Z"/>
+            </svg>
+            <h2 class="ml-3 text-xl font-semibold text-text-dark">検証用アプリ</h2>
+        </div>
+        <ul class="flex flex-wrap gap-2">
+            <li class="flex-1">
+                <a href="/" 
+                   class="flex items-center justify-center px-4 py-3 rounded-airbnb text-text-dark hover:bg-bg transition-colors <%= path === '/' ? 'bg-bg font-medium' : '' %>">
+                    <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"/>
+                    </svg>
+                    ホーム
+                </a>
+            </li>
+            <li class="flex-1">
+                <a href="/system-status" 
+                   class="flex items-center justify-center px-4 py-3 rounded-airbnb text-text-dark hover:bg-bg transition-colors <%= path === '/system-status' ? 'bg-bg font-medium' : '' %>">
+                    <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                    </svg>
+                    システム状態
+                </a>
+            </li>
+            <li class="flex-1">
+                <a href="/microposts" 
+                   class="flex items-center justify-center px-4 py-3 rounded-airbnb text-text-dark hover:bg-bg transition-colors <%= path === '/microposts' ? 'bg-bg font-medium' : '' %>">
+                    <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/>
+                    </svg>
+                    投稿一覧
+                </a>
+            </li>
+        </ul>
+    </div>
 </div> 
