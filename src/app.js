@@ -340,11 +340,19 @@ class Application {
   }
 
   setupMainRoutes(upload) {
-    this.app.get('/', asyncHandler(async (_, res) => {
+    this.app.get('/', (_, res) => {
+      res.render('index');
+    });
+
+    this.app.get('/system-status', (_, res) => {
+      res.render('system-status');
+    });
+
+    this.app.get('/microposts', asyncHandler(async (_, res) => {
       const microposts = await this.prisma.micropost.findMany({
         orderBy: { createdAt: 'desc' }
       });
-      res.render('index', { microposts });
+      res.render('microposts', { microposts });
     }));
 
     this.app.post('/microposts', upload.single('image'), asyncHandler(async (req, res) => {
@@ -363,7 +371,7 @@ class Application {
           }
         });
 
-        res.redirect('/');
+        res.redirect('/microposts');
       } catch (error) {
         console.error('File upload error:', error);
         res.status(500).json({ 
