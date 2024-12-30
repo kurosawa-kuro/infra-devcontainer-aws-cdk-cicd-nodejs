@@ -350,6 +350,63 @@ class Application {
       });
     });
 
+    // Auth routes
+    this.app.get('/auth/signup', (req, res) => {
+      res.render('auth/signup', { title: 'ユーザー登録', path: req.path });
+    });
+
+    this.app.post('/auth/signup', (req, res) => {
+      // ユーザー登録ロジック
+      res.redirect('/auth/login');
+    });
+
+    this.app.get('/auth/login', (req, res) => {
+      res.render('auth/login', { title: 'ログイン', path: req.path });
+    });
+
+    this.app.post('/auth/login', (req, res) => {
+      // ログインロジック
+      res.redirect('/');
+    });
+
+    this.app.get('/auth/logout', (req, res) => {
+      // ログアウトロジック
+      res.redirect('/');
+    });
+
+    // Profile routes
+    this.app.get('/profile/:id', (req, res) => {
+      res.render('profile/show', {
+        title: 'プロフィール',
+        path: req.path,
+        user: {
+          id: req.params.id,
+          name: '',
+          email: '',
+          bio: '',
+          createdAt: new Date()
+        }
+      });
+    });
+
+    this.app.get('/profile/:id/edit', (req, res) => {
+      res.render('profile/edit', {
+        title: 'プロフィール編集',
+        path: req.path,
+        user: {
+          id: req.params.id,
+          name: '',
+          email: '',
+          bio: ''
+        }
+      });
+    });
+
+    this.app.post('/profile/:id/edit', (req, res) => {
+      // プロフィール更新ロジック
+      res.redirect(`/profile/${req.params.id}`);
+    });
+
     this.app.get('/system-status', asyncHandler(async (req, res) => {
       const metadata = await this.getInstanceMetadata();
       res.render('system-status', {

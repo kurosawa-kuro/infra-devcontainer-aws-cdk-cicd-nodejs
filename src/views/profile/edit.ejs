@@ -1,0 +1,76 @@
+<%- contentFor('body') %>
+<div class="max-w-3xl mx-auto">
+    <div class="mb-12">
+        <h1 class="text-4xl font-bold mb-4">プロフィール編集</h1>
+        <p class="text-text text-lg">プロフィール情報を更新する</p>
+    </div>
+
+    <div class="section">
+        <form action="/profile/<%= user.id %>/edit" method="POST" class="space-y-6">
+            <div>
+                <label for="name" class="block text-sm font-medium text-text-dark mb-2">
+                    名前
+                </label>
+                <input type="text" 
+                       id="name"
+                       name="name" 
+                       value="<%= user.name %>"
+                       required
+                       class="input-text">
+            </div>
+
+            <div>
+                <label for="email" class="block text-sm font-medium text-text-dark mb-2">
+                    メールアドレス
+                </label>
+                <input type="email" 
+                       id="email"
+                       name="email" 
+                       value="<%= user.email %>"
+                       required
+                       class="input-text">
+            </div>
+
+            <div>
+                <label for="bio" class="block text-sm font-medium text-text-dark mb-2">
+                    自己紹介
+                </label>
+                <textarea id="bio"
+                          name="bio" 
+                          rows="4"
+                          class="input-text"><%= user.bio %></textarea>
+            </div>
+
+            <div>
+                <label for="current_password" class="block text-sm font-medium text-text-dark mb-2">
+                    現在のパスワード
+                </label>
+                <input type="password" 
+                       id="current_password"
+                       name="current_password" 
+                       class="input-text">
+                <p class="mt-1 text-sm text-text">変更を保存するには現在のパスワードが必要です</p>
+            </div>
+
+            <div>
+                <label for="new_password" class="block text-sm font-medium text-text-dark mb-2">
+                    新しいパスワード
+                </label>
+                <input type="password" 
+                       id="new_password"
+                       name="new_password" 
+                       class="input-text">
+                <p class="mt-1 text-sm text-text">パスワードを変更する場合のみ入力してください</p>
+            </div>
+
+            <div class="flex justify-end space-x-4">
+                <a href="/profile/<%= user.id %>" class="btn-secondary">
+                    キャンセル
+                </a>
+                <button type="submit" class="btn-primary">
+                    変更を保存
+                </button>
+            </div>
+        </form>
+    </div>
+</div> 

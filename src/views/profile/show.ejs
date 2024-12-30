@@ -1,0 +1,52 @@
+<%- contentFor('body') %>
+<div class="max-w-5xl mx-auto">
+    <div class="mb-12">
+        <div class="flex items-center justify-between">
+            <h1 class="text-4xl font-bold">プロフィール</h1>
+            <a href="/profile/<%= user.id %>/edit" class="btn-secondary">
+                プロフィール編集
+            </a>
+        </div>
+    </div>
+
+    <div class="grid gap-6">
+        <div class="section">
+            <div class="flex items-start space-x-6">
+                <div class="flex-shrink-0">
+                    <div class="w-32 h-32 rounded-full bg-bg flex items-center justify-center">
+                        <svg class="w-16 h-16 text-text" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/>
+                        </svg>
+                    </div>
+                </div>
+                <div class="flex-grow">
+                    <div class="grid gap-4">
+                        <div>
+                            <h3 class="text-sm font-medium text-text">名前</h3>
+                            <p class="mt-1 text-lg"><%= user.name %></p>
+                        </div>
+                        <div>
+                            <h3 class="text-sm font-medium text-text">メールアドレス</h3>
+                            <p class="mt-1 text-lg"><%= user.email %></p>
+                        </div>
+                        <div>
+                            <h3 class="text-sm font-medium text-text">自己紹介</h3>
+                            <p class="mt-1 text-lg"><%= user.bio || '未設定' %></p>
+                        </div>
+                        <div>
+                            <h3 class="text-sm font-medium text-text">登録日</h3>
+                            <p class="mt-1 text-lg"><%= user.createdAt.toLocaleDateString('ja-JP') %></p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="section">
+            <h2 class="text-2xl font-semibold mb-6">最近の投稿</h2>
+            <div class="grid gap-4">
+                <!-- 投稿一覧を表示 -->
+            </div>
+        </div>
+    </div>
+</div> 

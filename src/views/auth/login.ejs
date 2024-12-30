@@ -1,0 +1,66 @@
+<%- contentFor('body') %>
+<div class="max-w-md mx-auto">
+    <div class="mb-12 text-center">
+        <h1 class="text-4xl font-bold mb-4">ログイン</h1>
+        <p class="text-text text-lg">アカウントにログインしてサービスを利用</p>
+    </div>
+
+    <div class="section">
+        <form action="/auth/login" method="POST" class="space-y-6">
+            <div>
+                <label for="email" class="block text-sm font-medium text-text-dark mb-2">
+                    メールアドレス
+                </label>
+                <input type="email" 
+                       id="email"
+                       name="email" 
+                       required
+                       class="input-text">
+            </div>
+
+            <div>
+                <label for="password" class="block text-sm font-medium text-text-dark mb-2">
+                    パスワード
+                </label>
+                <input type="password" 
+                       id="password"
+                       name="password" 
+                       required
+                       class="input-text">
+            </div>
+
+            <div class="flex items-center justify-between">
+                <div class="flex items-center">
+                    <input type="checkbox" 
+                           id="remember" 
+                           name="remember"
+                           class="h-4 w-4 text-primary border-border rounded">
+                    <label for="remember" class="ml-2 block text-sm text-text">
+                        ログイン状態を保持
+                    </label>
+                </div>
+
+                <div class="text-sm">
+                    <a href="#" class="text-primary hover:underline">
+                        パスワードをお忘れですか？
+                    </a>
+                </div>
+            </div>
+
+            <div>
+                <button type="submit" class="btn-primary w-full">
+                    ログイン
+                </button>
+            </div>
+        </form>
+
+        <div class="mt-6 text-center">
+            <p class="text-text">
+                アカウントをお持ちでないですか？
+                <a href="/auth/signup" class="text-primary hover:underline">
+                    新規登録
+                </a>
+            </p>
+        </div>
+    </div>
+</div> 
