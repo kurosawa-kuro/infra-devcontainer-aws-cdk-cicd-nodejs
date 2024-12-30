@@ -266,6 +266,210 @@ class ErrorHandler {
   }
 }
 
+// コントローラークラス
+class AuthController {
+  constructor(authService) {
+    this.authService = authService;
+  }
+
+  getSignupPage(req, res) {
+    res.render('auth/signup', { title: 'ユーザー登録', path: req.path });
+  }
+
+  async signup(req, res) {
+    await this.authService.signup(req.body);
+    res.redirect('/auth/login');
+  }
+
+  getLoginPage(req, res) {
+    res.render('auth/login', { title: 'ログイン', path: req.path });
+  }
+
+  async login(req, res) {
+    await this.authService.login(req.body);
+    res.redirect('/');
+  }
+
+  async logout(req, res) {
+    await this.authService.logout(req);
+    res.redirect('/');
+  }
+}
+
+class ProfileController {
+  constructor(profileService) {
+    this.profileService = profileService;
+  }
+
+  async show(req, res) {
+    const user = await this.profileService.getUserProfile(req.params.id);
+    res.render('profile/show', {
+      title: 'プロフィール',
+      path: req.path,
+      user
+    });
+  }
+
+  async getEditPage(req, res) {
+    const user = await this.profileService.getUserProfile(req.params.id);
+    res.render('profile/edit', {
+      title: 'プロフィール編集',
+      path: req.path,
+      user
+    });
+  }
+
+  async update(req, res) {
+    await this.profileService.updateProfile(req.params.id, req.body);
+    res.redirect(`/profile/${req.params.id}`);
+  }
+}
+
+class MicropostController {
+  constructor(micropostService, fileUploader) {
+    this.micropostService = micropostService;
+    this.fileUploader = fileUploader;
+  }
+
+  async index(req, res) {
+    const microposts = await this.micropostService.getAllMicroposts();
+    res.render('microposts', { 
+      microposts,
+      title: '投稿一覧',
+      path: req.path
+    });
+  }
+
+  async create(req, res) {
+    try {
+      const { title } = req.body;
+      if (!title?.trim()) {
+        return res.status(400).json({ error: '投稿内容を入力してください' });
+      }
+
+      const imageUrl = this.fileUploader.generateFileUrl(req.file);
+      await this.micropostService.createMicropost(title.trim(), imageUrl);
+      res.redirect('/microposts');
+    } catch (error) {
+      console.error('File upload error:', error);
+      res.status(500).json({ 
+        error: 'ファイルアップロードに失敗しました',
+        details: process.env.NODE_ENV === 'development' ? error.message : undefined
+      });
+    }
+  }
+}
+
+class SystemController {
+  constructor(systemService) {
+    this.systemService = systemService;
+  }
+
+  async getStatus(req, res) {
+    const metadata = await this.systemService.getInstanceMetadata();
+    res.render('system-status', {
+      title: 'システム状態',
+      path: req.path,
+      metadata
+    });
+  }
+}
+
+// サービスクラス
+class AuthService {
+  constructor(prisma) {
+    this.prisma = prisma;
+  }
+
+  async signup(userData) {
+    // ユーザー登録ロジックの実装
+    // 実際のアプリケーションではパスワードのハッシュ化などを行う
+    return null;
+  }
+
+  async login(credentials) {
+    // ログインロジックの実装
+    // 実際のアプリケーションでは認証処理を行う
+    return null;
+  }
+
+  async logout(req) {
+    // ログアウトロジックの実装
+    // 実際のアプリケーションではセッションのクリアなどを行う
+    return null;
+  }
+}
+
+class ProfileService {
+  constructor(prisma) {
+    this.prisma = prisma;
+  }
+
+  async getUserProfile(userId) {
+    // 実際のアプリケーションではDBからユーザー情報を取得
+    return {
+      id: userId,
+      name: '',
+      email: '',
+      bio: '',
+      createdAt: new Date()
+    };
+  }
+
+  async updateProfile(userId, profileData) {
+    // プロフィール更新ロジックの実装
+    return null;
+  }
+}
+
+class MicropostService {
+  constructor(prisma) {
+    this.prisma = prisma;
+  }
+
+  async getAllMicroposts() {
+    return this.prisma.micropost.findMany({
+      orderBy: { createdAt: 'desc' }
+    });
+  }
+
+  async createMicropost(title, imageUrl) {
+    return this.prisma.micropost.create({
+      data: { title, imageUrl }
+    });
+  }
+}
+
+class SystemService {
+  constructor() {}
+
+  async getInstanceMetadata() {
+    if (process.env.NODE_ENV === 'development') {
+      return {
+        publicIp: 'localhost',
+        privateIp: 'localhost'
+      };
+    }
+
+    try {
+      const [publicIpResponse, privateIpResponse] = await Promise.all([
+        axios.get('http://169.254.169.254/latest/meta-data/public-ipv4', { timeout: 2000 }),
+        axios.get('http://169.254.169.254/latest/meta-data/local-ipv4', { timeout: 2000 })
+      ]);
+      return {
+        publicIp: publicIpResponse.data,
+        privateIp: privateIpResponse.data
+      };
+    } catch (error) {
+      console.warn('Failed to fetch EC2 metadata:', error.message);
+      return {
+        publicIp: 'localhost',
+        privateIp: 'localhost'
+      };
+    }
+  }
+}
+
 // メインのアプリケーションクラス
 class Application {
   constructor() {
@@ -279,6 +483,18 @@ class Application {
     this.storageConfig = new StorageConfig();
     this.fileUploader = new FileUploader(this.storageConfig);
     this.errorHandler = new ErrorHandler(this.storageConfig.getUploadLimits());
+
+    // サービスの初期化
+    this.authService = new AuthService(this.prisma);
+    this.profileService = new ProfileService(this.prisma);
+    this.micropostService = new MicropostService(this.prisma);
+    this.systemService = new SystemService();
+
+    // コントローラーの初期化
+    this.authController = new AuthController(this.authService);
+    this.profileController = new ProfileController(this.profileService);
+    this.micropostController = new MicropostController(this.micropostService, this.fileUploader);
+    this.systemController = new SystemController(this.systemService);
   }
 
   setupMiddleware() {
@@ -351,107 +567,23 @@ class Application {
     });
 
     // Auth routes
-    this.app.get('/auth/signup', (req, res) => {
-      res.render('auth/signup', { title: 'ユーザー登録', path: req.path });
-    });
-
-    this.app.post('/auth/signup', (req, res) => {
-      // ユーザー登録ロジック
-      res.redirect('/auth/login');
-    });
-
-    this.app.get('/auth/login', (req, res) => {
-      res.render('auth/login', { title: 'ログイン', path: req.path });
-    });
-
-    this.app.post('/auth/login', (req, res) => {
-      // ログインロジック
-      res.redirect('/');
-    });
-
-    this.app.get('/auth/logout', (req, res) => {
-      // ログアウトロジック
-      res.redirect('/');
-    });
+    this.app.get('/auth/signup', (req, res) => this.authController.getSignupPage(req, res));
+    this.app.post('/auth/signup', asyncHandler((req, res) => this.authController.signup(req, res)));
+    this.app.get('/auth/login', (req, res) => this.authController.getLoginPage(req, res));
+    this.app.post('/auth/login', asyncHandler((req, res) => this.authController.login(req, res)));
+    this.app.get('/auth/logout', asyncHandler((req, res) => this.authController.logout(req, res)));
 
     // Profile routes
-    this.app.get('/profile/:id', (req, res) => {
-      res.render('profile/show', {
-        title: 'プロフィール',
-        path: req.path,
-        user: {
-          id: req.params.id,
-          name: '',
-          email: '',
-          bio: '',
-          createdAt: new Date()
-        }
-      });
-    });
+    this.app.get('/profile/:id', asyncHandler((req, res) => this.profileController.show(req, res)));
+    this.app.get('/profile/:id/edit', asyncHandler((req, res) => this.profileController.getEditPage(req, res)));
+    this.app.post('/profile/:id/edit', asyncHandler((req, res) => this.profileController.update(req, res)));
 
-    this.app.get('/profile/:id/edit', (req, res) => {
-      res.render('profile/edit', {
-        title: 'プロフィール編集',
-        path: req.path,
-        user: {
-          id: req.params.id,
-          name: '',
-          email: '',
-          bio: ''
-        }
-      });
-    });
+    // System routes
+    this.app.get('/system-status', asyncHandler((req, res) => this.systemController.getStatus(req, res)));
 
-    this.app.post('/profile/:id/edit', (req, res) => {
-      // プロフィール更新ロジック
-      res.redirect(`/profile/${req.params.id}`);
-    });
-
-    this.app.get('/system-status', asyncHandler(async (req, res) => {
-      const metadata = await this.getInstanceMetadata();
-      res.render('system-status', {
-        title: 'システム状態',
-        path: req.path,
-        metadata
-      });
-    }));
-
-    this.app.get('/microposts', asyncHandler(async (req, res) => {
-      const microposts = await this.prisma.micropost.findMany({
-        orderBy: { createdAt: 'desc' }
-      });
-      res.render('microposts', { 
-        microposts,
-        title: '投稿一覧',
-        path: req.path
-      });
-    }));
-
-    this.app.post('/microposts', upload.single('image'), asyncHandler(async (req, res) => {
-      try {
-        const { title } = req.body;
-        if (!title?.trim()) {
-          return res.status(400).json({ error: '投稿内容を入力してください' });
-        }
-
-        const imageUrl = this.fileUploader.generateFileUrl(req.file);
-
-        await this.prisma.micropost.create({
-          data: { 
-            title: title.trim(),
-            imageUrl
-          }
-        });
-
-        res.redirect('/microposts');
-      } catch (error) {
-        console.error('File upload error:', error);
-        res.status(500).json({ 
-          error: 'ファイルアップロードに失敗しました',
-          details: process.env.NODE_ENV === 'development' ? error.message : undefined
-        });
-      }
-    }));
+    // Micropost routes
+    this.app.get('/microposts', asyncHandler((req, res) => this.micropostController.index(req, res)));
+    this.app.post('/microposts', upload.single('image'), asyncHandler((req, res) => this.micropostController.create(req, res)));
   }
 
   setupStaticRoutes() {
@@ -466,29 +598,7 @@ class Application {
   }
 
   async getInstanceMetadata() {
-    if (process.env.NODE_ENV === 'development') {
-      return {
-        publicIp: 'localhost',
-        privateIp: 'localhost'
-      };
-    }
-
-    try {
-      const [publicIpResponse, privateIpResponse] = await Promise.all([
-        axios.get('http://169.254.169.254/latest/meta-data/public-ipv4', { timeout: 2000 }),
-        axios.get('http://169.254.169.254/latest/meta-data/local-ipv4', { timeout: 2000 })
-      ]);
-      return {
-        publicIp: publicIpResponse.data,
-        privateIp: privateIpResponse.data
-      };
-    } catch (error) {
-      console.warn('Failed to fetch EC2 metadata:', error.message);
-      return {
-        publicIp: 'localhost',
-        privateIp: 'localhost'
-      };
-    }
+    return this.systemService.getInstanceMetadata();
   }
 
   async start() {
