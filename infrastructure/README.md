@@ -45,3 +45,9 @@ new InfraAwsCdkVpcAlbS3CfRmonitorStack(app, 'InfraAwsCdkVpcAlbS3CfRmonitorStack'
   }
 });
 ```
+
+```
+for stack in $(aws cloudformation list-stacks --region us-east-1 --query 'StackSummaries[?contains(StackName, `WebAclStack`) && StackStatus!=`DELETE_COMPLETE`].StackName' --output text); do echo "Deleting $stack..."; aws cloudformation delete-stack --stack-name $stack --region us-east-1; done
+
+for stack in $(aws cloudformation list-stacks --region ap-northeast-1 --query 'StackSummaries[?StackStatus!=`DELETE_COMPLETE`].StackName' --output text); do echo "Deleting $stack..."; aws cloudformation delete-stack --stack-name $stack --region ap-northeast-1; done
+```

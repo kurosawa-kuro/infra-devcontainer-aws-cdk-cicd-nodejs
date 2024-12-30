@@ -24,6 +24,8 @@ import * as iam from 'aws-cdk-lib/aws-iam';
 import * as logs from 'aws-cdk-lib/aws-logs';
 
 // #region Configuration Types
+const ECR_REPOSITORY = '476114153361.dkr.ecr.ap-northeast-1.amazonaws.com/aws-fargate-express-01-repository';
+
 namespace Config {
   export interface Stack {
     prefix: string;
@@ -91,36 +93,37 @@ namespace Config {
 // #endregion
 
 // #region Stack Configuration
-const LOGICAL_PREFIX = 'FargateExpress01';
+const LOGICAL_PREFIX = 'fargateexpress02';
 const CONFIG: Config.Stack = {
-  prefix: LOGICAL_PREFIX.toLowerCase(),
+  prefix: LOGICAL_PREFIX,
   region: 'ap-northeast-1',
   accountId: '476114153361',
   resourceNames: {
-    vpc: `${LOGICAL_PREFIX}Vpc`,
-    igw: `${LOGICAL_PREFIX}Igw`,
-    getSubnetId: (index: number) => `${LOGICAL_PREFIX}PublicSubnet${index === 0 ? '1a' : '1c'}`,
-    getRouteTableId: (index: number) => `${LOGICAL_PREFIX}PublicRt${index === 0 ? '1a' : '1c'}`,
-    ecr: `${LOGICAL_PREFIX}-repository`,
-    ecsCluster: `${LOGICAL_PREFIX}-cluster`,
-    ecsService: `${LOGICAL_PREFIX}-service`,
-    ecsTaskDefinition: `${LOGICAL_PREFIX}-task`,
-    alb: `${LOGICAL_PREFIX}-alb`,
-    s3: `${LOGICAL_PREFIX}-s3`,
-    cloudfront: `${LOGICAL_PREFIX}-cf`,
+    vpc: `${LOGICAL_PREFIX}vpc`,
+    igw: `${LOGICAL_PREFIX}igw`,
+    getSubnetId: (index: number) => `${LOGICAL_PREFIX}subnet${index === 0 ? '1a' : '1c'}`,
+    getRouteTableId: (index: number) => `${LOGICAL_PREFIX}rt${index === 0 ? '1a' : '1c'}`,
+    ecr: `${LOGICAL_PREFIX}repository`,
+    ecsCluster: `${LOGICAL_PREFIX}cluster`,
+    ecsService: `${LOGICAL_PREFIX}service`,
+    ecsTaskDefinition: `${LOGICAL_PREFIX}task`,
+    alb: `${LOGICAL_PREFIX}alb`,
+    s3: `${LOGICAL_PREFIX}s3`,
+    cloudfront: `${LOGICAL_PREFIX}cf`,
   },
   vpc: {
-    cidr: '10.4.0.0/16',
+    cidr: '10.5.0.0/16',
     maxAzs: 2,
     subnetMask: 24,
   },
   app: {
     port: 8080,
     healthCheckPath: '/health',
-    containerName: 'fargate-express-02',
+    containerName: 'FargateExpress01',
     imageTag: 'latest',
     envVariables: {
-      APP_ENV: 'production'
+      APP_ENV: 'production',
+      DATABASE_URL: "postgresql://neondb_owner:Nrp3FfO1goiB@ep-noisy-cherry-a7rp6riz.ap-southeast-2.aws.neon.tech/neondb?sslmode=require"
     }
   },
   ecs: {
@@ -153,7 +156,6 @@ interface StackResources {
     alb: ec2.SecurityGroup;
     app: ec2.SecurityGroup;
   };
-  ecr: ecr.Repository;
   cluster: ecs.Cluster;
   taskDefinition: ecs.FargateTaskDefinition;
   service: ecs.FargateService;
@@ -186,7 +188,6 @@ export class AwsCdkWebFargateStack extends cdk.Stack {
     const securityGroups = this.createSecurityGroups(vpc);
 
     // Container Infrastructure
-    const repository = this.createContainerRegistry();
     const cluster = this.createEcsCluster(vpc);
     const taskDefinition = this.createTaskDefinition();
     
@@ -204,7 +205,6 @@ export class AwsCdkWebFargateStack extends cdk.Stack {
     return {
       vpc,
       securityGroups,
-      ecr: repository,
       cluster,
       taskDefinition,
       service,
@@ -309,7 +309,7 @@ export class AwsCdkWebFargateStack extends cdk.Stack {
   private createSecurityGroups(vpc: ec2.Vpc) {
     const albSg = new ec2.SecurityGroup(this, 'AlbSecurityGroup', {
       vpc,
-      securityGroupName: `${CONFIG.prefix}-alb-sg`,
+      securityGroupName: `${CONFIG.prefix}albsg`,
       description: 'Security group for ALB',
       allowAllOutbound: true,
     });
@@ -322,7 +322,7 @@ export class AwsCdkWebFargateStack extends cdk.Stack {
 
     const appSg = new ec2.SecurityGroup(this, 'AppSecurityGroup', {
       vpc,
-      securityGroupName: `${CONFIG.prefix}-app-sg`,
+      securityGroupName: `${CONFIG.prefix}appsg`,
       description: 'Security group for Fargate tasks',
       allowAllOutbound: true,
     });
@@ -338,14 +338,6 @@ export class AwsCdkWebFargateStack extends cdk.Stack {
   // #endregion
 
   // #region Container Infrastructure
-  private createContainerRegistry(): ecr.Repository {
-    return new ecr.Repository(this, 'AppRepository', {
-      repositoryName: CONFIG.resourceNames.ecr,
-      removalPolicy: cdk.RemovalPolicy.DESTROY,
-      autoDeleteImages: true,
-    });
-  }
-
   private createEcsCluster(vpc: ec2.Vpc): ecs.Cluster {
     return new ecs.Cluster(this, 'AppCluster', {
       vpc,
@@ -361,6 +353,20 @@ export class AwsCdkWebFargateStack extends cdk.Stack {
       memoryLimitMiB: CONFIG.ecs.memory,
     });
 
+    // Add ECR permissions to task execution role
+    taskDefinition.addToExecutionRolePolicy(
+      new iam.PolicyStatement({
+        effect: iam.Effect.ALLOW,
+        actions: [
+          'ecr:GetAuthorizationToken',
+          'ecr:BatchCheckLayerAvailability',
+          'ecr:GetDownloadUrlForLayer',
+          'ecr:BatchGetImage'
+        ],
+        resources: ['*']
+      })
+    );
+
     const logGroup = new logs.LogGroup(this, 'AppLogGroup', {
       logGroupName: `/ecs/${CONFIG.resourceNames.ecsTaskDefinition}`,
       retention: CONFIG.ecs.logRetentionDays,
@@ -369,9 +375,7 @@ export class AwsCdkWebFargateStack extends cdk.Stack {
 
     taskDefinition.addContainer('AppContainer', {
       containerName: CONFIG.app.containerName,
-      image: ecs.ContainerImage.fromRegistry(
-        `${CONFIG.accountId}.dkr.ecr.${CONFIG.region}.amazonaws.com/${CONFIG.resourceNames.ecr}:${CONFIG.app.imageTag}`
-      ),
+      image: ecs.ContainerImage.fromRegistry(ECR_REPOSITORY),
       portMappings: [{ containerPort: CONFIG.app.port }],
       environment: CONFIG.app.envVariables,
       logging: ecs.LogDrivers.awsLogs({
@@ -393,7 +397,7 @@ export class AwsCdkWebFargateStack extends cdk.Stack {
     const targetGroup = this.createTargetGroup(vpc);
     this.configureAlbListener(alb, targetGroup);
 
-    return new ecs.FargateService(this, 'AppService', {
+    const service = new ecs.FargateService(this, 'AppService', {
       cluster,
       serviceName: CONFIG.resourceNames.ecsService,
       taskDefinition,
@@ -402,6 +406,10 @@ export class AwsCdkWebFargateStack extends cdk.Stack {
       assignPublicIp: true,
       vpcSubnets: { subnetType: ec2.SubnetType.PUBLIC },
     });
+
+    service.attachToApplicationTargetGroup(targetGroup);
+
+    return service;
   }
 
   private createTargetGroup(vpc: ec2.Vpc): elbv2.ApplicationTargetGroup {
@@ -410,7 +418,7 @@ export class AwsCdkWebFargateStack extends cdk.Stack {
       port: CONFIG.app.port,
       protocol: elbv2.ApplicationProtocol.HTTP,
       targetType: elbv2.TargetType.IP,
-      targetGroupName: `${CONFIG.prefix}-tg`,
+      targetGroupName: `${CONFIG.prefix}tg`,
       healthCheck: {
         path: CONFIG.app.healthCheckPath,
         port: CONFIG.app.port.toString(),
@@ -583,12 +591,6 @@ export class AwsCdkWebFargateStack extends cdk.Stack {
       exportName: `${CONFIG.prefix}-vpc-id`,
     });
 
-    new cdk.CfnOutput(this, 'EcrRepositoryUri', {
-      value: this.resources.ecr.repositoryUri,
-      description: 'ECR Repository URI',
-      exportName: `${CONFIG.prefix}-ecr-repository-uri`,
-    });
-
     new cdk.CfnOutput(this, 'EcsClusterArn', {
       value: this.resources.cluster.clusterArn,
       description: 'ECS Cluster ARN',
@@ -626,7 +628,6 @@ export class AwsCdkWebFargateStack extends cdk.Stack {
     new cdk.CfnOutput(this, 'ResourceNames', {
       value: [
         `VPC: ${CONFIG.prefix}-vpc`,
-        `ECR: ${CONFIG.resourceNames.ecr}`,
         `ECS Cluster: ${CONFIG.resourceNames.ecsCluster}`,
         `ECS Service: ${CONFIG.resourceNames.ecsService}`,
         `Task Definition: ${CONFIG.resourceNames.ecsTaskDefinition}`,
