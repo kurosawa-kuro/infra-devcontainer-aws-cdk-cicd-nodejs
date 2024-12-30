@@ -1,20 +1,53 @@
 <%- contentFor('body') %>
-<h1>検証用ウェブ アプリ</h1>
+<div class="max-w-4xl mx-auto">
+    <h1 class="text-3xl font-bold text-gray-900 mb-8">検証用ウェブ アプリ</h1>
 
-<div class="main-content">
-    <h2>機能一覧</h2>
-    <ul class="feature-list">
-        <li>データベース接続確認</li>
-        <li>CRUD操作の実装</li>
-        <li>AWS S3への画像アップロード</li>
-        <li>PostgreSQLとPrisma</li>
-        <li class="pending">認証・認可 (実装予定)</li>
-    </ul>
+    <div class="bg-bg rounded-lg shadow-sm p-6 mb-8">
+        <h2 class="text-xl font-semibold text-gray-900 mb-4">機能一覧</h2>
+        <ul class="space-y-2 text-text">
+            <li class="flex items-center">
+                <svg class="w-5 h-5 text-green-500 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
+                </svg>
+                データベース接続確認
+            </li>
+            <li class="flex items-center">
+                <svg class="w-5 h-5 text-green-500 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
+                </svg>
+                CRUD操作の実装
+            </li>
+            <li class="flex items-center">
+                <svg class="w-5 h-5 text-green-500 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
+                </svg>
+                AWS S3への画像アップロード
+            </li>
+            <li class="flex items-center">
+                <svg class="w-5 h-5 text-green-500 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
+                </svg>
+                PostgreSQLとPrisma
+            </li>
+            <li class="flex items-center text-text">
+                <svg class="w-5 h-5 text-gray-400 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                </svg>
+                認証・認可 (実装予定)
+            </li>
+        </ul>
 
-    <h2>使用方法</h2>
-    <p>このアプリケーションは以下の機能を提供しています：</p>
-    <ul>
-        <li><a href="/system-status">システム状態</a> - システムの健全性を確認できます</li>
-        <li><a href="/microposts">投稿一覧</a> - 画像付きの投稿を作成・閲覧できます</li>
-    </ul>
+        <h2 class="text-xl font-semibold text-gray-900 mt-8 mb-4">使用方法</h2>
+        <p class="text-text mb-4">このアプリケーションは以下の機能を提供しています：</p>
+        <ul class="space-y-2">
+            <li>
+                <a href="/system-status" class="text-primary hover:underline">システム状態</a>
+                - システムの健全性を確認できます
+            </li>
+            <li>
+                <a href="/microposts" class="text-primary hover:underline">投稿一覧</a>
+                - 画像付きの投稿を作成・閲覧できます
+            </li>
+        </ul>
+    </div>
 </div> 

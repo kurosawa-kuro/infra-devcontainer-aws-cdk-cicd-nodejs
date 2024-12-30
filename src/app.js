@@ -401,6 +401,7 @@ class Application {
     if (!this.storageConfig.isEnabled()) {
       this.app.use('/uploads', express.static(path.join(__dirname, '..', 'uploads')));
     }
+    this.app.use('/css', express.static(path.join(__dirname, 'public/css')));
   }
 
   setupErrorHandler() {
