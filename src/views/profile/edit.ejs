@@ -1,76 +1,59 @@
 <%- contentFor('body') %>
-<div class="max-w-3xl mx-auto">
+<div class="max-w-3xl mx-auto px-4">
     <div class="mb-12">
-        <h1 class="text-4xl font-bold mb-4">プロフィール編集</h1>
-        <p class="text-text text-lg">プロフィール情報を更新する</p>
+        <h1 class="text-3xl font-semibold mb-3 text-gray-900 dark:text-white">プロフィール編集</h1>
+        <p class="text-base text-gray-600 dark:text-gray-400">アカウント情報を更新</p>
     </div>
 
-    <div class="section">
-        <form action="/profile/<%= user.id %>/edit" method="POST" class="space-y-6">
-            <div>
-                <label for="name" class="block text-sm font-medium text-text-dark mb-2">
-                    名前
-                </label>
-                <input type="text" 
-                       id="name"
-                       name="name" 
-                       value="<%= user.name %>"
-                       required
-                       class="input-text">
-            </div>
+    <div class="bg-white dark:bg-gray-900 rounded-xl shadow-sm border border-gray-200 dark:border-gray-800">
+        <div class="p-6">
+            <form action="/profile/<%= user.id %>" method="POST" class="space-y-6">
+                <div>
+                    <label for="name" class="block text-sm font-medium text-gray-900 dark:text-white mb-2">
+                        ユーザー名
+                    </label>
+                    <input type="text" 
+                           id="name"
+                           name="name" 
+                           value="<%= user.name %>"
+                           required
+                           class="block w-full rounded-lg border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-900 dark:text-white shadow-sm focus:border-rose-500 dark:focus:border-rose-500 focus:ring-rose-500 dark:focus:ring-rose-500">
+                </div>
 
-            <div>
-                <label for="email" class="block text-sm font-medium text-text-dark mb-2">
-                    メールアドレス
-                </label>
-                <input type="email" 
-                       id="email"
-                       name="email" 
-                       value="<%= user.email %>"
-                       required
-                       class="input-text">
-            </div>
+                <div>
+                    <label for="email" class="block text-sm font-medium text-gray-900 dark:text-white mb-2">
+                        メールアドレス
+                    </label>
+                    <input type="email" 
+                           id="email"
+                           name="email" 
+                           value="<%= user.email %>"
+                           required
+                           class="block w-full rounded-lg border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-900 dark:text-white shadow-sm focus:border-rose-500 dark:focus:border-rose-500 focus:ring-rose-500 dark:focus:ring-rose-500">
+                </div>
 
-            <div>
-                <label for="bio" class="block text-sm font-medium text-text-dark mb-2">
-                    自己紹介
-                </label>
-                <textarea id="bio"
-                          name="bio" 
-                          rows="4"
-                          class="input-text"><%= user.bio %></textarea>
-            </div>
+                <div>
+                    <label for="bio" class="block text-sm font-medium text-gray-900 dark:text-white mb-2">
+                        自己紹介
+                    </label>
+                    <textarea id="bio"
+                              name="bio"
+                              rows="4"
+                              class="block w-full rounded-lg border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-900 dark:text-white shadow-sm focus:border-rose-500 dark:focus:border-rose-500 focus:ring-rose-500 dark:focus:ring-rose-500"><%= user.bio %></textarea>
+                    <p class="mt-2 text-sm text-gray-500 dark:text-gray-400">簡単な自己紹介を書いてください</p>
+                </div>
 
-            <div>
-                <label for="current_password" class="block text-sm font-medium text-text-dark mb-2">
-                    現在のパスワード
-                </label>
-                <input type="password" 
-                       id="current_password"
-                       name="current_password" 
-                       class="input-text">
-                <p class="mt-1 text-sm text-text">変更を保存するには現在のパスワードが必要です</p>
-            </div>
-
-            <div>
-                <label for="new_password" class="block text-sm font-medium text-text-dark mb-2">
-                    新しいパスワード
-                </label>
-                <input type="password" 
-                       id="new_password"
-                       name="new_password" 
-                       class="input-text">
-                <p class="mt-1 text-sm text-text">パスワードを変更する場合のみ入力してください</p>
-            </div>
-
-            <div class="flex justify-end space-x-4">
-                <a href="/profile/<%= user.id %>" class="btn-secondary">
-                    キャンセル
-                </a>
-                <button type="submit" class="btn-primary">
-                    変更を保存
-                </button>
-            </div>
-        </form>
+                <div class="flex items-center justify-end space-x-4">
+                    <a href="/profile/<%= user.id %>" 
+                       class="inline-flex items-center px-4 py-2 border border-gray-300 dark:border-gray-700 rounded-lg text-sm font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-900 hover:bg-gray-50 dark:hover:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-rose-500 dark:focus:ring-offset-gray-900 transition-colors">
+                        キャンセル
+                    </a>
+                    <button type="submit" 
+                            class="inline-flex items-center px-4 py-2 border border-transparent rounded-lg text-sm font-medium text-white bg-rose-600 hover:bg-rose-700 dark:bg-rose-500 dark:hover:bg-rose-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-rose-500 dark:focus:ring-offset-gray-900 transition-colors">
+                        保存
+                    </button>
+                </div>
+            </form>
+        </div>
     </div>
 </div> 
