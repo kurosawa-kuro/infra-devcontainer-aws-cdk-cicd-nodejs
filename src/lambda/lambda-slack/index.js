@@ -5,7 +5,7 @@
 const axios = require('axios');
 
 // Webhook URLの設定
-const WEBHOOK_URL = 'https://hooks.slack.com/services/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';
+const WEBHOOK_URL = 'https://hooks.slack.com/services/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';
 
 // Lambda handler関数
 async function slackNotification(event, context) {
