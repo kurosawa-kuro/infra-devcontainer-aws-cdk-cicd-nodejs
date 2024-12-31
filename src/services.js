@@ -261,6 +261,51 @@ class ProfileService extends BaseService {
     // Return the updated user with roles
     return this.getUserProfile(parsedId);
   }
+
+  async isFollowing(followerId, followingId) {
+    const follow = await this.prisma.follow.findUnique({
+      where: {
+        followerId_followingId: {
+          followerId: parseInt(followerId, 10),
+          followingId: parseInt(followingId, 10)
+        }
+      }
+    });
+    return !!follow;
+  }
+
+  async follow(followerId, followingId) {
+    return this.prisma.follow.create({
+      data: {
+        followerId: parseInt(followerId, 10),
+        followingId: parseInt(followingId, 10)
+      }
+    });
+  }
+
+  async unfollow(followerId, followingId) {
+    return this.prisma.follow.delete({
+      where: {
+        followerId_followingId: {
+          followerId: parseInt(followerId, 10),
+          followingId: parseInt(followingId, 10)
+        }
+      }
+    });
+  }
+
+  async getFollowCounts(userId) {
+    const parsedId = parseInt(userId, 10);
+    const [followingCount, followersCount] = await Promise.all([
+      this.prisma.follow.count({
+        where: { followerId: parsedId }
+      }),
+      this.prisma.follow.count({
+        where: { followingId: parsedId }
+      })
+    ]);
+    return { followingCount, followersCount };
+  }
 }
 
 class MicropostService extends BaseService {

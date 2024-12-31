@@ -77,6 +77,8 @@ function setupRoutes(app, controllers, fileUploader) {
   app.get('/:id', asyncHandler((req, res) => profile.show(req, res)));
   app.get('/:id/edit', isAuthenticated, asyncHandler((req, res) => profile.getEditPage(req, res)));
   app.post('/:id/edit', isAuthenticated, fileUploader.createUploader().single('avatar'), asyncHandler((req, res) => profile.update(req, res)));
+  app.post('/:id/follow', isAuthenticated, asyncHandler((req, res) => profile.follow(req, res)));
+  app.post('/:id/unfollow', isAuthenticated, asyncHandler((req, res) => profile.unfollow(req, res)));
 
   return app;
 }

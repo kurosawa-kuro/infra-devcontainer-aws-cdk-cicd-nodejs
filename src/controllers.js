@@ -173,7 +173,11 @@ class ProfileController extends BaseController {
         return this.errorHandler.handleNotFoundError(req, res, 'ユーザーが見つかりません');
       }
 
-      const microposts = await this.service.getMicropostsByUser(user.id);
+      const [microposts, followCounts, isFollowing] = await Promise.all([
+        this.service.getMicropostsByUser(user.id),
+        this.service.getFollowCounts(user.id),
+        req.user ? this.service.isFollowing(req.user.id, user.id) : false
+      ]);
 
       res.render('profile/show', {
         title: 'プロフィール',
@@ -181,6 +185,8 @@ class ProfileController extends BaseController {
         user: user,
         userProfile: user.profile,
         microposts: microposts,
+        followCounts,
+        isFollowing,
         req: req
       });
     });
@@ -256,6 +262,40 @@ class ProfileController extends BaseController {
       this.sendResponse(req, res, {
         message: 'プロフィールを更新しました',
         redirectUrl: `/${updatedUser.name || userId}`
+      });
+    });
+  }
+
+  async follow(req, res) {
+    return this.handleRequest(req, res, async () => {
+      if (!req.user) {
+        return this.errorHandler.handlePermissionError(req, res, 'ログインが必要です');
+      }
+
+      const targetUserId = req.params.id;
+      await this.service.follow(req.user.id, targetUserId);
+
+      this.sendResponse(req, res, {
+        status: 200,
+        data: { success: true },
+        message: 'フォローしました'
+      });
+    });
+  }
+
+  async unfollow(req, res) {
+    return this.handleRequest(req, res, async () => {
+      if (!req.user) {
+        return this.errorHandler.handlePermissionError(req, res, 'ログインが必要です');
+      }
+
+      const targetUserId = req.params.id;
+      await this.service.unfollow(req.user.id, targetUserId);
+
+      this.sendResponse(req, res, {
+        status: 200,
+        data: { success: true },
+        message: 'フォロー解除しました'
       });
     });
   }
