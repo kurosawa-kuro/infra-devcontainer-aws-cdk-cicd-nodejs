@@ -52,7 +52,7 @@ class AuthController extends BaseController {
 
   getSignupPage(req, res) {
     return this.handleRequest(req, res, async () => {
-      this.renderWithUser(req, res, 'auth/signup', { 
+      this.renderWithUser(req, res, 'pages/auth/signup', { 
         title: 'ユーザー登録'
       });
     });
@@ -60,7 +60,7 @@ class AuthController extends BaseController {
 
   getLoginPage(req, res) {
     return this.handleRequest(req, res, async () => {
-      this.renderWithUser(req, res, 'auth/login', { 
+      this.renderWithUser(req, res, 'pages/auth/login', { 
         title: 'ログイン'
       });
     });
@@ -412,7 +412,7 @@ class DevController extends BaseController {
         }
       });
 
-      res.render('dev/index', {
+      res.render('pages/dev/index', {
         title: '開発支援機能',
         path: req.path,
         metadata,
@@ -516,7 +516,7 @@ class CategoryController extends BaseController {
   async index(req, res) {
     return this.handleRequest(req, res, async () => {
       const categories = await this.categoryService.getAllCategories();
-      res.render('categories/index', {
+      res.render('pages/categories/index', {
         categories,
         title: 'カテゴリー一覧',
         path: req.path
@@ -530,7 +530,7 @@ class CategoryController extends BaseController {
       if (!category) {
         return this.errorHandler.handleNotFoundError(req, res, 'カテゴリーが見つかりません');
       }
-      res.render('categories/show', {
+      res.render('pages/categories/show', {
         category,
         title: `カテゴリー: ${category.name}`,
         path: req.path
