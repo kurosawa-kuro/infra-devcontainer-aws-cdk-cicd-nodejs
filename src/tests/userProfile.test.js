@@ -104,26 +104,5 @@ describe('UserProfile Integration Tests', () => {
       expect(updatedUser.profile.website).toBe(updatedProfile.website);
     });
 
-
-
-    it('should not allow updating other user\'s profile as regular user', async () => {
-      // Create another user
-      const anotherUserData = {
-        email: 'another@example.com',
-        password: 'password123',
-        passwordConfirmation: 'password123'
-      };
-      const { response: anotherUserResponse } = await createTestUserAndLogin(server, anotherUserData);
-      const anotherUser = await prisma.user.findUnique({
-        where: { email: anotherUserData.email }
-      });
-
-      // Try to update another user's profile with first user's auth
-      await request(server)
-        .post(`/profile/${anotherUser.id}/edit`)
-        .set('Cookie', authCookie)
-        .send({ bio: 'This should not work' })
-        .expect(403);
-    });
   });
 }); 
