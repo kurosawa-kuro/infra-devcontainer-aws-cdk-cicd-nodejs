@@ -16,7 +16,6 @@ function setupRoutes(app, controllers, fileUploader) {
   });
 
   // System routes
-  app.get('/system-status', asyncHandler((req, res) => system.getStatus(req, res)));
   app.get('/health', asyncHandler((req, res) => system.getHealth(req, res)));
   app.get('/health-db', asyncHandler((req, res) => system.getDbHealth(req, res)));
 

@@ -228,17 +228,6 @@ class SystemController extends BaseController {
     super(service, errorHandler, logger);
   }
 
-  async getStatus(req, res) {
-    return this.handleRequest(req, res, async () => {
-      const metadata = await this.service.getInstanceMetadata();
-      res.render('system-status', {
-        title: 'システム状態',
-        path: req.path,
-        metadata
-      });
-    });
-  }
-
   async getHealth(req, res) {
     return this.handleRequest(req, res, async () => {
       const health = await this.service.getHealth();
