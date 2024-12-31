@@ -237,6 +237,24 @@ class SystemController extends BaseController {
       });
     });
   }
+
+  async getHealth(req, res) {
+    return this.handleRequest(req, res, async () => {
+      const health = await this.service.getHealth();
+      res.json(health);
+    });
+  }
+
+  async getDbHealth(req, res) {
+    return this.handleRequest(req, res, async () => {
+      try {
+        const health = await this.service.getDbHealth();
+        res.json(health);
+      } catch (err) {
+        res.status(500).json({ status: 'unhealthy', error: err.message });
+      }
+    });
+  }
 }
 
 module.exports = {

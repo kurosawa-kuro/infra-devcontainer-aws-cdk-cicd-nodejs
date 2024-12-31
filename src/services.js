@@ -218,6 +218,19 @@ class SystemService extends BaseService {
       };
     }
   }
+
+  async getHealth() {
+    return { status: 'healthy' };
+  }
+
+  async getDbHealth() {
+    try {
+      await this.prisma.$queryRaw`SELECT 1`;
+      return { status: 'healthy' };
+    } catch (err) {
+      throw err;
+    }
+  }
 }
 
 module.exports = {
