@@ -327,7 +327,7 @@ class FileUploader {
     return (req, file, cb) => {
       const uniqueSuffix = `${Date.now()}-${Math.round(Math.random() * 1E9)}`;
       const fileExtension = path.extname(file.originalname);
-      const fileName = `uploads/${uniqueSuffix}${fileExtension}`;
+      const fileName = `${uniqueSuffix}${fileExtension}`;
       cb(null, fileName);
     };
   }
@@ -337,7 +337,7 @@ class FileUploader {
     
     return this.storageConfig.isEnabled()
       ? `${this.storageConfig.getCloudFrontUrl()}/${file.key}`
-      : `/uploads/${file.filename}`;
+      : `uploads/${file.filename}`;
   }
 }
 
@@ -566,8 +566,16 @@ class MicropostController extends BaseController {
         });
       }
 
-      const imageUrl = this.fileUploader.generateFileUrl(req.file);
-      await this.service.createMicropost(req.user.id, title.trim(), imageUrl);
+      let imageUrl = null;
+      if (req.file) {
+        imageUrl = this.fileUploader.generateFileUrl(req.file);
+      }
+
+      await this.service.createMicropost({
+        title: title.trim(),
+        imageUrl,
+        userId: req.user.id
+      });
       
       this.sendResponse(req, res, {
         message: '投稿が完了しました',
@@ -736,12 +744,20 @@ class MicropostService extends BaseService {
     });
   }
 
-  async createMicropost(userId, title, imageUrl) {
+  async createMicropost(data) {
     return this.prisma.micropost.create({
       data: {
-        userId,
-        title,
-        imageUrl
+        title: data.title,
+        imageUrl: data.imageUrl,
+        userId: data.userId
+      },
+      include: {
+        user: {
+          select: {
+            id: true,
+            email: true
+          }
+        }
       }
     });
   }

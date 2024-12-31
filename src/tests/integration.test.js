@@ -175,4 +175,132 @@ describe('Authentication Integration Tests', () => {
       expect(protectedResponse.header.location).toBe('/auth/login');
     });
   });
+});
+
+describe('Micropost Integration Tests', () => {
+  let app;
+  let prisma;
+  let server;
+  let testUser;
+  let authCookie;
+
+  beforeAll(async () => {
+    process.env.NODE_ENV = 'test';
+    app = new Application();
+    await app.setupMiddleware();
+    await app.setupRoutes();
+    await app.setupErrorHandler();
+    server = app.app;
+    prisma = new PrismaClient();
+  });
+
+  beforeEach(async () => {
+    // Clean up test database
+    await prisma.micropost.deleteMany();
+    await prisma.user.deleteMany();
+
+    // Create test user
+    const userResponse = await request(server)
+      .post('/auth/signup')
+      .send({
+        email: 'test@example.com',
+        password: 'password123',
+        passwordConfirmation: 'password123'
+      });
+
+    // Login test user
+    const loginResponse = await request(server)
+      .post('/auth/login')
+      .send({
+        email: 'test@example.com',
+        password: 'password123'
+      });
+
+    // Store auth cookie for subsequent requests
+    authCookie = loginResponse.headers['set-cookie'];
+
+    // Get test user
+    testUser = await prisma.user.findUnique({
+      where: { email: 'test@example.com' }
+    });
+  });
+
+  afterAll(async () => {
+    await prisma.$disconnect();
+    await app.cleanup();
+  });
+
+  describe('Create Micropost', () => {
+    it('should successfully create a new micropost', async () => {
+      const postTitle = 'This is a test micropost';
+      const response = await request(server)
+        .post('/microposts')
+        .set('Cookie', authCookie)
+        .send({ title: postTitle })
+        .expect(302);
+
+      expect(response.header.location).toBe('/microposts');
+
+      // Verify micropost was saved to database
+      const micropost = await prisma.micropost.findFirst({
+        where: { title: postTitle }
+      });
+      expect(micropost).toBeTruthy();
+      expect(micropost.title).toBe(postTitle);
+      expect(micropost.userId).toBe(testUser.id);
+    });
+
+    it('should successfully create a new micropost with image', async () => {
+      const postTitle = 'This is a test micropost with image';
+      const response = await request(server)
+        .post('/microposts')
+        .set('Cookie', authCookie)
+        .field('title', postTitle)
+        .attach('image', 'src/tests/fixtures/test-image.jpg')
+        .expect(302);
+
+      expect(response.header.location).toBe('/microposts');
+
+      // Verify micropost was saved to database
+      const micropost = await prisma.micropost.findFirst({
+        where: { title: postTitle }
+      });
+      expect(micropost).toBeTruthy();
+      expect(micropost.title).toBe(postTitle);
+      expect(micropost.userId).toBe(testUser.id);
+      expect(micropost.imageUrl).toBeTruthy();
+      expect(micropost.imageUrl).toMatch(/^uploads\//); // ローカルストレージの場合のパスチェック
+    });
+
+    it('should not create micropost without authentication', async () => {
+      const response = await request(server)
+        .post('/microposts')
+        .send({ title: 'Unauthorized post' })
+        .expect(302);
+
+      expect(response.header.location).toBe('/auth/login');
+    });
+  });
+
+  describe('Read Microposts', () => {
+    beforeEach(async () => {
+      // Create test microposts
+      await prisma.micropost.createMany({
+        data: [
+          { title: 'First post', userId: testUser.id },
+          { title: 'Second post', userId: testUser.id }
+        ]
+      });
+    });
+
+    it('should list all microposts on home page', async () => {
+      const response = await request(server)
+        .get('/microposts')
+        .set('Cookie', authCookie)
+        .expect(200);
+
+      expect(response.text).toContain('First post');
+      expect(response.text).toContain('Second post');
+    });
+  });
 }); 
