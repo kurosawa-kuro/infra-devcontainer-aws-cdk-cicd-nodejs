@@ -277,33 +277,54 @@ class AuthController {
   }
 
   getSignupPage(req, res) {
-    res.render('auth/signup', { title: 'ユーザー登録', path: req.path });
+    res.render('auth/signup', { 
+      title: 'ユーザー登録',
+      path: req.path,
+      error: req.flash('error'),
+      success: req.flash('success')
+    });
   }
 
   async signup(req, res) {
-    await this.authService.signup(req.body);
-    res.redirect('/auth/login');
+    try {
+      await this.authService.signup(req.body);
+      req.flash('success', 'ユーザー登録が完了しました。ログインしてください。');
+      res.redirect('/auth/login');
+    } catch (error) {
+      req.flash('error', error.message);
+      res.redirect('/auth/signup');
+    }
   }
 
   getLoginPage(req, res) {
-    res.render('auth/login', { title: 'ログイン', path: req.path });
+    res.render('auth/login', { 
+      title: 'ログイン',
+      path: req.path,
+      error: req.flash('error'),
+      success: req.flash('success')
+    });
   }
 
   async login(req, res) {
-    console.log('Login attempt:', { email: req.body.email });
     try {
-      const user = await this.authService.login(req, res, req);
-      console.log('Login successful:', { userId: user.id });
-      return user;
+      await this.authService.login(req, res);
+      req.flash('success', 'ログインしました');
+      res.redirect('/');
     } catch (error) {
-      console.error('Login failed:', error.message);
       req.flash('error', error.message);
-      throw error;
+      res.redirect('/auth/login');
     }
   }
 
   async logout(req, res) {
-    await this.authService.logout(req);
+    try {
+      await this.authService.logout(req);
+      req.flash('success', 'ログアウトしました');
+      res.redirect('/auth/login');
+    } catch (error) {
+      req.flash('error', 'ログアウトに失敗しました');
+      res.redirect('/');
+    }
   }
 }
 
@@ -393,8 +414,16 @@ class AuthService {
   }
 
   async signup(userData) {
-    const { email, password } = userData;
+    const { email, password, passwordConfirmation } = userData;
     
+    if (!email || !password) {
+      throw new Error('メールアドレスとパスワードは必須です');
+    }
+
+    if (password !== passwordConfirmation) {
+      throw new Error('パスワードが一致しません');
+    }
+
     const existingUser = await this.prisma.user.findUnique({
       where: { email }
     });
@@ -415,27 +444,22 @@ class AuthService {
     return user;
   }
 
-  async login(req, res, next) {
+  async login(req, res) {
     return new Promise((resolve, reject) => {
       passport.authenticate('local', (err, user, info) => {
-        console.log('Passport authenticate result:', { err, user, info });
         if (err) {
-          console.error('Authentication error:', err);
           return reject(err);
         }
         if (!user) {
-          console.error('Authentication failed:', info?.message);
           return reject(new Error(info?.message || 'ログインに失敗しました'));
         }
         req.logIn(user, (err) => {
           if (err) {
-            console.error('Login error:', err);
             return reject(err);
           }
-          console.log('Login successful:', { userId: user.id });
           resolve(user);
         });
-      })(req, res, next);
+      })(req, res);
     });
   }
 
@@ -655,35 +679,16 @@ class Application {
     // Auth routes
     this.app.get('/auth/signup', forwardAuthenticated, (req, res) => this.authController.getSignupPage(req, res));
     this.app.post('/auth/signup', forwardAuthenticated, asyncHandler(async (req, res) => {
-      try {
-        await this.authController.signup(req, res);
-        req.flash('success', 'ユーザー登録が完了しました。ログインしてください。');
-        res.redirect('/auth/login');
-      } catch (error) {
-        req.flash('error', error.message);
-        res.redirect('/auth/signup');
-      }
+      await this.authController.signup(req, res);
     }));
 
     this.app.get('/auth/login', forwardAuthenticated, (req, res) => this.authController.getLoginPage(req, res));
     this.app.post('/auth/login', forwardAuthenticated, asyncHandler(async (req, res) => {
-      try {
-        console.log('Login request received:', { email: req.body.email });
-        await this.authController.login(req, res);
-        console.log('Login successful, redirecting to home');
-        req.flash('success', 'ログインしました');
-        res.redirect('/');
-      } catch (error) {
-        console.error('Login failed:', error.message);
-        req.flash('error', error.message);
-        res.redirect('/auth/login');
-      }
+      await this.authController.login(req, res);
     }));
 
     this.app.get('/auth/logout', ensureAuthenticated, asyncHandler(async (req, res) => {
       await this.authController.logout(req, res);
-      req.flash('success', 'ログアウトしました');
-      res.redirect('/auth/login');
     }));
 
     // Profile routes (protected)
