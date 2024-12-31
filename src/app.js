@@ -238,172 +238,324 @@ class FileUploader {
 
 // エラーハンドリングを管理するクラス
 class ErrorHandler {
-  constructor(uploadLimits) {
+  constructor(uploadLimits, logger) {
     this.uploadLimits = uploadLimits;
+    this.logger = logger;
   }
 
   handle(err, req, res, next) {
     console.error('Application Error:', err);
     
     if (err instanceof multer.MulterError) {
-      return this.handleMulterError(err, res);
+      return this.handleMulterError(err, req, res);
     }
 
-    return this.handleGeneralError(err, res);
+    return this.handleGeneralError(err, req, res);
   }
 
-  handleMulterError(err, res) {
+  handleMulterError(err, req, res) {
     if (err.code === 'LIMIT_FILE_SIZE') {
-      return res.status(400).json({ 
-        error: `ファイルサイズが大きすぎます。${this.uploadLimits.fileSize / (1024 * 1024)}MB以下にしてください。` 
-      });
+      const error = `ファイルサイズが大きすぎます。${this.uploadLimits.fileSize / (1024 * 1024)}MB以下にしてください。`;
+      this.logError('Multer Error', error, { code: err.code, field: err.field });
+      return this.sendErrorResponse(req, res, 400, error);
     }
-    return res.status(400).json({ error: 'ファイルアップロードエラー' });
+    
+    this.logError('Multer Error', err);
+    return this.sendErrorResponse(req, res, 400, 'ファイルアップロードエラー', {
+      code: err.code,
+      field: err.field,
+      message: err.message
+    });
   }
 
-  handleGeneralError(err, res) {
-    res.status(500).json({ 
-      error: process.env.NODE_ENV === 'production' 
-        ? 'サーバーエラーが発生しました' 
-        : err.message 
-    });
+  handleGeneralError(err, req, res) {
+    this.logError('General Error', err);
+    const errorMessage = process.env.NODE_ENV === 'production' 
+      ? 'サーバーエラーが発生しました' 
+      : err.message;
+    
+    const details = process.env.NODE_ENV !== 'production' ? {
+      stack: err.stack,
+      details: err.details || {}
+    } : undefined;
+
+    return this.sendErrorResponse(req, res, err.status || 500, errorMessage, details);
+  }
+
+  // 共通のエラーレスポンス送信関数
+  sendErrorResponse(req, res, status, message, details = {}) {
+    const isApiRequest = req.xhr || req.headers.accept?.includes('application/json');
+    
+    if (isApiRequest) {
+      return res.status(status).json({
+        error: message,
+        ...details
+      });
+    } else {
+      req.flash('error', message);
+      const fallbackUrl = req.header('Referer') || '/';
+      return res.redirect(fallbackUrl);
+    }
+  }
+
+  // 共通のエラーログ記録関数
+  logError(type, error, additionalInfo = {}) {
+    const errorInfo = {
+      message: error.message || error,
+      stack: error.stack,
+      ...additionalInfo
+    };
+
+    console.error(`${type}:`, errorInfo);
+    if (this.logger) {
+      this.logger.error(`${type}:`, errorInfo);
+    }
+  }
+
+  // 共通のバリデーションエラー処理
+  handleValidationError(req, res, message) {
+    return this.sendErrorResponse(req, res, 400, message);
+  }
+
+  // 共通の認証エラー処理
+  handleAuthError(req, res, message = '認証が必要です') {
+    return this.sendErrorResponse(req, res, 401, message);
+  }
+
+  // 共通の権限エラー処理
+  handlePermissionError(req, res, message = '権限がありません') {
+    return this.sendErrorResponse(req, res, 403, message);
+  }
+
+  // 共通の「見つかりません」エラー処理
+  handleNotFoundError(req, res, message = 'リソースが見つかりません') {
+    return this.sendErrorResponse(req, res, 404, message);
   }
 }
 
-// コントローラークラス
-class AuthController {
-  constructor(authService) {
+// コントローラークラスの基底クラス
+class BaseController {
+  constructor(errorHandler) {
+    this.errorHandler = errorHandler;
+  }
+
+  // 成功時のレスポンス送信
+  sendSuccessResponse(req, res, message, redirectUrl) {
+    const isApiRequest = req.xhr || req.headers.accept?.includes('application/json');
+    
+    if (isApiRequest) {
+      return res.json({ success: true, message });
+    } else {
+      if (message) {
+        req.flash('success', message);
+      }
+      return res.redirect(redirectUrl);
+    }
+  }
+}
+
+// 各コントローラーを基底クラスを継承するように修正
+class AuthController extends BaseController {
+  constructor(authService, errorHandler) {
+    super(errorHandler);
     this.authService = authService;
   }
 
   getSignupPage(req, res) {
-    res.render('auth/signup', { 
-      title: 'ユーザー登録',
-      path: req.path,
-      error: req.flash('error'),
-      success: req.flash('success')
-    });
+    try {
+      res.render('auth/signup', { 
+        title: 'ユーザー登録',
+        path: req.path
+      });
+    } catch (error) {
+      return this.errorHandler.handleGeneralError(error, req, res);
+    }
+  }
+
+  getLoginPage(req, res) {
+    try {
+      res.render('auth/login', { 
+        title: 'ログイン',
+        path: req.path
+      });
+    } catch (error) {
+      return this.errorHandler.handleGeneralError(error, req, res);
+    }
   }
 
   async signup(req, res) {
     try {
       await this.authService.signup(req.body);
-      req.flash('success', 'ユーザー登録が完了しました。ログインしてください。');
-      res.redirect('/auth/login');
+      return this.sendSuccessResponse(req, res, 'ユーザー登録が完了しました。ログインしてください。', '/auth/login');
     } catch (error) {
-      req.flash('error', error.message);
-      res.redirect('/auth/signup');
+      return this.errorHandler.handleValidationError(req, res, error.message);
     }
-  }
-
-  getLoginPage(req, res) {
-    res.render('auth/login', { 
-      title: 'ログイン',
-      path: req.path,
-      error: req.flash('error'),
-      success: req.flash('success')
-    });
   }
 
   async login(req, res) {
     try {
       await this.authService.login(req, res);
-      req.flash('success', 'ログインしました');
-      res.redirect('/');
+      return this.sendSuccessResponse(req, res, 'ログインしました', '/');
     } catch (error) {
-      req.flash('error', error.message);
-      res.redirect('/auth/login');
+      return this.errorHandler.handleAuthError(req, res, error.message);
     }
   }
 
   async logout(req, res) {
     try {
       await this.authService.logout(req);
-      req.flash('success', 'ログアウトしました');
-      res.redirect('/auth/login');
+      return this.sendSuccessResponse(req, res, 'ログアウトしました', '/auth/login');
     } catch (error) {
-      req.flash('error', 'ログアウトに失敗しました');
-      res.redirect('/');
+      return this.errorHandler.handleGeneralError(error, req, res);
     }
   }
 }
 
-class ProfileController {
-  constructor(profileService) {
-    this.profileService = profileService;
-  }
-
-  async show(req, res) {
-    const user = await this.profileService.getUserProfile(req.params.id);
-    res.render('profile/show', {
-      title: 'プロフィール',
-      path: req.path,
-      user
-    });
-  }
-
-  async getEditPage(req, res) {
-    const user = await this.profileService.getUserProfile(req.params.id);
-    res.render('profile/edit', {
-      title: 'プロフィール編集',
-      path: req.path,
-      user
-    });
-  }
-
-  async update(req, res) {
-    await this.profileService.updateProfile(req.params.id, req.body);
-    res.redirect(`/profile/${req.params.id}`);
-  }
-}
-
-class MicropostController {
-  constructor(micropostService, fileUploader) {
+class MicropostController extends BaseController {
+  constructor(micropostService, fileUploader, errorHandler) {
+    super(errorHandler);
     this.micropostService = micropostService;
     this.fileUploader = fileUploader;
   }
 
   async index(req, res) {
-    const microposts = await this.micropostService.getAllMicroposts();
-    res.render('microposts', { 
-      microposts,
-      title: '投稿一覧',
-      path: req.path
-    });
+    try {
+      const microposts = await this.micropostService.getAllMicroposts();
+      res.render('microposts', { 
+        microposts,
+        title: '投稿一覧',
+        path: req.path
+      });
+    } catch (error) {
+      console.error('Micropost index error:', {
+        error: error.message,
+        stack: error.stack,
+        timestamp: new Date().toISOString(),
+        userId: req.user?.id,
+        requestPath: req.path,
+        requestMethod: req.method
+      });
+      return this.errorHandler.handleGeneralError(error, req, res);
+    }
   }
 
   async create(req, res) {
     try {
       const { title } = req.body;
       if (!title?.trim()) {
-        return res.status(400).json({ error: '投稿内容を入力してください' });
+        const validationError = new Error('投稿内容を入力してください');
+        validationError.name = 'ValidationError';
+        validationError.code = 'EMPTY_CONTENT';
+        validationError.details = {
+          field: 'title',
+          value: title,
+          constraint: 'required',
+          userId: req.user?.id,
+          timestamp: new Date().toISOString()
+        };
+        console.error('Micropost validation error:', {
+          error: validationError.message,
+          stack: validationError.stack,
+          details: validationError.details,
+          requestBody: req.body,
+          requestPath: req.path,
+          requestMethod: req.method
+        });
+        throw validationError;
       }
 
       const imageUrl = this.fileUploader.generateFileUrl(req.file);
       await this.micropostService.createMicropost(title.trim(), imageUrl);
-      res.redirect('/microposts');
+      return this.sendSuccessResponse(req, res, '投稿が完了しました', '/microposts');
     } catch (error) {
-      console.error('File upload error:', error);
-      res.status(500).json({ 
-        error: 'ファイルアップロードに失敗しました',
-        details: process.env.NODE_ENV === 'development' ? error.message : undefined
+      const errorDetails = {
+        error: error.message,
+        name: error.name,
+        code: error.code,
+        stack: error.stack,
+        details: error.details || {},
+        timestamp: new Date().toISOString(),
+        userId: req.user?.id,
+        requestBody: req.body,
+        file: req.file,
+        requestPath: req.path,
+        requestMethod: req.method
+      };
+      console.error('Micropost creation error:', errorDetails);
+      
+      if (error.name === 'ValidationError') {
+        return this.errorHandler.handleValidationError(req, res, error.message);
+      }
+      return this.errorHandler.handleGeneralError(error, req, res);
+    }
+  }
+}
+
+class ProfileController extends BaseController {
+  constructor(profileService, errorHandler) {
+    super(errorHandler);
+    this.profileService = profileService;
+  }
+
+  async show(req, res) {
+    try {
+      const user = await this.profileService.getUserProfile(req.params.id);
+      if (!user) {
+        return this.errorHandler.handleNotFoundError(req, res, 'ユーザーが見つかりません');
+      }
+      res.render('profile/show', {
+        title: 'プロフィール',
+        path: req.path,
+        user
       });
+    } catch (error) {
+      return this.errorHandler.handleGeneralError(error, req, res);
+    }
+  }
+
+  async getEditPage(req, res) {
+    try {
+      const user = await this.profileService.getUserProfile(req.params.id);
+      if (!user) {
+        return this.errorHandler.handleNotFoundError(req, res, 'ユーザーが見つかりません');
+      }
+      res.render('profile/edit', {
+        title: 'プロフィール編集',
+        path: req.path,
+        user
+      });
+    } catch (error) {
+      return this.errorHandler.handleGeneralError(error, req, res);
+    }
+  }
+
+  async update(req, res) {
+    try {
+      await this.profileService.updateProfile(req.params.id, req.body);
+      return this.sendSuccessResponse(req, res, 'プロフィールを更新しました', `/profile/${req.params.id}`);
+    } catch (error) {
+      return this.errorHandler.handleGeneralError(error, req, res);
     }
   }
 }
 
 class SystemController {
-  constructor(systemService) {
+  constructor(systemService, errorHandler) {
     this.systemService = systemService;
+    this.errorHandler = errorHandler;
   }
 
   async getStatus(req, res) {
-    const metadata = await this.systemService.getInstanceMetadata();
-    res.render('system-status', {
-      title: 'システム状態',
-      path: req.path,
-      metadata
-    });
+    try {
+      const metadata = await this.systemService.getInstanceMetadata();
+      res.render('system-status', {
+        title: 'システム状態',
+        path: req.path,
+        metadata
+      });
+    } catch (error) {
+      return this.errorHandler.handleGeneralError(error, req, res);
+    }
   }
 }
 
@@ -556,7 +708,7 @@ class Application {
     
     this.storageConfig = new StorageConfig();
     this.fileUploader = new FileUploader(this.storageConfig);
-    this.errorHandler = new ErrorHandler(this.storageConfig.getUploadLimits());
+    this.errorHandler = new ErrorHandler(this.storageConfig.getUploadLimits(), this.logger);
 
     // Initialize Passport
     require('./config/passport')(passport);
@@ -568,10 +720,10 @@ class Application {
     this.systemService = new SystemService();
 
     // コントローラーの初期化
-    this.authController = new AuthController(this.authService);
-    this.profileController = new ProfileController(this.profileService);
-    this.micropostController = new MicropostController(this.micropostService, this.fileUploader);
-    this.systemController = new SystemController(this.systemService);
+    this.authController = new AuthController(this.authService, this.errorHandler);
+    this.profileController = new ProfileController(this.profileService, this.errorHandler);
+    this.micropostController = new MicropostController(this.micropostService, this.fileUploader, this.errorHandler);
+    this.systemController = new SystemController(this.systemService, this.errorHandler);
   }
 
   setupMiddleware() {
@@ -584,7 +736,7 @@ class Application {
   setupRequestLogging() {
     this.app.use(expressWinston.logger({
       winstonInstance: this.logger,
-      meta: false,
+      meta: true,
       msg: (req, res) => {
         const responseTime = res.responseTime || 0;
         const statusCode = res.statusCode;
@@ -593,7 +745,38 @@ class Application {
                            statusCode >= 300 ? '\x1b[36m' : // cyan
                            '\x1b[32m'; // green
         const reset = '\x1b[0m';
-        return `${req.method.padEnd(6)} ${statusColor}${statusCode}${reset} ${req.url.padEnd(30)} ${responseTime}ms`;
+        
+        // エラーメッセージの詳細化
+        let errorInfo = '';
+        if (res.locals.error) {
+          errorInfo = ` - Error: ${res.locals.error}`;
+        }
+        if (req.flash && req.flash('error')) {
+          const flashErrors = req.flash('error');
+          if (flashErrors.length > 0) {
+            errorInfo += ` - Flash Errors: ${flashErrors.join(', ')}`;
+          }
+        }
+
+        // リクエストの詳細情報を追加
+        const requestInfo = {
+          method: req.method,
+          url: req.url,
+          params: req.params,
+          query: req.query,
+          body: req.body,
+          headers: req.headers,
+          statusCode,
+          responseTime
+        };
+
+        // エラー時は詳細情報をログに記録
+        if (statusCode >= 400) {
+          console.error('Request Details:', requestInfo);
+          this.logger.error('Request Details:', requestInfo);
+        }
+
+        return `${req.method.padEnd(6)} ${statusColor}${statusCode}${reset} ${req.url.padEnd(30)} ${responseTime}ms${errorInfo}`;
       },
       expressFormat: false,
       colorize: true,
@@ -636,12 +819,40 @@ class Application {
   setupErrorLogging() {
     this.app.use(expressWinston.errorLogger({
       winstonInstance: this.logger,
-      meta: false,
+      meta: true,
       msg: (req, res, err) => {
         const responseTime = res.responseTime || 0;
         const statusCode = res.statusCode;
-        return `ERROR ${req.method.padEnd(6)} ${statusCode} ${req.url.padEnd(30)} ${responseTime}ms - ${err.message}`;
-      }
+        
+        // エラーの詳細情報を収集
+        const errorDetails = {
+          message: err.message,
+          stack: err.stack,
+          type: err.name,
+          code: err.code,
+          status: statusCode,
+          request: {
+            method: req.method,
+            url: req.url,
+            params: req.params,
+            query: req.query,
+            body: req.body,
+            headers: req.headers
+          },
+          response: {
+            statusCode,
+            responseTime
+          }
+        };
+
+        // エラー詳細をログに記録
+        console.error('Error Details:', errorDetails);
+        this.logger.error('Error Details:', errorDetails);
+
+        return `ERROR ${req.method.padEnd(6)} ${statusCode} ${req.url.padEnd(30)} ${responseTime}ms\nMessage: ${err.message}\nStack: ${err.stack}\nRequest Body: ${JSON.stringify(req.body)}`;
+      },
+      requestWhitelist: ['url', 'headers', 'method', 'httpVersion', 'originalUrl', 'query', 'body'],
+      blacklistedMetaFields: ['error', 'exception', 'process', 'os', 'trace', '_readableState']
     }));
   }
 
