@@ -1,6 +1,7 @@
 const { PrismaClient } = require('@prisma/client');
 const { Application } = require('../app');
 const http = require('http');
+const request = require('supertest');
 
 class TestServer {
   constructor() {
@@ -11,6 +12,7 @@ class TestServer {
   }
 
   async start() {
+    process.env.NODE_ENV = 'test';
     // アプリケーションの初期化
     this.app = new Application();
     await this.app.setupMiddleware();
@@ -41,6 +43,23 @@ class TestServer {
 
   async resetDatabase() {
     await this.prisma.micropost.deleteMany();
+    await this.prisma.user.deleteMany();
+  }
+
+  getServer() {
+    return this.server;
+  }
+
+  getPrisma() {
+    return this.prisma;
+  }
+
+  getBaseUrl() {
+    return this.baseUrl;
+  }
+
+  getApp() {
+    return this.app;
   }
 }
 
