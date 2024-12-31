@@ -258,12 +258,39 @@ class DevController extends BaseController {
       const health = await this.service.getHealth();
       const dbHealth = await this.service.getDbHealth();
 
+      const recentUsers = await this.service.prisma.user.findMany({
+        take: 10,
+        orderBy: { createdAt: 'desc' },
+        include: {
+          userRoles: {
+            include: {
+              role: true
+            }
+          }
+        }
+      });
+
+      const recentMicroposts = await this.service.prisma.micropost.findMany({
+        take: 10,
+        orderBy: { createdAt: 'desc' },
+        include: {
+          user: {
+            select: {
+              id: true,
+              email: true
+            }
+          }
+        }
+      });
+
       res.render('dev/index', {
         title: '開発機能',
         path: req.path,
         metadata,
         health,
-        dbHealth
+        dbHealth,
+        recentUsers,
+        recentMicroposts
       });
     });
   }

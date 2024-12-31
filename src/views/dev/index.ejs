@@ -21,19 +21,6 @@
             </div>
         </div>
 
-        <!-- システム情報 -->
-        <div class="bg-white dark:bg-gray-900 rounded-xl shadow-sm border border-gray-200 dark:border-gray-800 p-6">
-            <h2 class="text-xl font-semibold mb-4 text-gray-900 dark:text-white">システム情報</h2>
-            <div class="space-y-4">
-                <div>
-                    <h3 class="text-sm font-medium text-gray-500 dark:text-gray-400 mb-2">インスタンスメタデータ</h3>
-                    <div class="bg-gray-50 dark:bg-gray-800 rounded-lg p-4">
-                        <pre class="text-sm text-gray-900 dark:text-white"><%= JSON.stringify(metadata, null, 2) %></pre>
-                    </div>
-                </div>
-            </div>
-        </div>
-
         <!-- システム状態 -->
         <div class="bg-white dark:bg-gray-900 rounded-xl shadow-sm border border-gray-200 dark:border-gray-800">
             <div class="p-6">
@@ -75,37 +62,80 @@
             </div>
         </div>
 
-        <!-- ヘルスチェック -->
+        <!-- 最新のユーザー -->
         <div class="bg-white dark:bg-gray-900 rounded-xl shadow-sm border border-gray-200 dark:border-gray-800 p-6">
-            <h2 class="text-xl font-semibold mb-4 text-gray-900 dark:text-white">ヘルスチェック</h2>
+            <h2 class="text-xl font-semibold mb-4 text-gray-900 dark:text-white">最新のユーザー</h2>
             <div class="space-y-4">
-                <div>
-                    <h3 class="text-sm font-medium text-gray-500 dark:text-gray-400 mb-2">アプリケーション</h3>
-                    <div class="bg-gray-50 dark:bg-gray-800 rounded-lg p-4">
-                        <pre class="text-sm text-gray-900 dark:text-white"><%= JSON.stringify(health, null, 2) %></pre>
-                    </div>
-                </div>
-                <div>
-                    <h3 class="text-sm font-medium text-gray-500 dark:text-gray-400 mb-2">データベース</h3>
-                    <div class="bg-gray-50 dark:bg-gray-800 rounded-lg p-4">
-                        <pre class="text-sm text-gray-900 dark:text-white"><%= JSON.stringify(dbHealth, null, 2) %></pre>
-                    </div>
+                <div class="overflow-x-auto">
+                    <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
+                        <thead class="bg-gray-50 dark:bg-gray-800">
+                            <tr>
+                                <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">ID</th>
+                                <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">メールアドレス</th>
+                                <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">ロール</th>
+                                <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">作成日時</th>
+                            </tr>
+                        </thead>
+                        <tbody class="bg-white dark:bg-gray-900 divide-y divide-gray-200 dark:divide-gray-700">
+                            <% recentUsers.forEach(user => { %>
+                            <tr>
+                                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white"><%= user.id %></td>
+                                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white"><%= user.email %></td>
+                                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white">
+                                    <% user.userRoles.forEach(ur => { %>
+                                        <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-rose-100 dark:bg-rose-900/30 text-rose-800 dark:text-rose-400">
+                                            <%= ur.role.name %>
+                                        </span>
+                                    <% }) %>
+                                </td>
+                                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white"><%= new Date(user.createdAt).toLocaleString('ja-JP') %></td>
+                            </tr>
+                            <% }) %>
+                        </tbody>
+                    </table>
                 </div>
             </div>
         </div>
 
-        <!-- 開発ツール -->
+        <!-- 最新の投稿 -->
         <div class="bg-white dark:bg-gray-900 rounded-xl shadow-sm border border-gray-200 dark:border-gray-800 p-6">
-            <h2 class="text-xl font-semibold mb-4 text-gray-900 dark:text-white">開発ツール</h2>
+            <h2 class="text-xl font-semibold mb-4 text-gray-900 dark:text-white">最新の投稿</h2>
             <div class="space-y-4">
-                <a href="/health" target="_blank" class="block p-4 bg-gray-50 dark:bg-gray-800 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors">
-                    <h3 class="text-base font-medium text-gray-900 dark:text-white">ヘルスチェックAPI</h3>
-                    <p class="text-sm text-gray-600 dark:text-gray-400 mt-1">アプリケーションの健全性を確認するAPIエンドポイント</p>
-                </a>
-                <a href="/health-db" target="_blank" class="block p-4 bg-gray-50 dark:bg-gray-800 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors">
-                    <h3 class="text-base font-medium text-gray-900 dark:text-white">データベースヘルスチェックAPI</h3>
-                    <p class="text-sm text-gray-600 dark:text-gray-400 mt-1">データベース接続の健全性を確認するAPIエンドポイント</p>
-                </a>
+                <div class="overflow-x-auto">
+                    <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
+                        <thead class="bg-gray-50 dark:bg-gray-800">
+                            <tr>
+                                <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">ID</th>
+                                <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">タイトル</th>
+                                <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">投稿者</th>
+                                <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">作成日時</th>
+                            </tr>
+                        </thead>
+                        <tbody class="bg-white dark:bg-gray-900 divide-y divide-gray-200 dark:divide-gray-700">
+                            <% recentMicroposts.forEach(post => { %>
+                            <tr>
+                                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white"><%= post.id %></td>
+                                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white"><%= post.title %></td>
+                                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white"><%= post.user.email %></td>
+                                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white"><%= new Date(post.createdAt).toLocaleString('ja-JP') %></td>
+                            </tr>
+                            <% }) %>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- システム情報 -->
+        <div class="bg-white dark:bg-gray-900 rounded-xl shadow-sm border border-gray-200 dark:border-gray-800 p-6">
+            <h2 class="text-xl font-semibold mb-4 text-gray-900 dark:text-white">システム情報</h2>
+            <div class="space-y-4">
+                <div>
+                    <h3 class="text-sm font-medium text-gray-500 dark:text-gray-400 mb-2">インスタンスメタデータ</h3>
+                    <div class="bg-gray-50 dark:bg-gray-800 rounded-lg p-4">
+                        <pre class="text-sm text-gray-900 dark:text-white"><%= JSON.stringify(metadata, null, 2) %></pre>
+                    </div>
+                </div>
             </div>
         </div>
     </div>
