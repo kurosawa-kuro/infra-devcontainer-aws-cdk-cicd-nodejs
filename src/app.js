@@ -27,7 +27,7 @@ const CONFIG = {
     isTest: process.env.APP_ENV === 'test'
   },
   storage: {
-    provider: process.env.STORAGE_PROVIDER || 'local',
+    useS3: false,
     s3: {
       region: process.env.STORAGE_S3_REGION,
       accessKey: process.env.STORAGE_S3_ACCESS_KEY,
@@ -227,13 +227,7 @@ class StorageConfig {
   }
 
   isEnabled() {
-    const isS3Enabled = process.env.STORAGE_PROVIDER !== 'local';
-    const hasRequiredConfig = this.config.region && 
-           process.env.STORAGE_S3_ACCESS_KEY && 
-           process.env.STORAGE_S3_SECRET_KEY &&
-           this.config.bucket;
-    
-    return isS3Enabled && hasRequiredConfig;
+    return CONFIG.storage.useS3;
   }
 
   getS3Client() {
