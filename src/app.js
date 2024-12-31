@@ -290,13 +290,19 @@ class AuthController {
   }
 
   async login(req, res) {
-    await this.authService.login(req.body);
-    res.redirect('/');
+    console.log('Login attempt:', { email: req.body.email });
+    try {
+      const user = await this.authService.login(req, res, req);
+      console.log('Login successful:', { userId: user.id });
+      return user;
+    } catch (error) {
+      console.error('Login failed:', error.message);
+      throw error;
+    }
   }
 
   async logout(req, res) {
     await this.authService.logout(req);
-    res.redirect('/');
   }
 }
 
@@ -411,16 +417,21 @@ class AuthService {
   async login(req, res, next) {
     return new Promise((resolve, reject) => {
       passport.authenticate('local', (err, user, info) => {
+        console.log('Passport authenticate result:', { err, user, info });
         if (err) {
+          console.error('Authentication error:', err);
           return reject(err);
         }
         if (!user) {
-          return reject(new Error(info.message));
+          console.error('Authentication failed:', info?.message);
+          return reject(new Error(info?.message || 'ログインに失敗しました'));
         }
         req.logIn(user, (err) => {
           if (err) {
+            console.error('Login error:', err);
             return reject(err);
           }
+          console.log('Login successful:', { userId: user.id });
           resolve(user);
         });
       })(req, res, next);
@@ -656,10 +667,13 @@ class Application {
     this.app.get('/auth/login', forwardAuthenticated, (req, res) => this.authController.getLoginPage(req, res));
     this.app.post('/auth/login', forwardAuthenticated, asyncHandler(async (req, res) => {
       try {
+        console.log('Login request received:', { email: req.body.email });
         await this.authController.login(req, res);
+        console.log('Login successful, redirecting to home');
         req.flash('success', 'ログインしました');
         res.redirect('/');
       } catch (error) {
+        console.error('Login failed:', error.message);
         req.flash('error', error.message);
         res.redirect('/auth/login');
       }

@@ -15,6 +15,22 @@
     </script>
 </head>
 <body class="h-full antialiased bg-white dark:bg-gray-900 text-gray-900 dark:text-white">
+    <!-- テラッシュメッセージ -->
+    <% if (locals.error && error.length > 0) { %>
+        <div class="fixed top-4 left-1/2 transform -translate-x-1/2 z-50 w-full max-w-sm">
+            <div class="bg-red-50 dark:bg-red-900/50 text-red-600 dark:text-red-400 p-4 rounded-lg shadow-lg border border-red-100 dark:border-red-800">
+                <p class="text-sm font-medium"><%= error %></p>
+            </div>
+        </div>
+    <% } %>
+    <% if (locals.success && success.length > 0) { %>
+        <div class="fixed top-4 left-1/2 transform -translate-x-1/2 z-50 w-full max-w-sm">
+            <div class="bg-green-50 dark:bg-green-900/50 text-green-600 dark:text-green-400 p-4 rounded-lg shadow-lg border border-green-100 dark:border-green-800">
+                <p class="text-sm font-medium"><%= success %></p>
+            </div>
+        </div>
+    <% } %>
+
     <!-- テーマ切り替えボタン -->
     <button id="theme-toggle" 
             class="fixed top-4 right-4 z-50 p-2.5 rounded-full bg-white dark:bg-gray-800 shadow-lg ring-1 ring-gray-200 dark:ring-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-rose-500 dark:focus:ring-offset-gray-900 transition-all">
