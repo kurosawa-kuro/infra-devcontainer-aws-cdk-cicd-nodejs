@@ -7,12 +7,7 @@ function setupRoutes(app, controllers, fileUploader) {
   const { auth, profile, micropost, system, dev, admin } = controllers;
 
   // Public routes
-  app.get('/', (req, res) => {
-    res.render('index', {
-      title: 'ホーム',
-      path: req.path
-    });
-  });
+  app.get('/home', asyncHandler((req, res) => micropost.index(req, res)));
 
   // System routes
   app.get('/health', asyncHandler((req, res) => system.getHealth(req, res)));
