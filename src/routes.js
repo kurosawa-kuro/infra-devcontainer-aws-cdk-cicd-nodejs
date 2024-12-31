@@ -5,7 +5,7 @@ const { isAuthenticated, forwardAuthenticated } = require('./middleware/auth');
 const isAdmin = require('./middleware/adminAuth');
 
 function setupRoutes(app, controllers, fileUploader) {
-  const { auth, profile, micropost, system, dev } = controllers;
+  const { auth, profile, micropost, system, dev, admin } = controllers;
 
   // Public routes
   app.get('/', (req, res) => {
@@ -47,8 +47,10 @@ function setupRoutes(app, controllers, fileUploader) {
 
   // Admin routes
   const adminRouter = express.Router();
+  adminRouter.use(isAuthenticated);
   adminRouter.use(isAdmin);
-  adminRouter.get('/', asyncHandler((req, res) => controllers.admin.dashboard(req, res)));
+  adminRouter.get('/', asyncHandler((req, res) => admin.dashboard(req, res)));
+  adminRouter.get('/manage-user', asyncHandler((req, res) => admin.manageUser(req, res)));
   app.use('/admin', adminRouter);
 
   return app;

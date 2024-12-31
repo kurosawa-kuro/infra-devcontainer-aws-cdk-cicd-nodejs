@@ -1,15 +1,15 @@
-// const AuthController = require('./AuthController');
-// const ProfileController = require('./ProfileController');
-// const MicropostController = require('./MicropostController');
-// const SystemController = require('./SystemController');
-// const DevController = require('./DevController');
-// const AdminController = require('./AdminController');
+const auth = require('./auth');
+const profile = require('./profile');
+const micropost = require('./micropost');
+const system = require('./system');
+const dev = require('./dev');
+const admin = require('./admin');
 
-// module.exports = {
-//   AuthController,
-//   ProfileController,
-//   MicropostController,
-//   SystemController,
-//   DevController,
-//   AdminController
-// }; 
+module.exports = {
+    auth,
+    profile,
+    micropost,
+    system,
+    dev,
+    admin
+}; 
