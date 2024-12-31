@@ -400,6 +400,50 @@ class AdminController {
       throw error;
     }
   }
+
+  async showUser(req, res) {
+    try {
+      const userId = parseInt(req.params.id, 10);
+      const user = await this.prisma.user.findUnique({
+        where: { id: userId },
+        include: {
+          profile: true,
+          userRoles: {
+            include: {
+              role: true
+            }
+          },
+          _count: {
+            select: {
+              microposts: true
+            }
+          }
+        }
+      });
+
+      if (!user) {
+        req.flash('error', 'ユーザーが見つかりません');
+        return res.redirect('/admin/manage-user');
+      }
+
+      const microposts = await this.prisma.micropost.findMany({
+        where: { userId },
+        orderBy: { createdAt: 'desc' },
+        take: 10
+      });
+
+      res.render('admin/user-detail', {
+        title: 'ユーザー詳細',
+        path: req.path,
+        user,
+        microposts
+      });
+    } catch (error) {
+      console.error('Error in showUser:', error);
+      req.flash('error', 'ユーザー詳細の取得中にエラーが発生しました');
+      res.redirect('/admin/manage-user');
+    }
+  }
 }
 
 module.exports = {
