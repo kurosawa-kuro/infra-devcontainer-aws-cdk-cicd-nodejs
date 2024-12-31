@@ -6,51 +6,72 @@ const { isAuthenticated, forwardAuthenticated, isAdmin } = require('./middleware
 function setupRoutes(app, controllers, fileUploader) {
   const { auth, profile, micropost, system, dev, admin } = controllers;
 
-  // Root redirect
+  // ===================================
+  // Public Routes
+  // ===================================
+  
+  // Root and Home
   app.get('/', (req, res) => res.redirect('/home'));
-
-  // Public routes
   app.get('/home', asyncHandler((req, res) => micropost.index(req, res)));
 
-  // System routes
+  // System Health
   app.get('/health', asyncHandler((req, res) => system.getHealth(req, res)));
   app.get('/health-db', asyncHandler((req, res) => system.getDbHealth(req, res)));
 
-  // Dev routes
-  app.get('/dev', asyncHandler((req, res) => dev.index(req, res)));
-  app.get('/dev/quick-login/:email', asyncHandler((req, res) => dev.quickLogin(req, res)));
-
-  // Auth routes
-  app.get('/auth/signup', forwardAuthenticated, (req, res) => auth.getSignupPage(req, res));
-  app.post('/auth/signup', forwardAuthenticated, asyncHandler((req, res) => auth.signup(req, res)));
-  app.get('/auth/login', forwardAuthenticated, (req, res) => auth.getLoginPage(req, res));
-  app.post('/auth/login', forwardAuthenticated, asyncHandler((req, res) => auth.login(req, res)));
-  app.get('/auth/logout', isAuthenticated, asyncHandler((req, res) => auth.logout(req, res)));
-
-  // Profile routes
-  app.get('/profile/:id', isAuthenticated, asyncHandler((req, res) => profile.show(req, res)));
-  app.get('/profile/:id/edit', isAuthenticated, asyncHandler((req, res) => profile.getEditPage(req, res)));
-  app.post('/profile/:id/edit', isAuthenticated, fileUploader.createUploader().single('avatar'), asyncHandler((req, res) => profile.update(req, res)));
-
-  // Micropost routes
-  app.get('/microposts', isAuthenticated, asyncHandler((req, res) => micropost.index(req, res)));
-  app.post('/microposts', isAuthenticated, fileUploader.createUploader().single('image'), asyncHandler((req, res) => micropost.create(req, res)));
-
-  // Static routes
+  // Static Assets
   if (!process.env.STORAGE_S3_BUCKET) {
     app.use('/uploads', express.static(path.join(__dirname, '..', 'uploads')));
   }
   app.use('/css', express.static(path.join(__dirname, 'public/css')));
 
-  // Admin routes
+  // ===================================
+  // Authentication Routes
+  // ===================================
+  const authRouter = express.Router();
+  authRouter.get('/signup', forwardAuthenticated, (req, res) => auth.getSignupPage(req, res));
+  authRouter.post('/signup', forwardAuthenticated, asyncHandler((req, res) => auth.signup(req, res)));
+  authRouter.get('/login', forwardAuthenticated, (req, res) => auth.getLoginPage(req, res));
+  authRouter.post('/login', forwardAuthenticated, asyncHandler((req, res) => auth.login(req, res)));
+  authRouter.get('/logout', isAuthenticated, asyncHandler((req, res) => auth.logout(req, res)));
+  app.use('/auth', authRouter);
+
+  // ===================================
+  // Protected Routes (Authenticated)
+  // ===================================
+  
+  // Profile Management
+  const profileRouter = express.Router();
+  profileRouter.use(isAuthenticated);
+  profileRouter.get('/:id', asyncHandler((req, res) => profile.show(req, res)));
+  profileRouter.get('/:id/edit', asyncHandler((req, res) => profile.getEditPage(req, res)));
+  profileRouter.post('/:id/edit', fileUploader.createUploader().single('avatar'), asyncHandler((req, res) => profile.update(req, res)));
+  app.use('/profile', profileRouter);
+
+  // Microposts
+  const micropostRouter = express.Router();
+  micropostRouter.use(isAuthenticated);
+  micropostRouter.get('/', asyncHandler((req, res) => micropost.index(req, res)));
+  micropostRouter.post('/', fileUploader.createUploader().single('image'), asyncHandler((req, res) => micropost.create(req, res)));
+  app.use('/microposts', micropostRouter);
+
+  // ===================================
+  // Admin Routes
+  // ===================================
   const adminRouter = express.Router();
-  adminRouter.use(isAuthenticated);
-  adminRouter.use(isAdmin);
+  adminRouter.use(isAuthenticated, isAdmin);
   adminRouter.get('/', asyncHandler((req, res) => admin.dashboard(req, res)));
   adminRouter.get('/manage-user', asyncHandler((req, res) => admin.manageUser(req, res)));
   adminRouter.get('/manage-user/:id', asyncHandler((req, res) => admin.showUser(req, res)));
   adminRouter.post('/users/:id/roles', asyncHandler((req, res) => admin.updateUserRoles(req, res)));
   app.use('/admin', adminRouter);
+
+  // ===================================
+  // Development Routes
+  // ===================================
+  const devRouter = express.Router();
+  devRouter.get('/', asyncHandler((req, res) => dev.index(req, res)));
+  devRouter.get('/quick-login/:email', asyncHandler((req, res) => dev.quickLogin(req, res)));
+  app.use('/dev', devRouter);
 
   return app;
 }
