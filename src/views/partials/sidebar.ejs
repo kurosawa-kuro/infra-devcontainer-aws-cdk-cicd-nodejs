@@ -11,7 +11,7 @@
             <%- include('nav-items', { path, locals, user: locals.user }) %>
         </ul>
         <% if (locals.user) { %>
-            <%- include('user-profile', { user: locals.user, isMobile: false }) %>
+            <%- include('../components/user/profile-card', { user: locals.user, isMobile: false }) %>
         <% } %>
     </div>
 </nav>
@@ -29,7 +29,7 @@
             <%- include('nav-items', { path, locals, user: locals.user }) %>
         </ul>
         <% if (locals.user) { %>
-            <%- include('user-profile', { user: locals.user, isMobile: true }) %>
+            <%- include('../components/user/profile-card', { user: locals.user, isMobile: true }) %>
         <% } %>
     </div>
 </div> 
