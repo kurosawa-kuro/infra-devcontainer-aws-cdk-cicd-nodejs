@@ -1,59 +1,39 @@
 <%- contentFor('body') %>
-<div class="max-w-3xl mx-auto px-4">
-    <div class="mb-12">
-        <h1 class="text-3xl font-semibold mb-3 text-gray-900 dark:text-white">プロフィール編集</h1>
-        <p class="text-base text-gray-600 dark:text-gray-400">アカウント情報を更新</p>
-    </div>
-
-    <div class="bg-white dark:bg-gray-900 rounded-xl shadow-sm border border-gray-200 dark:border-gray-800">
-        <div class="p-6">
-            <form action="/profile/<%= user.id %>" method="POST" class="space-y-6">
-                <div>
-                    <label for="name" class="block text-sm font-medium text-gray-900 dark:text-white mb-2">
-                        ユーザー名
-                    </label>
-                    <input type="text" 
-                           id="name"
-                           name="name" 
-                           value="<%= user.name %>"
-                           required
-                           class="block w-full rounded-lg border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-900 dark:text-white shadow-sm focus:border-rose-500 dark:focus:border-rose-500 focus:ring-rose-500 dark:focus:ring-rose-500">
-                </div>
-
-                <div>
-                    <label for="email" class="block text-sm font-medium text-gray-900 dark:text-white mb-2">
-                        メールアドレス
-                    </label>
-                    <input type="email" 
-                           id="email"
-                           name="email" 
-                           value="<%= user.email %>"
-                           required
-                           class="block w-full rounded-lg border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-900 dark:text-white shadow-sm focus:border-rose-500 dark:focus:border-rose-500 focus:ring-rose-500 dark:focus:ring-rose-500">
-                </div>
-
-                <div>
-                    <label for="bio" class="block text-sm font-medium text-gray-900 dark:text-white mb-2">
-                        自己紹介
-                    </label>
-                    <textarea id="bio"
-                              name="bio"
-                              rows="4"
-                              class="block w-full rounded-lg border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-900 dark:text-white shadow-sm focus:border-rose-500 dark:focus:border-rose-500 focus:ring-rose-500 dark:focus:ring-rose-500"><%= user.bio %></textarea>
-                    <p class="mt-2 text-sm text-gray-500 dark:text-gray-400">簡単な自己紹介を書いてください</p>
-                </div>
-
-                <div class="flex items-center justify-end space-x-4">
-                    <a href="/profile/<%= user.id %>" 
-                       class="inline-flex items-center px-4 py-2 border border-gray-300 dark:border-gray-700 rounded-lg text-sm font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-900 hover:bg-gray-50 dark:hover:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-rose-500 dark:focus:ring-offset-gray-900 transition-colors">
-                        キャンセル
-                    </a>
-                    <button type="submit" 
-                            class="inline-flex items-center px-4 py-2 border border-transparent rounded-lg text-sm font-medium text-white bg-rose-600 hover:bg-rose-700 dark:bg-rose-500 dark:hover:bg-rose-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-rose-500 dark:focus:ring-offset-gray-900 transition-colors">
-                        保存
-                    </button>
-                </div>
-            </form>
+<div class="max-w-2xl mx-auto px-4">
+  <div class="bg-white dark:bg-gray-900 shadow sm:rounded-lg">
+    <div class="px-4 py-5 sm:p-6">
+      <h3 class="text-lg font-medium leading-6 text-gray-900 dark:text-white">
+        プロフィール編集
+      </h3>
+      <div class="mt-2 max-w-xl text-sm text-gray-500">
+        <p>プロフィール情報を更新します</p>
+      </div>
+      <form action="/profile/<%= user.id %>/edit" method="POST" class="mt-5 space-y-6">
+        <div>
+          <label for="email" class="block text-sm font-medium text-gray-700 dark:text-gray-300">
+            メールアドレス
+          </label>
+          <div class="mt-1">
+            <input
+              type="email"
+              name="email"
+              id="email"
+              value="<%= user.email %>"
+              required
+              class="block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm dark:bg-gray-800 dark:border-gray-700 dark:text-white"
+            >
+          </div>
         </div>
+
+        <div class="flex justify-end">
+          <button
+            type="submit"
+            class="ml-3 inline-flex justify-center rounded-md border border-transparent bg-indigo-600 py-2 px-4 text-sm font-medium text-white shadow-sm hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2"
+          >
+            更新
+          </button>
+        </div>
+      </form>
     </div>
+  </div>
 </div> 

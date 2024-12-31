@@ -12,6 +12,10 @@ const fs = require('fs');
 const axios = require('axios');
 const expressLayouts = require('express-ejs-layouts');
 require('dotenv').config();
+const bcrypt = require('bcrypt');
+const passport = require('passport');
+const session = require('express-session');
+const flash = require('connect-flash');
 
 // ロギングシステムの設定と管理
 class LoggingSystem {
@@ -382,21 +386,56 @@ class AuthService {
   }
 
   async signup(userData) {
-    // ユーザー登録ロジックの実装
-    // 実際のアプリケーションではパスワードのハッシュ化などを行う
-    return null;
+    const { email, password } = userData;
+    
+    const existingUser = await this.prisma.user.findUnique({
+      where: { email }
+    });
+    
+    if (existingUser) {
+      throw new Error('このメールアドレスは既に登録されています');
+    }
+
+    const hashedPassword = await bcrypt.hash(password, 10);
+    
+    const user = await this.prisma.user.create({
+      data: {
+        email,
+        password: hashedPassword
+      }
+    });
+
+    return user;
   }
 
-  async login(credentials) {
-    // ログインロジックの実装
-    // 実際のアプリケーションでは認証処理を行う
-    return null;
+  async login(req, res, next) {
+    return new Promise((resolve, reject) => {
+      passport.authenticate('local', (err, user, info) => {
+        if (err) {
+          return reject(err);
+        }
+        if (!user) {
+          return reject(new Error(info.message));
+        }
+        req.logIn(user, (err) => {
+          if (err) {
+            return reject(err);
+          }
+          resolve(user);
+        });
+      })(req, res, next);
+    });
   }
 
   async logout(req) {
-    // ログアウトロジックの実装
-    // 実際のアプリケーションではセッションのクリアなどを行う
-    return null;
+    return new Promise((resolve, reject) => {
+      req.logout((err) => {
+        if (err) {
+          return reject(err);
+        }
+        resolve();
+      });
+    });
   }
 }
 
@@ -409,7 +448,6 @@ class ProfileService {
     // 実際のアプリケーションではDBからユーザー情報を取得
     return {
       id: userId,
-      name: '',
       email: '',
       bio: '',
       createdAt: new Date()
@@ -484,6 +522,9 @@ class Application {
     this.fileUploader = new FileUploader(this.storageConfig);
     this.errorHandler = new ErrorHandler(this.storageConfig.getUploadLimits());
 
+    // Initialize Passport
+    require('./config/passport')(passport);
+
     // サービスの初期化
     this.authService = new AuthService(this.prisma);
     this.profileService = new ProfileService(this.prisma);
@@ -500,6 +541,7 @@ class Application {
   setupMiddleware() {
     this.setupRequestLogging();
     this.setupBasicMiddleware();
+    this.setupAuthMiddleware();
     this.setupErrorLogging();
   }
 
@@ -509,7 +551,13 @@ class Application {
       meta: false,
       msg: (req, res) => {
         const responseTime = res.responseTime || 0;
-        return `${req.method.padEnd(6)} ${req.url.padEnd(30)} ${responseTime}ms`;
+        const statusCode = res.statusCode;
+        const statusColor = statusCode >= 500 ? '\x1b[31m' : // red
+                           statusCode >= 400 ? '\x1b[33m' : // yellow
+                           statusCode >= 300 ? '\x1b[36m' : // cyan
+                           '\x1b[32m'; // green
+        const reset = '\x1b[0m';
+        return `${req.method.padEnd(6)} ${statusColor}${statusCode}${reset} ${req.url.padEnd(30)} ${responseTime}ms`;
       },
       expressFormat: false,
       colorize: true,
@@ -526,13 +574,37 @@ class Application {
     this.app.use(express.urlencoded({ extended: true }));
   }
 
+  setupAuthMiddleware() {
+    this.app.use(session({
+      secret: process.env.SESSION_SECRET || 'your-session-secret',
+      resave: false,
+      saveUninitialized: false,
+      cookie: {
+        secure: process.env.NODE_ENV === 'production',
+        maxAge: 24 * 60 * 60 * 1000 // 24 hours
+      }
+    }));
+    this.app.use(passport.initialize());
+    this.app.use(passport.session());
+    this.app.use(flash());
+
+    // Make user available to all views
+    this.app.use((req, res, next) => {
+      res.locals.user = req.user;
+      res.locals.error = req.flash('error');
+      res.locals.success = req.flash('success');
+      next();
+    });
+  }
+
   setupErrorLogging() {
     this.app.use(expressWinston.errorLogger({
       winstonInstance: this.logger,
       meta: false,
       msg: (req, res, err) => {
         const responseTime = res.responseTime || 0;
-        return `${req.method.padEnd(6)} ${req.url.padEnd(30)} ${responseTime}ms - ${err.message}`;
+        const statusCode = res.statusCode;
+        return `ERROR ${req.method.padEnd(6)} ${statusCode} ${req.url.padEnd(30)} ${responseTime}ms - ${err.message}`;
       }
     }));
   }
@@ -559,6 +631,8 @@ class Application {
   }
 
   setupMainRoutes(upload) {
+    const { ensureAuthenticated, forwardAuthenticated } = require('./middleware/auth');
+
     this.app.get('/', (req, res) => {
       res.render('index', {
         title: 'ホーム',
@@ -567,23 +641,47 @@ class Application {
     });
 
     // Auth routes
-    this.app.get('/auth/signup', (req, res) => this.authController.getSignupPage(req, res));
-    this.app.post('/auth/signup', asyncHandler((req, res) => this.authController.signup(req, res)));
-    this.app.get('/auth/login', (req, res) => this.authController.getLoginPage(req, res));
-    this.app.post('/auth/login', asyncHandler((req, res) => this.authController.login(req, res)));
-    this.app.get('/auth/logout', asyncHandler((req, res) => this.authController.logout(req, res)));
+    this.app.get('/auth/signup', forwardAuthenticated, (req, res) => this.authController.getSignupPage(req, res));
+    this.app.post('/auth/signup', forwardAuthenticated, asyncHandler(async (req, res) => {
+      try {
+        await this.authController.signup(req, res);
+        req.flash('success', 'ユーザー登録が完了しました。ログインしてください。');
+        res.redirect('/auth/login');
+      } catch (error) {
+        req.flash('error', error.message);
+        res.redirect('/auth/signup');
+      }
+    }));
 
-    // Profile routes
-    this.app.get('/profile/:id', asyncHandler((req, res) => this.profileController.show(req, res)));
-    this.app.get('/profile/:id/edit', asyncHandler((req, res) => this.profileController.getEditPage(req, res)));
-    this.app.post('/profile/:id/edit', asyncHandler((req, res) => this.profileController.update(req, res)));
+    this.app.get('/auth/login', forwardAuthenticated, (req, res) => this.authController.getLoginPage(req, res));
+    this.app.post('/auth/login', forwardAuthenticated, asyncHandler(async (req, res) => {
+      try {
+        await this.authController.login(req, res);
+        req.flash('success', 'ログインしました');
+        res.redirect('/');
+      } catch (error) {
+        req.flash('error', error.message);
+        res.redirect('/auth/login');
+      }
+    }));
 
-    // System routes
-    this.app.get('/system-status', asyncHandler((req, res) => this.systemController.getStatus(req, res)));
+    this.app.get('/auth/logout', ensureAuthenticated, asyncHandler(async (req, res) => {
+      await this.authController.logout(req, res);
+      req.flash('success', 'ログアウトしました');
+      res.redirect('/auth/login');
+    }));
 
-    // Micropost routes
-    this.app.get('/microposts', asyncHandler((req, res) => this.micropostController.index(req, res)));
-    this.app.post('/microposts', upload.single('image'), asyncHandler((req, res) => this.micropostController.create(req, res)));
+    // Profile routes (protected)
+    this.app.get('/profile/:id', ensureAuthenticated, asyncHandler((req, res) => this.profileController.show(req, res)));
+    this.app.get('/profile/:id/edit', ensureAuthenticated, asyncHandler((req, res) => this.profileController.getEditPage(req, res)));
+    this.app.post('/profile/:id/edit', ensureAuthenticated, asyncHandler((req, res) => this.profileController.update(req, res)));
+
+    // System routes (protected)
+    this.app.get('/system-status', ensureAuthenticated, asyncHandler((req, res) => this.systemController.getStatus(req, res)));
+
+    // Micropost routes (protected)
+    this.app.get('/microposts', ensureAuthenticated, asyncHandler((req, res) => this.micropostController.index(req, res)));
+    this.app.post('/microposts', ensureAuthenticated, upload.single('image'), asyncHandler((req, res) => this.micropostController.create(req, res)));
   }
 
   setupStaticRoutes() {

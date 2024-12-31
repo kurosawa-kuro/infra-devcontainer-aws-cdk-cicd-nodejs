@@ -1,91 +1,36 @@
 <%- contentFor('body') %>
-<div class="max-w-3xl mx-auto px-4">
-    <div class="mb-12">
-        <h1 class="text-3xl font-semibold mb-3 text-gray-900 dark:text-white">プロフィール</h1>
-        <p class="text-base text-gray-600 dark:text-gray-400">アカウント情報の確認と編集</p>
+<div class="max-w-2xl mx-auto px-4">
+  <div class="bg-white dark:bg-gray-900 shadow overflow-hidden sm:rounded-lg">
+    <div class="px-4 py-5 sm:px-6">
+      <h3 class="text-lg leading-6 font-medium text-gray-900 dark:text-white">
+        プロフィール情報
+      </h3>
+      <p class="mt-1 max-w-2xl text-sm text-gray-500 dark:text-gray-400">
+        ユーザーの詳細情報
+      </p>
     </div>
-
-    <div class="space-y-6">
-        <div class="bg-white dark:bg-gray-900 rounded-xl shadow-sm border border-gray-200 dark:border-gray-800">
-            <div class="p-6">
-                <div class="flex items-center justify-between mb-6">
-                    <h2 class="text-xl font-semibold text-gray-900 dark:text-white">基本情報</h2>
-                    <a href="/profile/<%= user.id %>/edit" 
-                       class="inline-flex items-center px-4 py-2 border border-gray-300 dark:border-gray-700 rounded-lg text-sm font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-900 hover:bg-gray-50 dark:hover:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-rose-500 dark:focus:ring-offset-gray-900 transition-colors">
-                        <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"/>
-                        </svg>
-                        編集
-                    </a>
-                </div>
-
-                <dl class="space-y-6">
-                    <div class="flex items-center">
-                        <dt class="w-1/4 flex-shrink-0 text-sm font-medium text-gray-500 dark:text-gray-400">ユーザー名</dt>
-                        <dd class="text-sm text-gray-900 dark:text-white"><%= user.name %></dd>
-                    </div>
-                    <div class="flex items-center">
-                        <dt class="w-1/4 flex-shrink-0 text-sm font-medium text-gray-500 dark:text-gray-400">メールアドレス</dt>
-                        <dd class="text-sm text-gray-900 dark:text-white"><%= user.email %></dd>
-                    </div>
-                    <div class="flex items-center">
-                        <dt class="w-1/4 flex-shrink-0 text-sm font-medium text-gray-500 dark:text-gray-400">登録日</dt>
-                        <dd class="text-sm text-gray-900 dark:text-white"><%= new Date(user.createdAt).toLocaleDateString('ja-JP') %></dd>
-                    </div>
-                </dl>
-            </div>
+    <div class="border-t border-gray-200 dark:border-gray-800">
+      <dl>
+        <div class="bg-gray-50 dark:bg-gray-800 px-4 py-5 sm:grid sm:grid-cols-3 sm:gap-4 sm:px-6">
+          <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">メールアドレス</dt>
+          <dd class="mt-1 text-sm text-gray-900 dark:text-white sm:col-span-2 sm:mt-0"><%= user.email %></dd>
         </div>
-
-        <div class="bg-white dark:bg-gray-900 rounded-xl shadow-sm border border-gray-200 dark:border-gray-800">
-            <div class="p-6">
-                <h2 class="text-xl font-semibold mb-6 text-gray-900 dark:text-white">アカウント設定</h2>
-                <div class="space-y-4">
-                    <a href="#" class="flex items-center justify-between p-4 bg-gray-50 dark:bg-gray-800 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors">
-                        <div class="flex items-center">
-                            <svg class="w-5 h-5 text-gray-400 dark:text-gray-500 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/>
-                            </svg>
-                            <div>
-                                <h3 class="text-base font-medium text-gray-900 dark:text-white">パスワード変更</h3>
-                                <p class="text-sm text-gray-600 dark:text-gray-400">セキュリティ保護のためパスワードを変更</p>
-                            </div>
-                        </div>
-                        <svg class="w-5 h-5 text-gray-400 dark:text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
-                        </svg>
-                    </a>
-
-                    <a href="#" class="flex items-center justify-between p-4 bg-gray-50 dark:bg-gray-800 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors">
-                        <div class="flex items-center">
-                            <svg class="w-5 h-5 text-gray-400 dark:text-gray-500 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"/>
-                            </svg>
-                            <div>
-                                <h3 class="text-base font-medium text-gray-900 dark:text-white">通知設定</h3>
-                                <p class="text-sm text-gray-600 dark:text-gray-400">メールやプッシュ通知の設定を管理</p>
-                            </div>
-                        </div>
-                        <svg class="w-5 h-5 text-gray-400 dark:text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
-                        </svg>
-                    </a>
-
-                    <a href="#" class="flex items-center justify-between p-4 bg-gray-50 dark:bg-gray-800 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors">
-                        <div class="flex items-center">
-                            <svg class="w-5 h-5 text-gray-400 dark:text-gray-500 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/>
-                            </svg>
-                            <div>
-                                <h3 class="text-base font-medium text-gray-900 dark:text-white">アカウント削除</h3>
-                                <p class="text-sm text-gray-600 dark:text-gray-400">アカウントを完全に削除</p>
-                            </div>
-                        </div>
-                        <svg class="w-5 h-5 text-gray-400 dark:text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
-                        </svg>
-                    </a>
-                </div>
-            </div>
+        <div class="bg-white dark:bg-gray-900 px-4 py-5 sm:grid sm:grid-cols-3 sm:gap-4 sm:px-6">
+          <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">登録日</dt>
+          <dd class="mt-1 text-sm text-gray-900 dark:text-white sm:col-span-2 sm:mt-0">
+            <%= user.createdAt ? new Date(user.createdAt).toLocaleDateString('ja-JP') : '未設定' %>
+          </dd>
         </div>
+      </dl>
     </div>
+  </div>
+
+  <div class="mt-6 flex justify-end">
+    <a
+      href="/profile/<%= user.id %>/edit"
+      class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+    >
+      編集
+    </a>
+  </div>
 </div> 
