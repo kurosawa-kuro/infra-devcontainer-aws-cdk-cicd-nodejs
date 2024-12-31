@@ -12,6 +12,21 @@ const forwardAuthenticated = (req, res, next) => {
   res.redirect('/');
 };
 
+const isAdmin = (req, res, next) => {
+  if (!req.isAuthenticated()) {
+    req.flash('error', 'ログインが必要です');
+    return res.redirect('/auth/login');
+  }
+
+  const isAdmin = req.user.userRoles?.some(ur => ur.role.name === 'admin');
+  if (!isAdmin) {
+    req.flash('error', '管理者権限が必要です');
+    return res.redirect('/');
+  }
+
+  next();
+};
+
 const canManageUser = (req, res, next) => {
   if (!req.isAuthenticated()) {
     return res.redirect('/auth/login');
@@ -41,5 +56,6 @@ const canManageUser = (req, res, next) => {
 module.exports = {
   isAuthenticated,
   forwardAuthenticated,
+  isAdmin,
   canManageUser
 }; 
