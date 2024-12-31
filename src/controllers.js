@@ -155,12 +155,18 @@ class ProfileController extends BaseController {
 
   async show(req, res) {
     return this.handleRequest(req, res, async () => {
-      const user = await this.service.getUserProfile(req.params.id);
+      let user;
+      if (req.params.id.match(/^[0-9]+$/)) {
+        user = await this.service.getUserProfile(req.params.id);
+      } else {
+        user = await this.service.getUserProfileByName(req.params.id);
+      }
+
       if (!user) {
         return this.errorHandler.handleNotFoundError(req, res, 'ユーザーが見つかりません');
       }
 
-      const microposts = await this.service.getMicropostsByUser(req.params.id);
+      const microposts = await this.service.getMicropostsByUser(user.id);
 
       res.render('profile/show', {
         title: 'プロフィール',
@@ -175,8 +181,16 @@ class ProfileController extends BaseController {
 
   async getEditPage(req, res) {
     return this.handleRequest(req, res, async () => {
-      const userId = parseInt(req.params.id, 10);
-      const user = await this.service.getUserProfile(userId);
+      let user;
+      let userId;
+
+      if (req.params.id.match(/^[0-9]+$/)) {
+        userId = parseInt(req.params.id, 10);
+        user = await this.service.getUserProfile(userId);
+      } else {
+        user = await this.service.getUserProfileByName(req.params.id);
+        userId = user ? user.id : null;
+      }
       
       if (!user) {
         return this.errorHandler.handleNotFoundError(req, res, 'ユーザーが見つかりません');
@@ -200,8 +214,16 @@ class ProfileController extends BaseController {
 
   async update(req, res) {
     return this.handleRequest(req, res, async () => {
-      const userId = parseInt(req.params.id, 10);
-      const user = await this.service.getUserProfile(userId);
+      let user;
+      let userId;
+
+      if (req.params.id.match(/^[0-9]+$/)) {
+        userId = parseInt(req.params.id, 10);
+        user = await this.service.getUserProfile(userId);
+      } else {
+        user = await this.service.getUserProfileByName(req.params.id);
+        userId = user ? user.id : null;
+      }
       
       if (!user) {
         return this.errorHandler.handleNotFoundError(req, res, 'ユーザーが見つかりません');
@@ -219,14 +241,14 @@ class ProfileController extends BaseController {
         avatarPath = path.basename(req.file.path);
       }
 
-      await this.service.updateProfile(userId, {
+      const updatedUser = await this.service.updateProfile(userId, {
         ...req.body,
         avatarPath
       });
       
       this.sendResponse(req, res, {
         message: 'プロフィールを更新しました',
-        redirectUrl: `/profile/${userId}`
+        redirectUrl: `/${updatedUser.name || userId}`
       });
     });
   }

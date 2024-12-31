@@ -126,6 +126,25 @@ class ProfileService extends BaseService {
     });
   }
 
+  async getUserProfileByName(name) {
+    return this.prisma.user.findFirst({
+      where: { name },
+      include: {
+        profile: true,
+        userRoles: {
+          include: {
+            role: true
+          }
+        },
+        _count: {
+          select: {
+            microposts: true
+          }
+        }
+      }
+    });
+  }
+
   async getAllUsers() {
     return this.prisma.user.findMany({
       include: {

@@ -39,14 +39,6 @@ function setupRoutes(app, controllers, fileUploader) {
   // Protected Routes (Authenticated)
   // ===================================
   
-  // Profile Management
-  const profileRouter = express.Router();
-  profileRouter.use(isAuthenticated);
-  profileRouter.get('/:id', asyncHandler((req, res) => profile.show(req, res)));
-  profileRouter.get('/:id/edit', asyncHandler((req, res) => profile.getEditPage(req, res)));
-  profileRouter.post('/:id/edit', fileUploader.createUploader().single('avatar'), asyncHandler((req, res) => profile.update(req, res)));
-  app.use('/profile', profileRouter);
-
   // Microposts
   const micropostRouter = express.Router();
   micropostRouter.use(isAuthenticated);
@@ -72,6 +64,13 @@ function setupRoutes(app, controllers, fileUploader) {
   devRouter.get('/', asyncHandler((req, res) => dev.index(req, res)));
   devRouter.get('/quick-login/:email', asyncHandler((req, res) => dev.quickLogin(req, res)));
   app.use('/dev', devRouter);
+
+  // ===================================
+  // User Profile Routes (最後に配置)
+  // ===================================
+  app.get('/:id', isAuthenticated, asyncHandler((req, res) => profile.show(req, res)));
+  app.get('/:id/edit', isAuthenticated, asyncHandler((req, res) => profile.getEditPage(req, res)));
+  app.post('/:id/edit', isAuthenticated, fileUploader.createUploader().single('avatar'), asyncHandler((req, res) => profile.update(req, res)));
 
   return app;
 }
