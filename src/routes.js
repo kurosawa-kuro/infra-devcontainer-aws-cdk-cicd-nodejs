@@ -6,6 +6,9 @@ const { isAuthenticated, forwardAuthenticated, isAdmin } = require('./middleware
 function setupRoutes(app, controllers, fileUploader) {
   const { auth, profile, micropost, system, dev, admin } = controllers;
 
+  // Root redirect
+  app.get('/', (req, res) => res.redirect('/home'));
+
   // Public routes
   app.get('/home', asyncHandler((req, res) => micropost.index(req, res)));
 
