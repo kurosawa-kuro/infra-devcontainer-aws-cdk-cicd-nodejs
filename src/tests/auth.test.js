@@ -16,13 +16,18 @@ describe('Authentication Integration Tests', () => {
     it('should successfully register a new user', async () => {
       const response = await createTestUser(server);
       expect(response.status).toBe(302);
-      expect(response.header.location).toBe('/auth/login');
+      expect(response.header.location).toBe('/');
 
       const user = await prisma.user.findUnique({
         where: { email: TEST_USER.email }
       });
       expect(user).toBeTruthy();
       expect(user.email).toBe(TEST_USER.email);
+
+      const protectedResponse = await request(server)
+        .get('/microposts')
+        .set('Cookie', response.headers['set-cookie'])
+        .expect(200);
     });
   });
 

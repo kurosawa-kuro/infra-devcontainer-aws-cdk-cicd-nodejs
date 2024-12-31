@@ -508,10 +508,13 @@ class AuthController extends BaseController {
 
   async signup(req, res) {
     return this.handleRequest(req, res, async () => {
-      await this.service.signup(req.body);
+      const user = await this.service.signup(req.body);
+      await new Promise((resolve, reject) => {
+        req.logIn(user, (err) => err ? reject(err) : resolve());
+      });
       this.sendResponse(req, res, {
-        message: 'ユーザー登録が完了しました。ログインしてください。',
-        redirectUrl: '/auth/login'
+        message: 'ユーザー登録が完了しました',
+        redirectUrl: '/'
       });
     });
   }
@@ -679,12 +682,14 @@ class AuthService extends BaseService {
 
     const hashedPassword = await bcrypt.hash(password, 10);
     
-    return this.prisma.user.create({
+    const user = await this.prisma.user.create({
       data: {
         email,
         password: hashedPassword
       }
     });
+
+    return user;
   }
 
   async login(req, res) {
