@@ -11,6 +11,7 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+// User related models
 model User {
   id         Int         @id @default(autoincrement())
   email      String      @unique
@@ -61,6 +62,7 @@ model Role {
   userRoles   UserRole[]
 }
 
+// Content related models
 model Micropost {
   id         Int                 @id @default(autoincrement())
   title      String
@@ -70,6 +72,12 @@ model Micropost {
   userId     Int
   user       User               @relation(fields: [userId], references: [id])
   categories CategoryMicropost[]
+}
+
+model Category {
+  id         Int                 @id @default(autoincrement())
+  name       String              @unique
+  microposts CategoryMicropost[]
 }
 
 model CategoryMicropost {
@@ -84,12 +92,7 @@ model CategoryMicropost {
   @@index([categoryId])
 }
 
-model Category {
-  id         Int                 @id @default(autoincrement())
-  name       String              @unique
-  microposts CategoryMicropost[]
-}
-
+// Social related models
 model Follow {
   id          Int      @id @default(autoincrement())
   followerId  Int

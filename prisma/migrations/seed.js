@@ -170,6 +170,37 @@ async function main() {
 
   console.log('Sample users and microposts have been created/updated');
 
+  // Create follow relationships
+  const allUsers = await prisma.user.findMany();
+  
+  // Create some follow relationships
+  const followRelationships = [
+    { follower: 'tanaka@example.com', following: 'yamada@example.com' },
+    { follower: 'tanaka@example.com', following: 'suzuki@example.com' },
+    { follower: 'yamada@example.com', following: 'tanaka@example.com' },
+    { follower: 'suzuki@example.com', following: 'tanaka@example.com' },
+    { follower: 'suzuki@example.com', following: 'yamada@example.com' },
+    { follower: 'user@example.com', following: 'tanaka@example.com' },
+    { follower: 'user@example.com', following: 'yamada@example.com' }
+  ];
+
+  for (const relationship of followRelationships) {
+    const follower = allUsers.find(user => user.email === relationship.follower);
+    const following = allUsers.find(user => user.email === relationship.following);
+    
+    if (follower && following) {
+      await prisma.follow.create({
+        data: {
+          followerId: follower.id,
+          followingId: following.id
+        }
+      });
+      console.log(`Created follow relationship: ${follower.name} -> ${following.name}`);
+    }
+  }
+
+  console.log('Follow relationships have been created');
+
   // Create categories
   const categories = [
     { name: '技術' },
