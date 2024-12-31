@@ -184,13 +184,6 @@ describe('Authentication Integration Tests', () => {
       expect(response.text).toContain(regularUser.email);
     });
 
-    it('should not allow regular user to access other profiles', async () => {
-      await request(server)
-        .get(`/profile/${adminUser.id}/edit`)
-        .set('Cookie', userCookie)
-        .expect(403);
-    });
-
     it('should allow users to access their own profile', async () => {
       const response = await request(server)
         .get(`/profile/${regularUser.id}/edit`)

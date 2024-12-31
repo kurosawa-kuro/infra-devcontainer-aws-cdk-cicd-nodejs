@@ -472,7 +472,9 @@ class ErrorHandler {
   handlePermissionError(req, res, message = '権限がありません') {
     const error = this.createValidationError(message, { code: 'PERMISSION_ERROR' });
     this.createDetailedErrorLog(error, req);
-    return this.sendErrorResponse(req, res, 403, error.message);
+    return res.status(403).json({
+      error: message
+    });
   }
 
   handleNotFoundError(req, res, message = 'リソースが見つかりません') {
@@ -615,12 +617,14 @@ class ProfileController extends BaseController {
 
   async getEditPage(req, res) {
     return this.handleRequest(req, res, async () => {
-      const user = await this.service.getUserProfile(req.params.id);
+      const userId = parseInt(req.params.id, 10);
+      const user = await this.service.getUserProfile(userId);
+      
       if (!user) {
         return this.errorHandler.handleNotFoundError(req, res, 'ユーザーが見つかりません');
       }
 
-      const isOwnProfile = req.user.id === parseInt(req.params.id, 10);
+      const isOwnProfile = req.user.id === userId;
       const isAdmin = req.user.userRoles.some(ur => ur.role.name === 'admin');
 
       if (!isOwnProfile && !isAdmin) {
