@@ -52,6 +52,13 @@ function setupRoutes(app, controllers, fileUploader) {
   micropostRouter.post('/', fileUploader.createUploader().single('image'), asyncHandler((req, res) => micropost.create(req, res)));
   app.use('/microposts', micropostRouter);
 
+  // User actions
+  const userRouter = express.Router();
+  userRouter.use(isAuthenticated);
+  userRouter.post('/:id/follow', asyncHandler((req, res) => profile.follow(req, res)));
+  userRouter.post('/:id/unfollow', asyncHandler((req, res) => profile.unfollow(req, res)));
+  app.use('/users', userRouter);
+
   // ===================================
   // Admin Routes
   // ===================================
@@ -77,8 +84,6 @@ function setupRoutes(app, controllers, fileUploader) {
   app.get('/:id', asyncHandler((req, res) => profile.show(req, res)));
   app.get('/:id/edit', isAuthenticated, asyncHandler((req, res) => profile.getEditPage(req, res)));
   app.post('/:id/edit', isAuthenticated, fileUploader.createUploader().single('avatar'), asyncHandler((req, res) => profile.update(req, res)));
-  app.post('/:id/follow', isAuthenticated, asyncHandler((req, res) => profile.follow(req, res)));
-  app.post('/:id/unfollow', isAuthenticated, asyncHandler((req, res) => profile.unfollow(req, res)));
 
   return app;
 }

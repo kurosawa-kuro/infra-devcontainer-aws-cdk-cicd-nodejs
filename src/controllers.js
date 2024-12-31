@@ -168,6 +168,12 @@ class ProfileController extends BaseController {
 
   async show(req, res) {
     return this.handleRequest(req, res, async () => {
+      this.logger.debug('Profile show request:', {
+        params: req.params,
+        userId: req.user?.id,
+        path: req.path
+      });
+
       let profileUser;
       if (req.params.id.match(/^[0-9]+$/)) {
         profileUser = await this.service.getUserProfile(req.params.id);
@@ -176,14 +182,28 @@ class ProfileController extends BaseController {
       }
 
       if (!profileUser) {
+        this.logger.debug('Profile not found:', {
+          params: req.params
+        });
         return this.errorHandler.handleNotFoundError(req, res, 'ユーザーが見つかりません');
       }
+
+      this.logger.debug('Profile found:', {
+        profileUserId: profileUser.id,
+        profileUserName: profileUser.name
+      });
 
       const [microposts, followCounts, isFollowing] = await Promise.all([
         this.service.getMicropostsByUser(profileUser.id),
         this.service.getFollowCounts(profileUser.id),
         req.user ? this.service.isFollowing(req.user.id, profileUser.id) : false
       ]);
+
+      this.logger.debug('Profile data loaded:', {
+        followCounts,
+        isFollowing,
+        micropostsCount: microposts.length
+      });
 
       this.renderWithUser(req, res, 'profile/show', {
         title: 'プロフィール',
@@ -274,16 +294,29 @@ class ProfileController extends BaseController {
   async follow(req, res) {
     return this.handleRequest(req, res, async () => {
       if (!req.user) {
+        this.logger.debug('Follow attempt without authentication');
         return this.errorHandler.handlePermissionError(req, res, 'ログインが必要です');
       }
 
       const targetUserId = req.params.id;
+      this.logger.debug('Follow request:', {
+        followerId: req.user.id,
+        targetUserId,
+        path: req.path
+      });
+
       await this.service.follow(req.user.id, targetUserId);
+      const followCounts = await this.service.getFollowCounts(targetUserId);
+      
+      this.logger.debug('Follow successful:', {
+        followCounts,
+        targetUserId
+      });
 
       this.sendResponse(req, res, {
         status: 200,
-        data: { success: true },
-        message: 'フォローしました'
+        message: 'フォローしました',
+        data: { followCounts }
       });
     });
   }
@@ -291,16 +324,29 @@ class ProfileController extends BaseController {
   async unfollow(req, res) {
     return this.handleRequest(req, res, async () => {
       if (!req.user) {
+        this.logger.debug('Unfollow attempt without authentication');
         return this.errorHandler.handlePermissionError(req, res, 'ログインが必要です');
       }
 
       const targetUserId = req.params.id;
+      this.logger.debug('Unfollow request:', {
+        followerId: req.user.id,
+        targetUserId,
+        path: req.path
+      });
+
       await this.service.unfollow(req.user.id, targetUserId);
+      const followCounts = await this.service.getFollowCounts(targetUserId);
+
+      this.logger.debug('Unfollow successful:', {
+        followCounts,
+        targetUserId
+      });
 
       this.sendResponse(req, res, {
         status: 200,
-        data: { success: true },
-        message: 'フォロー解除しました'
+        message: 'フォロー解除しました',
+        data: { followCounts }
       });
     });
   }
