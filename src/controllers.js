@@ -341,9 +341,27 @@ class AdminController extends BaseController {
         totalPosts: await this.prisma.micropost.count(),
       };
 
+      const users = await this.prisma.user.findMany({
+        orderBy: { createdAt: 'desc' },
+        include: {
+          userRoles: {
+            include: {
+              role: true
+            }
+          },
+          profile: true,
+          _count: {
+            select: {
+              microposts: true
+            }
+          }
+        }
+      });
+
       res.render('admin/dashboard', {
         title: '管理者ダッシュボード',
-        stats
+        stats,
+        users
       });
     });
   }
