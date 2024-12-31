@@ -120,7 +120,7 @@ class MicropostController extends BaseController {
           orderBy: { name: 'asc' }
         })
       ]);
-      res.render('microposts', { 
+      res.render('pages/microposts/index', { 
         microposts,
         categories,
         title: '投稿一覧',
