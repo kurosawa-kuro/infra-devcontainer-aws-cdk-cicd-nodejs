@@ -10,11 +10,11 @@ async function hashPassword(password) {
 async function main() {
   // Delete all existing records in reverse order of dependencies
   console.log('Deleting existing records...');
-  await prisma.micropost.deleteMany();
-  await prisma.userRole.deleteMany();
-  await prisma.userProfile.deleteMany();
-  await prisma.user.deleteMany();
-  await prisma.role.deleteMany();
+  await prisma.$executeRaw`TRUNCATE TABLE "Micropost" RESTART IDENTITY CASCADE`;
+  await prisma.$executeRaw`TRUNCATE TABLE "UserRole" RESTART IDENTITY CASCADE`;
+  await prisma.$executeRaw`TRUNCATE TABLE "UserProfile" RESTART IDENTITY CASCADE`;
+  await prisma.$executeRaw`TRUNCATE TABLE "User" RESTART IDENTITY CASCADE`;
+  await prisma.$executeRaw`TRUNCATE TABLE "Role" RESTART IDENTITY CASCADE`;
   console.log('All existing records have been deleted');
 
   // Create roles

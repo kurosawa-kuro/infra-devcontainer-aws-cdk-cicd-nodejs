@@ -19,6 +19,14 @@ class BaseController {
     }
   }
 
+  renderWithUser(req, res, view, options = {}) {
+    const defaultOptions = {
+      user: req.user,
+      path: req.path
+    };
+    res.render(view, { ...defaultOptions, ...options });
+  }
+
   sendResponse(req, res, { status = 200, message, data, redirectUrl }) {
     const isApiRequest = req.xhr || req.headers.accept?.includes('application/json');
     
@@ -44,18 +52,16 @@ class AuthController extends BaseController {
 
   getSignupPage(req, res) {
     return this.handleRequest(req, res, async () => {
-      res.render('auth/signup', { 
-        title: 'ユーザー登録',
-        path: req.path
+      this.renderWithUser(req, res, 'auth/signup', { 
+        title: 'ユーザー登録'
       });
     });
   }
 
   getLoginPage(req, res) {
     return this.handleRequest(req, res, async () => {
-      res.render('auth/login', { 
-        title: 'ログイン',
-        path: req.path
+      this.renderWithUser(req, res, 'auth/login', { 
+        title: 'ログイン'
       });
     });
   }
@@ -162,28 +168,27 @@ class ProfileController extends BaseController {
 
   async show(req, res) {
     return this.handleRequest(req, res, async () => {
-      let user;
+      let profileUser;
       if (req.params.id.match(/^[0-9]+$/)) {
-        user = await this.service.getUserProfile(req.params.id);
+        profileUser = await this.service.getUserProfile(req.params.id);
       } else {
-        user = await this.service.getUserProfileByName(req.params.id);
+        profileUser = await this.service.getUserProfileByName(req.params.id);
       }
 
-      if (!user) {
+      if (!profileUser) {
         return this.errorHandler.handleNotFoundError(req, res, 'ユーザーが見つかりません');
       }
 
       const [microposts, followCounts, isFollowing] = await Promise.all([
-        this.service.getMicropostsByUser(user.id),
-        this.service.getFollowCounts(user.id),
-        req.user ? this.service.isFollowing(req.user.id, user.id) : false
+        this.service.getMicropostsByUser(profileUser.id),
+        this.service.getFollowCounts(profileUser.id),
+        req.user ? this.service.isFollowing(req.user.id, profileUser.id) : false
       ]);
 
-      res.render('profile/show', {
+      this.renderWithUser(req, res, 'profile/show', {
         title: 'プロフィール',
-        path: req.path,
-        user: user,
-        userProfile: user.profile,
+        profileUser: profileUser,
+        userProfile: profileUser.profile,
         microposts: microposts,
         followCounts,
         isFollowing,
