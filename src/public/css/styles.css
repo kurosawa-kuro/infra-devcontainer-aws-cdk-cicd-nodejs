@@ -687,6 +687,10 @@ p:is(.dark *) {
   z-index: 50;
 }
 
+.col-span-full {
+  grid-column: 1 / -1;
+}
+
 .mx-auto {
   margin-left: auto;
   margin-right: auto;
@@ -1229,6 +1233,10 @@ p:is(.dark *) {
 
 .pt-6 {
   padding-top: 1.5rem;
+}
+
+.pt-4 {
+  padding-top: 1rem;
 }
 
 .text-left {
