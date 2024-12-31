@@ -260,7 +260,7 @@ class FileUploader {
 
   createLocalUploader() {
     console.log('Using local storage for uploads');
-    const uploadDir = path.join(__dirname, '..', 'uploads');
+    const uploadDir = path.join(__dirname, 'public', 'uploads');
     if (!fs.existsSync(uploadDir)) {
       fs.mkdirSync(uploadDir, { recursive: true });
     }
@@ -299,7 +299,7 @@ class FileUploader {
     
     return this.storageConfig.isEnabled()
       ? `${this.storageConfig.getCloudFrontUrl()}/${file.key}`
-      : `uploads/${file.filename}`;
+      : `/uploads/${file.filename}`;
   }
 }
 
