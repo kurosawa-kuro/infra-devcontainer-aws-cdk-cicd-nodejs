@@ -297,6 +297,7 @@ class AuthController {
       return user;
     } catch (error) {
       console.error('Login failed:', error.message);
+      req.flash('error', error.message);
       throw error;
     }
   }
