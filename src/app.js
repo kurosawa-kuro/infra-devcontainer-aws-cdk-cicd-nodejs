@@ -1005,6 +1005,8 @@ class Application {
       });
     });
 
+    this.app.get('/system-status', asyncHandler((req, res) => system.getStatus(req, res)));
+
     // Auth routes
     this.app.get('/auth/signup', forwardAuthenticated, (req, res) => auth.getSignupPage(req, res));
     this.app.post('/auth/signup', forwardAuthenticated, asyncHandler((req, res) => auth.signup(req, res)));
@@ -1016,7 +1018,6 @@ class Application {
     this.app.get('/profile/:id', ensureAuthenticated, asyncHandler((req, res) => profile.show(req, res)));
     this.app.get('/profile/:id/edit', ensureAuthenticated, asyncHandler((req, res) => profile.getEditPage(req, res)));
     this.app.post('/profile/:id/edit', ensureAuthenticated, asyncHandler((req, res) => profile.update(req, res)));
-    this.app.get('/system-status', ensureAuthenticated, asyncHandler((req, res) => system.getStatus(req, res)));
     this.app.get('/microposts', ensureAuthenticated, asyncHandler((req, res) => micropost.index(req, res)));
     this.app.post('/microposts', ensureAuthenticated, upload.single('image'), asyncHandler((req, res) => micropost.create(req, res)));
   }
