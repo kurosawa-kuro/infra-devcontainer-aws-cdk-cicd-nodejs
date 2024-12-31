@@ -1,5 +1,8 @@
-const path = require('path');
 const { PrismaClient } = require('@prisma/client');
+const bcrypt = require('bcrypt');
+const axios = require('axios');
+const passport = require('passport');
+const prisma = new PrismaClient();
 
 class BaseController {
   constructor(service, errorHandler, logger) {
@@ -328,50 +331,81 @@ class DevController extends BaseController {
   }
 }
 
-class AdminController extends BaseController {
-  constructor(services, errorHandler, logger) {
-    super(services, errorHandler, logger);
+class AdminController {
+  constructor() {
     this.prisma = new PrismaClient();
   }
 
   async dashboard(req, res) {
-    return this.handleRequest(req, res, async () => {
-      const stats = {
-        totalUsers: await this.prisma.user.count(),
-        totalPosts: await this.prisma.micropost.count(),
-      };
+    const stats = {
+      totalUsers: await this.prisma.user.count(),
+      totalPosts: await this.prisma.micropost.count()
+    };
 
+    const users = await this.prisma.user.findMany({
+      include: {
+        profile: true,
+        userRoles: {
+          include: {
+            role: true
+          }
+        },
+        _count: {
+          select: {
+            microposts: true
+          }
+        }
+      },
+      orderBy: {
+        id: 'desc'
+      }
+    });
+
+    res.render('admin/dashboard', {
+      title: '管理者ダッシュボード',
+      stats,
+      users,
+      path: req.path
+    });
+  }
+
+  async manageUser(req, res) {
+    try {
       const users = await this.prisma.user.findMany({
-        orderBy: { createdAt: 'desc' },
         include: {
+          profile: true,
           userRoles: {
             include: {
               role: true
             }
           },
-          profile: true,
           _count: {
             select: {
               microposts: true
             }
           }
+        },
+        orderBy: {
+          id: 'desc'
         }
       });
 
-      res.render('admin/dashboard', {
-        title: '管理者ダッシュボード',
-        stats,
-        users
+      res.render('admin/manage-user', {
+        title: 'ユーザー管理',
+        users,
+        path: req.path
       });
-    });
+    } catch (error) {
+      console.error('[AdminController.manageUser] Error:', error);
+      throw error;
+    }
   }
 }
 
 module.exports = {
-  BaseController,
   AuthController,
-  MicropostController,
   ProfileController,
+  MicropostController,
   SystemController,
   DevController,
   AdminController
