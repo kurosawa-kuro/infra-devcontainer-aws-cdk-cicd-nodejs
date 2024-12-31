@@ -257,9 +257,32 @@ class SystemController extends BaseController {
   }
 }
 
+class DevController extends BaseController {
+  constructor(service, errorHandler, logger) {
+    super(service, errorHandler, logger);
+  }
+
+  async index(req, res) {
+    return this.handleRequest(req, res, async () => {
+      const metadata = await this.service.getInstanceMetadata();
+      const health = await this.service.getHealth();
+      const dbHealth = await this.service.getDbHealth();
+
+      res.render('dev/index', {
+        title: '開発機能',
+        path: req.path,
+        metadata,
+        health,
+        dbHealth
+      });
+    });
+  }
+}
+
 module.exports = {
   AuthController,
   MicropostController,
   ProfileController,
-  SystemController
+  SystemController,
+  DevController
 }; 

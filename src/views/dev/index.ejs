@@ -1,0 +1,73 @@
+<%- contentFor('body') %>
+<div class="max-w-7xl mx-auto px-4 py-8">
+    <div class="mb-12">
+        <h1 class="text-3xl font-semibold mb-3 text-gray-900 dark:text-white">開発機能</h1>
+        <p class="text-base text-gray-600 dark:text-gray-400">開発に役立つ機能を提供します</p>
+    </div>
+
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <!-- システム情報 -->
+        <div class="bg-white dark:bg-gray-900 rounded-xl shadow-sm border border-gray-200 dark:border-gray-800 p-6">
+            <h2 class="text-xl font-semibold mb-4 text-gray-900 dark:text-white">システム情報</h2>
+            <div class="space-y-4">
+                <div>
+                    <h3 class="text-sm font-medium text-gray-500 dark:text-gray-400 mb-2">インスタンスメタデータ</h3>
+                    <div class="bg-gray-50 dark:bg-gray-800 rounded-lg p-4">
+                        <pre class="text-sm text-gray-900 dark:text-white"><%= JSON.stringify(metadata, null, 2) %></pre>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ヘルスチェック -->
+        <div class="bg-white dark:bg-gray-900 rounded-xl shadow-sm border border-gray-200 dark:border-gray-800 p-6">
+            <h2 class="text-xl font-semibold mb-4 text-gray-900 dark:text-white">ヘルスチェック</h2>
+            <div class="space-y-4">
+                <div>
+                    <h3 class="text-sm font-medium text-gray-500 dark:text-gray-400 mb-2">アプリケーション</h3>
+                    <div class="bg-gray-50 dark:bg-gray-800 rounded-lg p-4">
+                        <pre class="text-sm text-gray-900 dark:text-white"><%= JSON.stringify(health, null, 2) %></pre>
+                    </div>
+                </div>
+                <div>
+                    <h3 class="text-sm font-medium text-gray-500 dark:text-gray-400 mb-2">データベース</h3>
+                    <div class="bg-gray-50 dark:bg-gray-800 rounded-lg p-4">
+                        <pre class="text-sm text-gray-900 dark:text-white"><%= JSON.stringify(dbHealth, null, 2) %></pre>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 開発ツール -->
+        <div class="bg-white dark:bg-gray-900 rounded-xl shadow-sm border border-gray-200 dark:border-gray-800 p-6">
+            <h2 class="text-xl font-semibold mb-4 text-gray-900 dark:text-white">開発ツール</h2>
+            <div class="space-y-4">
+                <a href="/health" target="_blank" class="block p-4 bg-gray-50 dark:bg-gray-800 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors">
+                    <h3 class="text-base font-medium text-gray-900 dark:text-white">ヘルスチェックAPI</h3>
+                    <p class="text-sm text-gray-600 dark:text-gray-400 mt-1">アプリケーションの健全性を確認するAPIエンドポイント</p>
+                </a>
+                <a href="/health-db" target="_blank" class="block p-4 bg-gray-50 dark:bg-gray-800 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors">
+                    <h3 class="text-base font-medium text-gray-900 dark:text-white">データベースヘルスチェックAPI</h3>
+                    <p class="text-sm text-gray-600 dark:text-gray-400 mt-1">データベース接続の健全性を確認するAPIエンドポイント</p>
+                </a>
+                <a href="/system-status" target="_blank" class="block p-4 bg-gray-50 dark:bg-gray-800 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors">
+                    <h3 class="text-base font-medium text-gray-900 dark:text-white">システム状態</h3>
+                    <p class="text-sm text-gray-600 dark:text-gray-400 mt-1">システムの詳細な状態を確認するページ</p>
+                </a>
+            </div>
+        </div>
+
+        <!-- 環境変数 -->
+        <div class="bg-white dark:bg-gray-900 rounded-xl shadow-sm border border-gray-200 dark:border-gray-800 p-6">
+            <h2 class="text-xl font-semibold mb-4 text-gray-900 dark:text-white">環境変数</h2>
+            <div class="space-y-4">
+                <div class="bg-gray-50 dark:bg-gray-800 rounded-lg p-4">
+                    <pre class="text-sm text-gray-900 dark:text-white">NODE_ENV: <%= process.env.NODE_ENV %>
+APP_ENV: <%= process.env.APP_ENV %>
+APP_PORT: <%= process.env.APP_PORT %>
+APP_HOST: <%= process.env.APP_HOST %></pre>
+                </div>
+            </div>
+        </div>
+    </div>
+</div> 

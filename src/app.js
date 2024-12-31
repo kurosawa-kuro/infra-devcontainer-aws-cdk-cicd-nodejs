@@ -25,7 +25,8 @@ const {
   AuthController,
   ProfileController,
   MicropostController,
-  SystemController
+  SystemController,
+  DevController
 } = require('./controllers');
 
 // Constants and Configuration
@@ -474,7 +475,8 @@ class Application {
       auth: new AuthController(this.services.auth, this.errorHandler, this.logger),
       profile: new ProfileController(this.services.profile, this.errorHandler, this.logger),
       micropost: new MicropostController(this.services.micropost, this.fileUploader, this.errorHandler, this.logger),
-      system: new SystemController(this.services.system, this.errorHandler, this.logger)
+      system: new SystemController(this.services.system, this.errorHandler, this.logger),
+      dev: new DevController(this.services.system, this.errorHandler, this.logger)
     };
   }
 

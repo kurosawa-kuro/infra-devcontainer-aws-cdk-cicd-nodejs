@@ -4,7 +4,7 @@ const path = require('path');
 const { isAuthenticated, forwardAuthenticated } = require('./middleware/auth');
 
 function setupRoutes(app, controllers, fileUploader) {
-  const { auth, profile, micropost, system } = controllers;
+  const { auth, profile, micropost, system, dev } = controllers;
 
   // Public routes
   app.get('/', (req, res) => {
@@ -18,6 +18,9 @@ function setupRoutes(app, controllers, fileUploader) {
   app.get('/system-status', asyncHandler((req, res) => system.getStatus(req, res)));
   app.get('/health', asyncHandler((req, res) => system.getHealth(req, res)));
   app.get('/health-db', asyncHandler((req, res) => system.getDbHealth(req, res)));
+
+  // Dev routes
+  app.get('/dev', asyncHandler((req, res) => dev.index(req, res)));
 
   // Auth routes
   app.get('/auth/signup', forwardAuthenticated, (req, res) => auth.getSignupPage(req, res));
