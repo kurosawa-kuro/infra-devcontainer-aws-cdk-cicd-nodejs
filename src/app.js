@@ -26,7 +26,8 @@ const {
   ProfileController,
   MicropostController,
   SystemController,
-  DevController
+  DevController,
+  AdminController
 } = require('./controllers');
 
 // Constants and Configuration
@@ -476,7 +477,8 @@ class Application {
       profile: new ProfileController(this.services.profile, this.errorHandler, this.logger),
       micropost: new MicropostController(this.services.micropost, this.fileUploader, this.errorHandler, this.logger),
       system: new SystemController(this.services.system, this.errorHandler, this.logger),
-      dev: new DevController(this.services.system, this.errorHandler, this.logger)
+      dev: new DevController(this.services.system, this.errorHandler, this.logger),
+      admin: new AdminController(this.services, this.errorHandler, this.logger)
     };
   }
 
@@ -550,12 +552,16 @@ class Application {
   }
 
   setupBasicMiddleware() {
-    this.app.set('view engine', 'ejs');
-    this.app.set('views', path.join(__dirname, 'views'));
-    this.app.use(expressLayouts);
-    this.app.set('layout', 'layouts/main');
     this.app.use(express.json());
     this.app.use(express.urlencoded({ extended: true }));
+    this.app.use(expressLayouts);
+    this.app.set('layout', 'layouts/main');
+    this.app.set('view engine', 'ejs');
+    this.app.set('views', path.join(__dirname, 'views'));
+    this.app.use((req, res, next) => {
+      res.locals.path = req.path;
+      next();
+    });
   }
 
   setupAuthMiddleware() {

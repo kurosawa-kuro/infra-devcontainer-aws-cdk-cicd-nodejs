@@ -1,4 +1,5 @@
 const path = require('path');
+const { PrismaClient } = require('@prisma/client');
 
 class BaseController {
   constructor(service, errorHandler, logger) {
@@ -311,10 +312,33 @@ class DevController extends BaseController {
   }
 }
 
+class AdminController extends BaseController {
+  constructor(services, errorHandler, logger) {
+    super(services, errorHandler, logger);
+    this.prisma = new PrismaClient();
+  }
+
+  async dashboard(req, res) {
+    return this.handleRequest(req, res, async () => {
+      const stats = {
+        totalUsers: await this.prisma.user.count(),
+        totalPosts: await this.prisma.micropost.count(),
+      };
+
+      res.render('admin/dashboard', {
+        title: '管理者ダッシュボード',
+        stats
+      });
+    });
+  }
+}
+
 module.exports = {
+  BaseController,
   AuthController,
   MicropostController,
   ProfileController,
   SystemController,
-  DevController
+  DevController,
+  AdminController
 }; 
