@@ -205,7 +205,7 @@ class ProfileController extends BaseController {
         micropostsCount: microposts.length
       });
 
-      this.renderWithUser(req, res, 'profile/show', {
+      this.renderWithUser(req, res, 'pages/users/profile/show', {
         title: 'プロフィール',
         profileUser: profileUser,
         userProfile: profileUser.profile,
