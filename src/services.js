@@ -20,14 +20,18 @@ class BaseService {
 
 class AuthService extends BaseService {
   async signup(userData) {
-    const { email, password, passwordConfirmation } = userData;
+    const { email, password, passwordConfirmation, name } = userData;
     
-    if (!email || !password) {
-      throw new Error('メールアドレスとパスワードは必須です');
+    if (!email || !password || !name) {
+      throw new Error('メールアドレス、パスワード、お名前は必須です');
     }
 
     if (password !== passwordConfirmation) {
       throw new Error('パスワードが一致しません');
+    }
+
+    if (!name.match(/^[a-zA-Z0-9]+$/)) {
+      throw new Error('お名前は半角英数字のみ使用可能です');
     }
 
     const existingUser = await this.prisma.user.findUnique({
@@ -51,6 +55,7 @@ class AuthService extends BaseService {
     const user = await this.prisma.user.create({
       data: {
         email,
+        name,
         password: hashedPassword,
         userRoles: {
           create: {
@@ -164,6 +169,10 @@ class ProfileService extends BaseService {
 
   async updateProfile(userId, profileData) {
     const parsedId = parseInt(userId, 10);
+
+    if (profileData.name && !profileData.name.match(/^[a-zA-Z0-9]+$/)) {
+      throw new Error('お名前は半角英数字のみ使用可能です');
+    }
 
     const updatedUser = await this.prisma.user.update({
       where: { id: parsedId },

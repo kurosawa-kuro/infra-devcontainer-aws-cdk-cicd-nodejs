@@ -8,6 +8,15 @@ async function hashPassword(password) {
 }
 
 async function main() {
+  // Delete all existing records in reverse order of dependencies
+  console.log('Deleting existing records...');
+  await prisma.micropost.deleteMany();
+  await prisma.userRole.deleteMany();
+  await prisma.userProfile.deleteMany();
+  await prisma.user.deleteMany();
+  await prisma.role.deleteMany();
+  console.log('All existing records have been deleted');
+
   // Create roles
   const roles = [
     { name: 'user', description: 'Regular user role' },
@@ -36,7 +45,7 @@ async function main() {
     create: {
       email: 'user@example.com',
       password: await hashPassword('password'),
-      name: 'Default User',
+      name: 'DefaultUser',
       profile: {
         create: {
           bio: 'I am a default user',
@@ -59,7 +68,7 @@ async function main() {
     create: {
       email: 'admin@example.com',
       password: await hashPassword('password'),
-      name: 'System Admin',
+      name: 'SystemAdmin',
       profile: {
         create: {
           bio: 'I am the system administrator',
@@ -82,7 +91,7 @@ async function main() {
     {
       email: 'tanaka@example.com',
       password: await hashPassword('password'),
-      name: '田中太郎',
+      name: 'TanakaTaro',
       profile: {
         bio: '趣味は読書とプログラミングです',
         location: '東京',
@@ -100,7 +109,7 @@ async function main() {
     {
       email: 'yamada@example.com',
       password: await hashPassword('password'),
-      name: '山田花子',
+      name: 'YamadaHanako',
       profile: {
         bio: 'デザイナーをしています',
         location: '大阪',
@@ -118,7 +127,7 @@ async function main() {
     {
       email: 'suzuki@example.com',
       password: await hashPassword('password'),
-      name: '鈴木一郎',
+      name: 'SuzukiIchiro',
       profile: {
         bio: 'エンジニア歴5年目です',
         location: '福岡',

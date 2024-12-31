@@ -24,8 +24,9 @@
     "batch:s3-log": "node src/batch/s3-log-uploader.js",
     "batch:s3-log:now": "node src/batch/s3-log-uploader.js --now",
     "build:css": "tailwindcss -i ./src/public/css/tailwind.css -o ./src/public/css/styles.css --watch",
-    "build:css:prod": "tailwindcss -i ./src/public/css/tailwind.css -o ./src/public/css/styles.css --minify"
-    
+    "build:css:prod": "tailwindcss -i ./src/public/css/tailwind.css -o ./src/public/css/styles.css --minify",
+    "lint": "eslint .",
+    "format": "prettier --write ."
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.717.0",
@@ -64,5 +65,8 @@
       "./src/tests/setup.js"
     ],
     "testTimeout": 10000
+  },
+  "prisma": {
+    "seed": "node ./prisma/migrations/seed.js"
   }
 }

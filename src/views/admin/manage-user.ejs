@@ -12,6 +12,7 @@
                 <thead class="bg-gray-50 dark:bg-gray-800">
                     <tr>
                         <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">ID</th>
+                        <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">お名前</th>
                         <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">メールアドレス</th>
                         <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">ロール</th>
                         <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">投稿数</th>
@@ -36,6 +37,9 @@
                                 <% } %>
                                 <%= user.email %>
                             </div>
+                        </td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white">
+                            <%= user.name %>
                         </td>
                         <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white">
                             <div class="flex flex-wrap gap-2">
