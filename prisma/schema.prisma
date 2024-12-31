@@ -21,6 +21,8 @@ model User {
   profile    UserProfile?
   userRoles  UserRole[]
   microposts Micropost[]
+  following  Follow[]    @relation("Following")
+  followers  Follow[]    @relation("Followers")
 }
 
 model UserProfile {
@@ -86,4 +88,17 @@ model Category {
   id         Int                 @id @default(autoincrement())
   name       String              @unique
   microposts CategoryMicropost[]
+}
+
+model Follow {
+  id          Int      @id @default(autoincrement())
+  followerId  Int
+  followingId Int
+  createdAt   DateTime @default(now())
+  follower    User     @relation("Following", fields: [followerId], references: [id])
+  following   User     @relation("Followers", fields: [followingId], references: [id])
+
+  @@unique([followerId, followingId])
+  @@index([followerId])
+  @@index([followingId])
 }
