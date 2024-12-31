@@ -20,7 +20,8 @@ const {
   ProfileService,
   MicropostService,
   SystemService,
-  CategoryService
+  CategoryService,
+  LogUploader
 } = require('./services');
 const {
   AuthController,
