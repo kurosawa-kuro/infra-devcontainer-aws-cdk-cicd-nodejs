@@ -63,6 +63,7 @@
                         開発機能
                     </a>
                 </li>
+                <% if (!locals.user.userRoles.some(ur => ur.role.name === 'admin')) { %>
                 <li>
                     <a href="/profile/<%= user.id %>" 
                        class="flex items-center px-4 py-2.5 rounded-lg text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors <%= path.startsWith('/profile/') ? 'bg-rose-50 dark:bg-rose-900/20 text-rose-600 dark:text-rose-400 font-medium' : '' %>">
@@ -72,6 +73,7 @@
                         プロフィール
                     </a>
                 </li>
+                <% } %>
                 <li>
                     <a href="/auth/logout" 
                        class="flex items-center px-4 py-2.5 rounded-lg text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors">
@@ -179,6 +181,7 @@
 
             <% if (locals.user) { %>
                 <!-- ログイン済みの場合 -->
+                <% if (!locals.user.userRoles.some(ur => ur.role.name === 'admin')) { %>
                 <li class="flex-1">
                     <a href="/profile/<%= user.id %>" 
                        class="flex items-center justify-center px-3 py-2 rounded-lg text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors <%= path.startsWith('/profile/') ? 'bg-rose-50 dark:bg-rose-900/20 text-rose-600 dark:text-rose-400 font-medium' : '' %>">
@@ -188,6 +191,7 @@
                         プロフィール
                     </a>
                 </li>
+                <% } %>
                 <li class="flex-1">
                     <a href="/auth/logout" 
                        class="flex items-center justify-center px-3 py-2 rounded-lg text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors">
