@@ -277,6 +277,38 @@ class DevController extends BaseController {
       });
     });
   }
+
+  async quickLogin(req, res) {
+    return this.handleRequest(req, res, async () => {
+      const { email } = req.params;
+      const user = await this.service.prisma.user.findUnique({
+        where: { email },
+        include: {
+          userRoles: {
+            include: {
+              role: true
+            }
+          }
+        }
+      });
+
+      if (!user) {
+        return this.errorHandler.handleNotFoundError(req, res, 'ユーザーが見つかりません');
+      }
+
+      await new Promise((resolve, reject) => {
+        req.logIn(user, (err) => err ? reject(err) : resolve());
+      });
+
+      const isAdmin = user.userRoles.some(ur => ur.role.name === 'admin');
+      const userType = isAdmin ? '管理者' : '一般ユーザー';
+
+      this.sendResponse(req, res, {
+        message: `${userType}としてログインしました`,
+        redirectUrl: '/dev'
+      });
+    });
+  }
 }
 
 module.exports = {

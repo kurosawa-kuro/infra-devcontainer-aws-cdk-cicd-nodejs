@@ -21,6 +21,7 @@ function setupRoutes(app, controllers, fileUploader) {
 
   // Dev routes
   app.get('/dev', asyncHandler((req, res) => dev.index(req, res)));
+  app.get('/dev/quick-login/:email', asyncHandler((req, res) => dev.quickLogin(req, res)));
 
   // Auth routes
   app.get('/auth/signup', forwardAuthenticated, (req, res) => auth.getSignupPage(req, res));

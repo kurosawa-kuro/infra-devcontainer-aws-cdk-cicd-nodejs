@@ -19,12 +19,13 @@
     "db:reset": "prisma migrate reset",
     "db:generate": "prisma generate",
     "db:deploy": "prisma migrate deploy",
+    "db:seed": "node prisma/migrations/seed.js",
     "docker:start": "npm run db:deploy && npm start",
     "batch:s3-log": "node src/batch/s3-log-uploader.js",
     "batch:s3-log:now": "node src/batch/s3-log-uploader.js --now",
     "build:css": "tailwindcss -i ./src/public/css/tailwind.css -o ./src/public/css/styles.css --watch",
-    "build:css:prod": "tailwindcss -i ./src/public/css/tailwind.css -o ./src/public/css/styles.css --minify",
-    "db:seed": "node prisma/migrations/seed.js"
+    "build:css:prod": "tailwindcss -i ./src/public/css/tailwind.css -o ./src/public/css/styles.css --minify"
+    
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.717.0",
