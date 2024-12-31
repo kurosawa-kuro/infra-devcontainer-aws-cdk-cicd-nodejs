@@ -84,6 +84,88 @@ async function main() {
   });
 
   console.log('Default users have been created');
+
+  // Create sample users with microposts
+  const sampleUsers = [
+    {
+      email: 'tanaka@example.com',
+      password: await hashPassword('password'),
+      name: '田中太郎',
+      profile: {
+        bio: '趣味は読書とプログラミングです',
+        location: '東京',
+        website: 'https://tanaka-blog.example.com'
+      },
+      microposts: [
+        { 
+          title: '今日は素晴らしい天気ですね！'
+        },
+        { 
+          title: '新しいプロジェクトを始めました。頑張ります！'
+        }
+      ]
+    },
+    {
+      email: 'yamada@example.com',
+      password: await hashPassword('password'),
+      name: '山田花子',
+      profile: {
+        bio: 'デザイナーをしています',
+        location: '大阪',
+        website: 'https://yamada-design.example.com'
+      },
+      microposts: [
+        { 
+          title: 'デザインの新しいトレンドについて考えています'
+        },
+        { 
+          title: '今日のランチは美味しかった！🍜'
+        }
+      ]
+    },
+    {
+      email: 'suzuki@example.com',
+      password: await hashPassword('password'),
+      name: '鈴木一郎',
+      profile: {
+        bio: 'エンジニア歴5年目です',
+        location: '福岡',
+        website: 'https://suzuki-tech.example.com'
+      },
+      microposts: [
+        { 
+          title: '新しい技術スタックの学習を始めました'
+        },
+        { 
+          title: 'チーム開発の醍醐味を実感する日々です'
+        }
+      ]
+    }
+  ];
+
+  for (const userData of sampleUsers) {
+    const user = await prisma.user.create({
+      data: {
+        email: userData.email,
+        password: userData.password,
+        name: userData.name,
+        profile: {
+          create: userData.profile
+        },
+        userRoles: {
+          create: {
+            roleId: userRole.id
+          }
+        },
+        microposts: {
+          create: userData.microposts
+        }
+      }
+    });
+    console.log(`Created sample user: ${user.name}`);
+  }
+
+  console.log('Sample users and microposts have been created');
 }
 
 main()
