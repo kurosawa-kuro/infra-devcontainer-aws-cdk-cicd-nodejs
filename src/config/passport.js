@@ -16,6 +16,7 @@ module.exports = function(passport) {
         const user = await prisma.user.findUnique({
           where: { email: email },
           include: {
+            profile: true,
             userRoles: {
               include: {
                 role: true
@@ -36,7 +37,7 @@ module.exports = function(passport) {
           return done(null, false, { message: 'パスワードが間違っています' });
         }
 
-        console.log('Authentication successful:', { userId: user.id });
+        console.log('Authentication successful:', { userId: user.id, roles: user.userRoles.map(ur => ur.role.name) });
         return done(null, user);
       } catch (err) {
         console.error('Authentication error:', err);
@@ -46,7 +47,7 @@ module.exports = function(passport) {
   ));
 
   passport.serializeUser((user, done) => {
-    console.log('Serializing user:', { userId: user.id });
+    console.log('Serializing user:', { userId: user.id, roles: user.userRoles.map(ur => ur.role.name) });
     done(null, user.id);
   });
 
@@ -56,6 +57,7 @@ module.exports = function(passport) {
       const user = await prisma.user.findUnique({
         where: { id: id },
         include: {
+          profile: true,
           userRoles: {
             include: {
               role: true
@@ -67,7 +69,7 @@ module.exports = function(passport) {
         console.log('User not found during deserialization:', { userId: id });
         return done(null, false);
       }
-      console.log('Deserialization successful:', { userId: user.id });
+      console.log('Deserialization successful:', { userId: user.id, roles: user.userRoles.map(ur => ur.role.name) });
       done(null, user);
     } catch (err) {
       console.error('Deserialization error:', err);

@@ -532,10 +532,13 @@ class AuthController extends BaseController {
   async logout(req, res) {
     return this.handleRequest(req, res, async () => {
       await this.service.logout(req);
-      this.sendResponse(req, res, {
-        message: 'ログアウトしました',
-        redirectUrl: '/auth/login'
+      res.clearCookie('connect.sid', {
+        path: '/',
+        httpOnly: true,
+        secure: CONFIG.app.isProduction,
+        sameSite: 'strict'
       });
+      res.redirect('/auth/login');
     });
   }
 }
@@ -595,87 +598,61 @@ class ProfileController extends BaseController {
 
   async show(req, res) {
     return this.handleRequest(req, res, async () => {
-      if (!req.isAuthenticated()) {
-        return this.errorHandler.handleAuthError(req, res);
-      }
-
       const user = await this.service.getUserProfile(req.params.id);
       if (!user) {
-        const isApiRequest = req.xhr || req.headers.accept?.includes('json') || process.env.NODE_ENV === 'test';
-        if (isApiRequest) {
-          return res.status(404).json({ message: 'User not found' });
-        }
         return this.errorHandler.handleNotFoundError(req, res, 'ユーザーが見つかりません');
       }
 
       res.render('profile/show', {
         title: 'プロフィール',
         path: req.path,
-        user
+        user: user,
+        userProfile: user.profile,
+        req: req
       });
     });
   }
 
   async getEditPage(req, res) {
     return this.handleRequest(req, res, async () => {
-      if (!req.isAuthenticated()) {
-        return this.errorHandler.handleAuthError(req, res);
-      }
-
       const user = await this.service.getUserProfile(req.params.id);
       if (!user) {
-        const isApiRequest = req.xhr || req.headers.accept?.includes('json') || process.env.NODE_ENV === 'test';
-        if (isApiRequest) {
-          return res.status(404).json({ message: 'User not found' });
-        }
         return this.errorHandler.handleNotFoundError(req, res, 'ユーザーが見つかりません');
       }
 
-      if (user.id !== req.user.id) {
-        const isApiRequest = req.xhr || req.headers.accept?.includes('json') || process.env.NODE_ENV === 'test';
-        if (isApiRequest) {
-          return res.status(403).json({ message: 'Unauthorized' });
-        }
+      const isOwnProfile = req.user.id === parseInt(req.params.id, 10);
+      const isAdmin = req.user.userRoles.some(ur => ur.role.name === 'admin');
+
+      if (!isOwnProfile && !isAdmin) {
         return this.errorHandler.handlePermissionError(req, res, '他のユーザーのプロフィールは編集できません');
       }
 
       res.render('profile/edit', {
         title: 'プロフィール編集',
         path: req.path,
-        user
+        user,
+        userProfile: user.profile,
+        email: user.email,
+        roles: user.userRoles.map(ur => ur.role.name)
       });
     });
   }
 
   async update(req, res) {
     return this.handleRequest(req, res, async () => {
-      if (!req.isAuthenticated()) {
-        return this.errorHandler.handleAuthError(req, res);
-      }
-
       const user = await this.service.getUserProfile(req.params.id);
       if (!user) {
-        const isApiRequest = req.xhr || req.headers.accept?.includes('json') || process.env.NODE_ENV === 'test';
-        if (isApiRequest) {
-          return res.status(404).json({ message: 'User not found' });
-        }
         return this.errorHandler.handleNotFoundError(req, res, 'ユーザーが見つかりません');
       }
 
-      if (user.id !== req.user.id) {
-        const isApiRequest = req.xhr || req.headers.accept?.includes('json') || process.env.NODE_ENV === 'test';
-        if (isApiRequest) {
-          return res.status(403).json({ message: 'Unauthorized' });
-        }
+      const isOwnProfile = req.user.id === parseInt(req.params.id, 10);
+      const isAdmin = req.user.userRoles.some(ur => ur.role.name === 'admin');
+
+      if (!isOwnProfile && !isAdmin) {
         return this.errorHandler.handlePermissionError(req, res, '他のユーザーのプロフィールは編集できません');
       }
 
-      await this.service.updateProfile(req.params.id, req.body);
-      
-      const isApiRequest = req.xhr || req.headers.accept?.includes('json') || process.env.NODE_ENV === 'test';
-      if (isApiRequest) {
-        return res.status(200).json({ message: 'Profile updated successfully' });
-      }
+      const updatedUser = await this.service.updateProfile(req.params.id, req.body);
       
       this.sendResponse(req, res, {
         message: 'プロフィールを更新しました',
@@ -773,7 +750,17 @@ class AuthService extends BaseService {
 
   async logout(req) {
     return new Promise((resolve, reject) => {
-      req.logout((err) => err ? reject(err) : resolve());
+      req.logout((err) => {
+        if (err) return reject(err);
+        if (req.session) {
+          req.session.destroy((err) => {
+            if (err) return reject(err);
+            resolve();
+          });
+        } else {
+          resolve();
+        }
+      });
     });
   }
 }
@@ -782,18 +769,11 @@ class ProfileService extends BaseService {
   async getUserProfile(userId) {
     return this.prisma.user.findUnique({
       where: { id: parseInt(userId, 10) },
-      select: {
-        id: true,
-        email: true,
-        name: true,
-        createdAt: true,
-        profile: {
-          select: {
-            bio: true,
-            location: true,
-            website: true,
-            avatarPath: true,
-            birthDate: true
+      include: {
+        profile: true,
+        userRoles: {
+          include: {
+            role: true
           }
         }
       }
@@ -824,7 +804,12 @@ class ProfileService extends BaseService {
         }
       },
       include: {
-        profile: true
+        profile: true,
+        userRoles: {
+          include: {
+            role: true
+          }
+        }
       }
     });
   }
@@ -1013,18 +998,26 @@ class Application {
   }
 
   setupAuthMiddleware() {
-    this.app.use(session({
+    const sessionConfig = {
       secret: CONFIG.auth.sessionSecret,
       resave: false,
-      saveUninitialized: false,
+      saveUninitialized: true,
       cookie: {
         secure: CONFIG.app.isProduction,
         maxAge: CONFIG.auth.sessionMaxAge
       }
-    }));
+    };
+
+    // テスト環境ではcookieのsecureオプションを無効化
+    if (CONFIG.app.isTest) {
+      sessionConfig.cookie.secure = false;
+      sessionConfig.resave = true;
+    }
+
+    this.app.use(session(sessionConfig));
+    this.app.use(flash());
     this.app.use(passport.initialize());
     this.app.use(passport.session());
-    this.app.use(flash());
 
     this.app.use(this.addLocals);
   }
@@ -1090,7 +1083,7 @@ class Application {
   }
 
   setupMainRoutes(upload) {
-    const { isAuthenticated, forwardAuthenticated } = require('./middleware/auth');
+    const { isAuthenticated, forwardAuthenticated, canManageUser } = require('./middleware/auth');
     const { auth, profile, micropost, system } = this.controllers;
 
     // Public routes
@@ -1112,9 +1105,9 @@ class Application {
 
     // Protected routes
     this.app.get('/profile/:id', isAuthenticated, asyncHandler((req, res) => profile.show(req, res)));
-    this.app.get('/profile/:id/edit', isAuthenticated, asyncHandler((req, res) => profile.getEditPage(req, res)));
-    this.app.put('/profile/:id', isAuthenticated, asyncHandler((req, res) => profile.update(req, res)));
-    this.app.post('/profile/:id', isAuthenticated, asyncHandler((req, res) => profile.update(req, res)));
+    this.app.get('/profile/:id/edit', canManageUser, asyncHandler((req, res) => profile.getEditPage(req, res)));
+    this.app.put('/profile/:id', canManageUser, asyncHandler((req, res) => profile.update(req, res)));
+    this.app.post('/profile/:id', canManageUser, asyncHandler((req, res) => profile.update(req, res)));
     this.app.get('/microposts', isAuthenticated, asyncHandler((req, res) => micropost.index(req, res)));
     this.app.post('/microposts', isAuthenticated, upload.single('image'), asyncHandler((req, res) => micropost.create(req, res)));
   }

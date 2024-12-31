@@ -2,14 +2,6 @@ const isAuthenticated = (req, res, next) => {
   if (req.isAuthenticated()) {
     return next();
   }
-  
-  // Check if this is an API request or test request
-  const isApiRequest = req.xhr || req.headers.accept?.includes('json') || process.env.NODE_ENV === 'test';
-  
-  if (isApiRequest) {
-    return res.status(401).json({ message: 'Authentication required' });
-  }
-  
   res.redirect('/auth/login');
 };
 
@@ -20,89 +12,34 @@ const forwardAuthenticated = (req, res, next) => {
   res.redirect('/');
 };
 
-const hasRole = (roleName) => {
-  return (req, res, next) => {
-    if (!req.isAuthenticated()) {
-      const isApiRequest = req.xhr || req.headers.accept?.includes('json') || process.env.NODE_ENV === 'test';
-      if (isApiRequest) {
-        return res.status(401).json({ message: 'Authentication required' });
-      }
-      return res.redirect('/auth/login');
-    }
-
-    const hasRequiredRole = req.user.userRoles.some(userRole => userRole.role.name === roleName);
-    if (!hasRequiredRole) {
-      const isApiRequest = req.xhr || req.headers.accept?.includes('json') || process.env.NODE_ENV === 'test';
-      if (isApiRequest) {
-        return res.status(403).json({ message: 'Insufficient permissions' });
-      }
-      req.flash('error', '権限が不足しています');
-      return res.redirect('/');
-    }
-
-    next();
-  };
-};
-
-const hasAnyRole = (roleNames) => {
-  return (req, res, next) => {
-    if (!req.isAuthenticated()) {
-      const isApiRequest = req.xhr || req.headers.accept?.includes('json') || process.env.NODE_ENV === 'test';
-      if (isApiRequest) {
-        return res.status(401).json({ message: 'Authentication required' });
-      }
-      return res.redirect('/auth/login');
-    }
-
-    const hasRequiredRole = req.user.userRoles.some(userRole => 
-      roleNames.includes(userRole.role.name)
-    );
-    
-    if (!hasRequiredRole) {
-      const isApiRequest = req.xhr || req.headers.accept?.includes('json') || process.env.NODE_ENV === 'test';
-      if (isApiRequest) {
-        return res.status(403).json({ message: 'Insufficient permissions' });
-      }
-      req.flash('error', '権限が不足しています');
-      return res.redirect('/');
-    }
-
-    next();
-  };
-};
-
-const isAdmin = hasRole('admin');
-
 const canManageUser = (req, res, next) => {
   if (!req.isAuthenticated()) {
-    const isApiRequest = req.xhr || req.headers.accept?.includes('json') || process.env.NODE_ENV === 'test';
-    if (isApiRequest) {
-      return res.status(401).json({ message: 'Authentication required' });
-    }
     return res.redirect('/auth/login');
   }
 
-  const targetUserId = parseInt(req.params.id, 10);
-  const isOwnProfile = req.user.id === targetUserId;
-  const isAdmin = req.user.userRoles.some(userRole => userRole.role.name === 'admin');
+  const isOwnProfile = req.user.id === parseInt(req.params.id, 10);
+  const isAdmin = req.user.userRoles.some(ur => ur.role.name === 'admin');
 
-  if (!isOwnProfile && !isAdmin) {
-    const isApiRequest = req.xhr || req.headers.accept?.includes('json') || process.env.NODE_ENV === 'test';
-    if (isApiRequest) {
-      return res.status(403).json({ message: 'Insufficient permissions' });
-    }
-    req.flash('error', '権限が不足しています');
-    return res.redirect('/');
+  if (isOwnProfile || isAdmin) {
+    return next();
   }
 
-  next();
+  // APIリクエストの場合は403を返す
+  const isApiRequest = req.xhr || req.headers.accept?.includes('json') || process.env.NODE_ENV === 'test';
+  if (isApiRequest) {
+    return res.status(403).json({ 
+      error: 'Forbidden',
+      message: '他のユーザーのプロフィールは編集できません'
+    });
+  }
+
+  // 通常のリクエストの場合はエラーページを表示
+  req.flash('error', '他のユーザーのプロフィールは編集できません');
+  res.redirect('/');
 };
 
 module.exports = {
   isAuthenticated,
   forwardAuthenticated,
-  hasRole,
-  hasAnyRole,
-  isAdmin,
   canManageUser
 }; 

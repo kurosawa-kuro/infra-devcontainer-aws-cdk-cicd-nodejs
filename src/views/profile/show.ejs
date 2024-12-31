@@ -21,18 +21,28 @@
           <dd class="mt-1 text-sm text-gray-900 dark:text-white sm:col-span-2 sm:mt-0"><%= user.email %></dd>
         </div>
         <div class="bg-white dark:bg-gray-900 px-4 py-5 sm:grid sm:grid-cols-3 sm:gap-4 sm:px-6">
+          <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">ロール</dt>
+          <dd class="mt-1 text-sm text-gray-900 dark:text-white sm:col-span-2 sm:mt-0">
+            <% user.userRoles.forEach(userRole => { %>
+              <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800 mr-2">
+                <%= userRole.role.name %>
+              </span>
+            <% }); %>
+          </dd>
+        </div>
+        <div class="bg-gray-50 dark:bg-gray-800 px-4 py-5 sm:grid sm:grid-cols-3 sm:gap-4 sm:px-6">
           <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">自己紹介</dt>
           <dd class="mt-1 text-sm text-gray-900 dark:text-white sm:col-span-2 sm:mt-0">
             <%= userProfile?.bio || '未設定' %>
           </dd>
         </div>
-        <div class="bg-gray-50 dark:bg-gray-800 px-4 py-5 sm:grid sm:grid-cols-3 sm:gap-4 sm:px-6">
+        <div class="bg-white dark:bg-gray-900 px-4 py-5 sm:grid sm:grid-cols-3 sm:gap-4 sm:px-6">
           <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">場所</dt>
           <dd class="mt-1 text-sm text-gray-900 dark:text-white sm:col-span-2 sm:mt-0">
             <%= userProfile?.location || '未設定' %>
           </dd>
         </div>
-        <div class="bg-white dark:bg-gray-900 px-4 py-5 sm:grid sm:grid-cols-3 sm:gap-4 sm:px-6">
+        <div class="bg-gray-50 dark:bg-gray-800 px-4 py-5 sm:grid sm:grid-cols-3 sm:gap-4 sm:px-6">
           <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">ウェブサイト</dt>
           <dd class="mt-1 text-sm text-gray-900 dark:text-white sm:col-span-2 sm:mt-0">
             <% if (userProfile?.website) { %>
@@ -61,11 +71,13 @@
   </div>
 
   <div class="mt-6 flex justify-end">
-    <a
-      href="/profile/<%= user.id %>/edit"
-      class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
-    >
-      編集
-    </a>
+    <% if (user.id === req.user.id || req.user.userRoles.some(ur => ur.role.name === 'admin')) { %>
+      <a
+        href="/profile/<%= user.id %>/edit"
+        class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+      >
+        編集
+      </a>
+    <% } %>
   </div>
 </div> 

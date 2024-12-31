@@ -3,13 +3,15 @@ const request = require('supertest');
 const TEST_USER = {
   email: 'test@example.com',
   password: 'password123',
-  passwordConfirmation: 'password123'
+  passwordConfirmation: 'password123',
+  terms: 'on'
 };
 
 const TEST_ADMIN = {
   email: 'admin@example.com',
   password: 'admin123',
-  passwordConfirmation: 'admin123'
+  passwordConfirmation: 'admin123',
+  terms: 'on'
 };
 
 async function ensureRolesExist(prisma) {
@@ -26,25 +28,76 @@ async function ensureRolesExist(prisma) {
   }
 }
 
-async function createTestUser(server, userData = TEST_USER, isAdmin = false) {
+async function createTestUser(server, userData = TEST_USER, isAdmin = false, prismaInstance = null) {
+  // Add terms acceptance if not present
+  const signupData = { ...userData, terms: userData.terms || 'on' };
+  
   const response = await request(server)
     .post('/auth/signup')
-    .send(userData);
+    .send(signupData);
 
-  if (isAdmin && response.status === 302) {
-    const prisma = require('../../app').prisma;
-    const user = await prisma.user.findUnique({
-      where: { email: userData.email }
-    });
-    const adminRole = await prisma.role.findUnique({
-      where: { name: 'admin' }
-    });
-    await prisma.userRole.create({
-      data: {
-        userId: user.id,
-        roleId: adminRole.id
+  if (!response.headers['set-cookie']) {
+    throw new Error('No session cookie returned from signup');
+  }
+
+  if (prismaInstance) {
+    let user = await prismaInstance.user.findUnique({
+      where: { email: userData.email },
+      include: {
+        userRoles: {
+          include: {
+            role: true
+          }
+        }
       }
     });
+
+    if (!user) {
+      throw new Error('User not created during signup');
+    }
+
+    if (isAdmin) {
+      const adminRole = await prismaInstance.role.findUnique({
+        where: { name: 'admin' }
+      });
+      if (!adminRole) {
+        throw new Error('Admin role not found');
+      }
+      await prismaInstance.userRole.create({
+        data: {
+          userId: user.id,
+          roleId: adminRole.id
+        }
+      });
+
+      // Re-fetch user with updated roles
+      user = await prismaInstance.user.findUnique({
+        where: { email: userData.email },
+        include: {
+          userRoles: {
+            include: {
+              role: true
+            }
+          }
+        }
+      });
+    }
+
+    // Create a default profile for the user
+    await prismaInstance.userProfile.create({
+      data: {
+        userId: user.id,
+        bio: isAdmin ? 'Admin bio' : 'User bio',
+        location: isAdmin ? 'Admin location' : 'User location',
+        website: isAdmin ? 'https://admin.com' : 'https://user.com',
+        avatarPath: 'default_avatar.png'
+      }
+    });
+
+    return {
+      response,
+      user
+    };
   }
 
   return response;
@@ -57,18 +110,32 @@ async function loginTestUser(server, credentials = {
   const response = await request(server)
     .post('/auth/login')
     .send(credentials);
+
+  if (!response.headers['set-cookie']) {
+    throw new Error('No session cookie returned from login');
+  }
+
   return {
     response,
     authCookie: response.headers['set-cookie']
   };
 }
 
-async function createTestUserAndLogin(server, userData = TEST_USER, isAdmin = false) {
-  await createTestUser(server, userData, isAdmin);
-  return await loginTestUser(server, {
+async function createTestUserAndLogin(server, userData = TEST_USER, isAdmin = false, prismaInstance = null) {
+  const { response: signupResponse, user } = await createTestUser(server, userData, isAdmin, prismaInstance);
+  const loginResult = await loginTestUser(server, {
     email: userData.email,
     password: userData.password
   });
+
+  if (!loginResult.authCookie) {
+    throw new Error('Login failed - no auth cookie');
+  }
+
+  return {
+    ...loginResult,
+    user
+  };
 }
 
 async function createTestMicroposts(prisma, userId, posts = [
