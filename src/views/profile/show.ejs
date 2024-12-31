@@ -70,14 +70,22 @@
     </div>
   </div>
 
-  <div class="mt-6 flex justify-end">
-    <% if (user.id === req.user.id || req.user.userRoles.some(ur => ur.role.name === 'admin')) { %>
-      <a
-        href="/<%= user.name || user.id %>/edit"
-        class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+  <div class="mt-6 flex justify-end space-x-4">
+    <% if (req.user) { %>
+      <% if (user.id === req.user.id || req.user.userRoles.some(ur => ur.role.name === 'admin')) { %>
+        <a
+          href="/<%= user.name || user.id %>/edit"
+          class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+        >
+          編集
+        </a>
+      <% } %>
+    <% } else { %>
+      <button
+        class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
       >
-        編集
-      </a>
+        フォロー
+      </button>
     <% } %>
   </div>
 
