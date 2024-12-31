@@ -9,8 +9,7 @@ function setupRoutes(app, controllers, fileUploader) {
   // ===================================
   // Public Routes
   // ===================================
-  
-  
+
   // Root and Home
   app.get('/', (req, res) => res.redirect('/home'));
   app.get('/home', asyncHandler((req, res) => micropost.index(req, res)));

@@ -60,11 +60,30 @@ model Role {
 }
 
 model Micropost {
-  id        Int      @id @default(autoincrement())
-  title     String
-  imageUrl  String?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-  userId    Int
-  user      User     @relation(fields: [userId], references: [id])
+  id         Int                 @id @default(autoincrement())
+  title      String
+  imageUrl   String?
+  createdAt  DateTime           @default(now())
+  updatedAt  DateTime           @updatedAt
+  userId     Int
+  user       User               @relation(fields: [userId], references: [id])
+  categories CategoryMicropost[]
+}
+
+model CategoryMicropost {
+  id           Int       @id @default(autoincrement())
+  micropostId  Int
+  categoryId   Int
+  micropost    Micropost @relation(fields: [micropostId], references: [id], onDelete: Cascade)
+  category     Category  @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+
+  @@unique([micropostId, categoryId])
+  @@index([micropostId])
+  @@index([categoryId])
+}
+
+model Category {
+  id         Int                 @id @default(autoincrement())
+  name       String              @unique
+  microposts CategoryMicropost[]
 }

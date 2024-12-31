@@ -169,6 +169,26 @@ async function main() {
   }
 
   console.log('Sample users and microposts have been created/updated');
+
+  // Create categories
+  const categories = [
+    { name: '技術' },
+    { name: '日常' },
+    { name: '趣味' },
+    { name: '仕事' },
+    { name: '学習' },
+    { name: 'イベント' }
+  ];
+
+  for (const category of categories) {
+    await prisma.category.upsert({
+      where: { name: category.name },
+      update: {},
+      create: category
+    });
+  }
+
+  console.log('Categories have been created');
 }
 
 main()
