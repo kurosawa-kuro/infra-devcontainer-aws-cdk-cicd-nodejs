@@ -2,6 +2,8 @@ const express = require('express');
 const asyncHandler = require('express-async-handler');
 const path = require('path');
 const { isAuthenticated, forwardAuthenticated } = require('./middleware/auth');
+const { PrismaClient } = require('@prisma/client');
+const prisma = new PrismaClient();
 
 function setupRoutes(app, controllers, fileUploader) {
   const { auth, profile, micropost, system } = controllers;
@@ -17,7 +19,7 @@ function setupRoutes(app, controllers, fileUploader) {
   // System routes
   app.get('/system-status', asyncHandler((req, res) => system.getStatus(req, res)));
   app.get('/health', (_, res) => res.json({ status: 'healthy' }));
-  app.get('/health-db', asyncHandler(async (_, res, prisma) => {
+  app.get('/health-db', asyncHandler(async (_, res) => {
     try {
       await prisma.$queryRaw`SELECT 1`;
       res.json({ status: 'healthy' });
