@@ -17,6 +17,117 @@ const passport = require('passport');
 const session = require('express-session');
 const flash = require('connect-flash');
 
+// Constants and Configuration
+const CONFIG = {
+  app: {
+    port: process.env.APP_PORT || 8080,
+    host: process.env.APP_HOST || '0.0.0.0',
+    env: process.env.APP_ENV || 'development',
+    isProduction: process.env.NODE_ENV === 'production',
+    isTest: process.env.APP_ENV === 'test'
+  },
+  storage: {
+    provider: process.env.STORAGE_PROVIDER || 'local',
+    s3: {
+      region: process.env.STORAGE_S3_REGION,
+      accessKey: process.env.STORAGE_S3_ACCESS_KEY,
+      secretKey: process.env.STORAGE_S3_SECRET_KEY,
+      bucket: process.env.STORAGE_S3_BUCKET
+    },
+    cloudfront: {
+      url: process.env.STORAGE_CDN_URL,
+      distributionId: process.env.STORAGE_CDN_DISTRIBUTION_ID
+    },
+    limits: {
+      fileSize: 5 * 1024 * 1024,
+      allowedMimeTypes: ['image/jpeg', 'image/png', 'image/gif']
+    }
+  },
+  logging: {
+    cloudwatch: {
+      logGroupName: '/aws/express/myapp',
+      region: 'ap-northeast-1'
+    }
+  },
+  auth: {
+    sessionSecret: process.env.SESSION_SECRET || 'your-session-secret',
+    sessionMaxAge: 24 * 60 * 60 * 1000 // 24 hours
+  }
+};
+
+// Utility Functions
+const utils = {
+  async withErrorHandling(req, res, handler, errorHandler) {
+    try {
+      await handler();
+    } catch (error) {
+      errorHandler.handle(error, req, res);
+    }
+  },
+
+  generateUniqueFileName(originalName) {
+    const uniqueSuffix = `${Date.now()}-${Math.round(Math.random() * 1E9)}`;
+    const fileExtension = path.extname(originalName);
+    return `uploads/${uniqueSuffix}${fileExtension}`;
+  },
+
+  isApiRequest(req) {
+    return req.xhr || req.headers.accept?.includes('application/json');
+  },
+
+  createResponse(isApi, { status = 200, message, data, redirectUrl }) {
+    return isApi
+      ? { status, json: { success: status < 400, message, data } }
+      : { status, redirect: redirectUrl, flash: message };
+  }
+};
+
+// Base Interfaces
+class BaseService {
+  constructor(prisma, logger) {
+    this.prisma = prisma;
+    this.logger = logger;
+  }
+
+  logError(error, context = {}) {
+    this.logger.error({
+      message: error.message,
+      stack: error.stack,
+      ...context
+    });
+  }
+}
+
+class BaseController {
+  constructor(service, errorHandler, logger) {
+    this.service = service;
+    this.errorHandler = errorHandler;
+    this.logger = logger;
+  }
+
+  async handleRequest(req, res, handler) {
+    return utils.withErrorHandling(req, res, handler, this.errorHandler);
+  }
+
+  sendResponse(req, res, { status = 200, message, data, redirectUrl }) {
+    const response = utils.createResponse(utils.isApiRequest(req), {
+      status,
+      message,
+      data,
+      redirectUrl
+    });
+
+    if (response.json) {
+      return res.status(response.status).json(response.json);
+    }
+
+    if (response.flash) {
+      req.flash('success', response.flash);
+    }
+    return res.redirect(response.redirect);
+  }
+}
+
 // ロギングシステムの設定と管理
 class LoggingSystem {
   constructor() {
@@ -243,8 +354,58 @@ class ErrorHandler {
     this.logger = logger;
   }
 
+  // 詳細なエラーログを生成する共通関数
+  createDetailedErrorLog(error, req, additionalInfo = {}) {
+    const errorDetails = {
+      error: error.message,
+      name: error.name,
+      code: error.code,
+      stack: error.stack,
+      details: error.details || {},
+      timestamp: new Date().toISOString(),
+      userId: req.user?.id,
+      requestInfo: {
+        method: req.method,
+        path: req.path,
+        url: req.url,
+        params: req.params,
+        query: req.query,
+        body: req.body,
+        headers: req.headers,
+        file: req.file,
+        session: req.session ? {
+          id: req.session.id,
+          cookie: req.session.cookie
+        } : undefined
+      },
+      ...additionalInfo
+    };
+
+    // エラー詳細をログに出力
+    console.error(`${error.name || 'Error'} Details:`, errorDetails);
+    if (this.logger) {
+      this.logger.error(`${error.name || 'Error'} Details:`, errorDetails);
+    }
+
+    return errorDetails;
+  }
+
+  // バリデーションエラーを作成する共通関数
+  createValidationError(message, details = {}) {
+    const error = new Error(message);
+    error.name = 'ValidationError';
+    error.code = details.code || 'VALIDATION_ERROR';
+    error.details = {
+      field: details.field,
+      value: details.value,
+      constraint: details.constraint,
+      ...details
+    };
+    return error;
+  }
+
   handle(err, req, res, next) {
-    console.error('Application Error:', err);
+    this.createDetailedErrorLog(err, req);
     
     if (err instanceof multer.MulterError) {
       return this.handleMulterError(err, req, res);
@@ -255,31 +416,35 @@ class ErrorHandler {
 
   handleMulterError(err, req, res) {
     if (err.code === 'LIMIT_FILE_SIZE') {
-      const error = `ファイルサイズが大きすぎます。${this.uploadLimits.fileSize / (1024 * 1024)}MB以下にしてください。`;
-      this.logError('Multer Error', error, { code: err.code, field: err.field });
-      return this.sendErrorResponse(req, res, 400, error);
+      const error = this.createValidationError(
+        `ファイルサイズが大きすぎます。${this.uploadLimits.fileSize / (1024 * 1024)}MB以下にしてください。`,
+        { code: 'LIMIT_FILE_SIZE', field: err.field }
+      );
+      this.createDetailedErrorLog(error, req);
+      return this.sendErrorResponse(req, res, 400, error.message);
     }
     
-    this.logError('Multer Error', err);
-    return this.sendErrorResponse(req, res, 400, 'ファイルアップロードエラー', {
+    const error = this.createValidationError('ファイルアップロードエラー', {
       code: err.code,
-      field: err.field,
-      message: err.message
+      field: err.field
     });
+    this.createDetailedErrorLog(error, req);
+    return this.sendErrorResponse(req, res, 400, error.message);
   }
 
   handleGeneralError(err, req, res) {
-    this.logError('General Error', err);
+    const errorDetails = this.createDetailedErrorLog(err, req);
     const errorMessage = process.env.NODE_ENV === 'production' 
       ? 'サーバーエラーが発生しました' 
       : err.message;
     
-    const details = process.env.NODE_ENV !== 'production' ? {
-      stack: err.stack,
-      details: err.details || {}
-    } : undefined;
-
-    return this.sendErrorResponse(req, res, err.status || 500, errorMessage, details);
+    return this.sendErrorResponse(
+      req, 
+      res, 
+      err.status || 500, 
+      errorMessage,
+      process.env.NODE_ENV !== 'production' ? errorDetails : undefined
+    );
   }
 
   // 共通のエラーレスポンス送信関数
@@ -298,273 +463,199 @@ class ErrorHandler {
     }
   }
 
-  // 共通のエラーログ記録関数
-  logError(type, error, additionalInfo = {}) {
-    const errorInfo = {
-      message: error.message || error,
-      stack: error.stack,
-      ...additionalInfo
-    };
-
-    console.error(`${type}:`, errorInfo);
-    if (this.logger) {
-      this.logger.error(`${type}:`, errorInfo);
-    }
+  handleValidationError(req, res, message, details = {}) {
+    const error = this.createValidationError(message, details);
+    this.createDetailedErrorLog(error, req);
+    return this.sendErrorResponse(req, res, 400, error.message);
   }
 
-  // 共通のバリデーションエラー処理
-  handleValidationError(req, res, message) {
-    return this.sendErrorResponse(req, res, 400, message);
-  }
-
-  // 共通の認証エラー処理
   handleAuthError(req, res, message = '認証が必要です') {
-    return this.sendErrorResponse(req, res, 401, message);
+    const error = this.createValidationError(message, { code: 'AUTH_ERROR' });
+    this.createDetailedErrorLog(error, req);
+    return this.sendErrorResponse(req, res, 401, error.message);
   }
 
-  // 共通の権限エラー処理
   handlePermissionError(req, res, message = '権限がありません') {
-    return this.sendErrorResponse(req, res, 403, message);
+    const error = this.createValidationError(message, { code: 'PERMISSION_ERROR' });
+    this.createDetailedErrorLog(error, req);
+    return this.sendErrorResponse(req, res, 403, error.message);
   }
 
-  // 共通の「見つかりません」エラー処理
   handleNotFoundError(req, res, message = 'リソースが見つかりません') {
-    return this.sendErrorResponse(req, res, 404, message);
-  }
-}
-
-// コントローラークラスの基底クラス
-class BaseController {
-  constructor(errorHandler) {
-    this.errorHandler = errorHandler;
-  }
-
-  // 成功時のレスポンス送信
-  sendSuccessResponse(req, res, message, redirectUrl) {
-    const isApiRequest = req.xhr || req.headers.accept?.includes('application/json');
-    
-    if (isApiRequest) {
-      return res.json({ success: true, message });
-    } else {
-      if (message) {
-        req.flash('success', message);
-      }
-      return res.redirect(redirectUrl);
-    }
+    const error = this.createValidationError(message, { code: 'NOT_FOUND' });
+    this.createDetailedErrorLog(error, req);
+    return this.sendErrorResponse(req, res, 404, error.message);
   }
 }
 
 // 各コントローラーを基底クラスを継承するように修正
 class AuthController extends BaseController {
-  constructor(authService, errorHandler) {
-    super(errorHandler);
-    this.authService = authService;
+  constructor(service, errorHandler, logger) {
+    super(service, errorHandler, logger);
   }
 
   getSignupPage(req, res) {
-    try {
+    return this.handleRequest(req, res, async () => {
       res.render('auth/signup', { 
         title: 'ユーザー登録',
         path: req.path
       });
-    } catch (error) {
-      return this.errorHandler.handleGeneralError(error, req, res);
-    }
+    });
   }
 
   getLoginPage(req, res) {
-    try {
+    return this.handleRequest(req, res, async () => {
       res.render('auth/login', { 
         title: 'ログイン',
         path: req.path
       });
-    } catch (error) {
-      return this.errorHandler.handleGeneralError(error, req, res);
-    }
+    });
   }
 
   async signup(req, res) {
-    try {
-      await this.authService.signup(req.body);
-      return this.sendSuccessResponse(req, res, 'ユーザー登録が完了しました。ログインしてください。', '/auth/login');
-    } catch (error) {
-      return this.errorHandler.handleValidationError(req, res, error.message);
-    }
+    return this.handleRequest(req, res, async () => {
+      await this.service.signup(req.body);
+      this.sendResponse(req, res, {
+        message: 'ユーザー登録が完了しました。ログインしてください。',
+        redirectUrl: '/auth/login'
+      });
+    });
   }
 
   async login(req, res) {
-    try {
-      await this.authService.login(req, res);
-      return this.sendSuccessResponse(req, res, 'ログインしました', '/');
-    } catch (error) {
-      return this.errorHandler.handleAuthError(req, res, error.message);
-    }
+    return this.handleRequest(req, res, async () => {
+      await this.service.login(req, res);
+      this.sendResponse(req, res, {
+        message: 'ログインしました',
+        redirectUrl: '/'
+      });
+    });
   }
 
   async logout(req, res) {
-    try {
-      await this.authService.logout(req);
-      return this.sendSuccessResponse(req, res, 'ログアウトしました', '/auth/login');
-    } catch (error) {
-      return this.errorHandler.handleGeneralError(error, req, res);
-    }
+    return this.handleRequest(req, res, async () => {
+      await this.service.logout(req);
+      this.sendResponse(req, res, {
+        message: 'ログアウトしました',
+        redirectUrl: '/auth/login'
+      });
+    });
   }
 }
 
 class MicropostController extends BaseController {
-  constructor(micropostService, fileUploader, errorHandler) {
-    super(errorHandler);
-    this.micropostService = micropostService;
+  constructor(service, fileUploader, errorHandler, logger) {
+    super(service, errorHandler, logger);
     this.fileUploader = fileUploader;
   }
 
   async index(req, res) {
-    try {
-      const microposts = await this.micropostService.getAllMicroposts();
+    return this.handleRequest(req, res, async () => {
+      const microposts = await this.service.getAllMicroposts();
       res.render('microposts', { 
         microposts,
         title: '投稿一覧',
         path: req.path
       });
-    } catch (error) {
-      console.error('Micropost index error:', {
-        error: error.message,
-        stack: error.stack,
-        timestamp: new Date().toISOString(),
-        userId: req.user?.id,
-        requestPath: req.path,
-        requestMethod: req.method
-      });
-      return this.errorHandler.handleGeneralError(error, req, res);
-    }
+    });
   }
 
   async create(req, res) {
-    try {
+    return this.handleRequest(req, res, async () => {
       const { title } = req.body;
       if (!title?.trim()) {
-        const validationError = new Error('投稿内容を入力してください');
-        validationError.name = 'ValidationError';
-        validationError.code = 'EMPTY_CONTENT';
-        validationError.details = {
+        throw this.errorHandler.createValidationError('投稿内容を入力してください', {
+          code: 'EMPTY_CONTENT',
           field: 'title',
           value: title,
-          constraint: 'required',
-          userId: req.user?.id,
-          timestamp: new Date().toISOString()
-        };
-        console.error('Micropost validation error:', {
-          error: validationError.message,
-          stack: validationError.stack,
-          details: validationError.details,
-          requestBody: req.body,
-          requestPath: req.path,
-          requestMethod: req.method
+          constraint: 'required'
         });
-        throw validationError;
       }
 
       const imageUrl = this.fileUploader.generateFileUrl(req.file);
-      await this.micropostService.createMicropost(title.trim(), imageUrl);
-      return this.sendSuccessResponse(req, res, '投稿が完了しました', '/microposts');
-    } catch (error) {
-      const errorDetails = {
-        error: error.message,
-        name: error.name,
-        code: error.code,
-        stack: error.stack,
-        details: error.details || {},
-        timestamp: new Date().toISOString(),
-        userId: req.user?.id,
-        requestBody: req.body,
-        file: req.file,
-        requestPath: req.path,
-        requestMethod: req.method
-      };
-      console.error('Micropost creation error:', errorDetails);
+      await this.service.createMicropost(req.user.id, title.trim(), imageUrl);
       
-      if (error.name === 'ValidationError') {
-        return this.errorHandler.handleValidationError(req, res, error.message);
-      }
-      return this.errorHandler.handleGeneralError(error, req, res);
-    }
+      this.sendResponse(req, res, {
+        message: '投稿が完了しました',
+        redirectUrl: '/microposts'
+      });
+    });
   }
 }
 
 class ProfileController extends BaseController {
-  constructor(profileService, errorHandler) {
-    super(errorHandler);
-    this.profileService = profileService;
+  constructor(service, errorHandler, logger) {
+    super(service, errorHandler, logger);
   }
 
   async show(req, res) {
-    try {
-      const user = await this.profileService.getUserProfile(req.params.id);
+    return this.handleRequest(req, res, async () => {
+      const user = await this.service.getUserProfile(req.params.id);
       if (!user) {
-        return this.errorHandler.handleNotFoundError(req, res, 'ユーザーが見つかりません');
+        throw this.errorHandler.createValidationError('ユーザーが見つかりません', {
+          code: 'NOT_FOUND',
+          field: 'id',
+          value: req.params.id
+        });
       }
+
       res.render('profile/show', {
         title: 'プロフィール',
         path: req.path,
         user
       });
-    } catch (error) {
-      return this.errorHandler.handleGeneralError(error, req, res);
-    }
+    });
   }
 
   async getEditPage(req, res) {
-    try {
-      const user = await this.profileService.getUserProfile(req.params.id);
+    return this.handleRequest(req, res, async () => {
+      const user = await this.service.getUserProfile(req.params.id);
       if (!user) {
-        return this.errorHandler.handleNotFoundError(req, res, 'ユーザーが見つかりません');
+        throw this.errorHandler.createValidationError('ユーザーが見つかりません', {
+          code: 'NOT_FOUND',
+          field: 'id',
+          value: req.params.id
+        });
       }
+
       res.render('profile/edit', {
         title: 'プロフィール編集',
         path: req.path,
         user
       });
-    } catch (error) {
-      return this.errorHandler.handleGeneralError(error, req, res);
-    }
+    });
   }
 
   async update(req, res) {
-    try {
-      await this.profileService.updateProfile(req.params.id, req.body);
-      return this.sendSuccessResponse(req, res, 'プロフィールを更新しました', `/profile/${req.params.id}`);
-    } catch (error) {
-      return this.errorHandler.handleGeneralError(error, req, res);
-    }
+    return this.handleRequest(req, res, async () => {
+      await this.service.updateProfile(req.params.id, req.body);
+      this.sendResponse(req, res, {
+        message: 'プロフィールを更新しました',
+        redirectUrl: `/profile/${req.params.id}`
+      });
+    });
   }
 }
 
-class SystemController {
-  constructor(systemService, errorHandler) {
-    this.systemService = systemService;
-    this.errorHandler = errorHandler;
+class SystemController extends BaseController {
+  constructor(service, errorHandler, logger) {
+    super(service, errorHandler, logger);
   }
 
   async getStatus(req, res) {
-    try {
-      const metadata = await this.systemService.getInstanceMetadata();
+    return this.handleRequest(req, res, async () => {
+      const metadata = await this.service.getInstanceMetadata();
       res.render('system-status', {
         title: 'システム状態',
         path: req.path,
         metadata
       });
-    } catch (error) {
-      return this.errorHandler.handleGeneralError(error, req, res);
-    }
+    });
   }
 }
 
 // サービスクラス
-class AuthService {
-  constructor(prisma) {
-    this.prisma = prisma;
-  }
-
+class AuthService extends BaseService {
   async signup(userData) {
     const { email, password, passwordConfirmation } = userData;
     
@@ -586,29 +677,22 @@ class AuthService {
 
     const hashedPassword = await bcrypt.hash(password, 10);
     
-    const user = await this.prisma.user.create({
+    return this.prisma.user.create({
       data: {
         email,
         password: hashedPassword
       }
     });
-
-    return user;
   }
 
   async login(req, res) {
     return new Promise((resolve, reject) => {
       passport.authenticate('local', (err, user, info) => {
-        if (err) {
-          return reject(err);
-        }
-        if (!user) {
-          return reject(new Error(info?.message || 'ログインに失敗しました'));
-        }
+        if (err) return reject(err);
+        if (!user) return reject(new Error(info?.message || 'ログインに失敗しました'));
+        
         req.logIn(user, (err) => {
-          if (err) {
-            return reject(err);
-          }
+          if (err) return reject(err);
           resolve(user);
         });
       })(req, res);
@@ -617,60 +701,61 @@ class AuthService {
 
   async logout(req) {
     return new Promise((resolve, reject) => {
-      req.logout((err) => {
-        if (err) {
-          return reject(err);
-        }
-        resolve();
-      });
+      req.logout((err) => err ? reject(err) : resolve());
     });
   }
 }
 
-class ProfileService {
-  constructor(prisma) {
-    this.prisma = prisma;
-  }
-
+class ProfileService extends BaseService {
   async getUserProfile(userId) {
-    // 実際のアプリケーションではDBからユーザー情報を取得
-    return {
-      id: userId,
-      email: '',
-      bio: '',
-      createdAt: new Date()
-    };
+    return this.prisma.user.findUnique({
+      where: { id: userId },
+      select: {
+        id: true,
+        email: true,
+        bio: true,
+        createdAt: true
+      }
+    });
   }
 
   async updateProfile(userId, profileData) {
-    // プロフィール更新ロジックの実装
-    return null;
+    return this.prisma.user.update({
+      where: { id: userId },
+      data: profileData
+    });
   }
 }
 
-class MicropostService {
-  constructor(prisma) {
-    this.prisma = prisma;
-  }
-
+class MicropostService extends BaseService {
   async getAllMicroposts() {
     return this.prisma.micropost.findMany({
-      orderBy: { createdAt: 'desc' }
+      orderBy: { createdAt: 'desc' },
+      include: {
+        user: {
+          select: {
+            id: true,
+            email: true
+          }
+        }
+      }
     });
   }
 
-  async createMicropost(title, imageUrl) {
+  async createMicropost(userId, title, imageUrl) {
     return this.prisma.micropost.create({
-      data: { title, imageUrl }
+      data: {
+        userId,
+        title,
+        imageUrl
+      }
     });
   }
 }
 
-class SystemService {
-  constructor() {}
-
+class SystemService extends BaseService {
   async getInstanceMetadata() {
-    if (process.env.NODE_ENV === 'development') {
+    if (CONFIG.app.env === 'development') {
       return {
         publicIp: 'localhost',
         privateIp: 'localhost'
@@ -682,12 +767,13 @@ class SystemService {
         axios.get('http://169.254.169.254/latest/meta-data/public-ipv4', { timeout: 2000 }),
         axios.get('http://169.254.169.254/latest/meta-data/local-ipv4', { timeout: 2000 })
       ]);
+      
       return {
         publicIp: publicIpResponse.data,
         privateIp: privateIpResponse.data
       };
     } catch (error) {
-      console.warn('Failed to fetch EC2 metadata:', error.message);
+      this.logError(error, { context: 'EC2 metadata fetch' });
       return {
         publicIp: 'localhost',
         privateIp: 'localhost'
@@ -701,8 +787,14 @@ class Application {
   constructor() {
     this.app = express();
     this.prisma = new PrismaClient();
-    this.port = process.env.APP_PORT || 8080;
+    this.port = CONFIG.app.port;
     
+    this.initializeCore();
+    this.initializeServices();
+    this.initializeControllers();
+  }
+
+  initializeCore() {
     const loggingSystem = new LoggingSystem();
     this.logger = loggingSystem.getLogger();
     
@@ -710,20 +802,25 @@ class Application {
     this.fileUploader = new FileUploader(this.storageConfig);
     this.errorHandler = new ErrorHandler(this.storageConfig.getUploadLimits(), this.logger);
 
-    // Initialize Passport
     require('./config/passport')(passport);
+  }
 
-    // サービスの初期化
-    this.authService = new AuthService(this.prisma);
-    this.profileService = new ProfileService(this.prisma);
-    this.micropostService = new MicropostService(this.prisma);
-    this.systemService = new SystemService();
+  initializeServices() {
+    this.services = {
+      auth: new AuthService(this.prisma, this.logger),
+      profile: new ProfileService(this.prisma, this.logger),
+      micropost: new MicropostService(this.prisma, this.logger),
+      system: new SystemService(this.prisma, this.logger)
+    };
+  }
 
-    // コントローラーの初期化
-    this.authController = new AuthController(this.authService, this.errorHandler);
-    this.profileController = new ProfileController(this.profileService, this.errorHandler);
-    this.micropostController = new MicropostController(this.micropostService, this.fileUploader, this.errorHandler);
-    this.systemController = new SystemController(this.systemService, this.errorHandler);
+  initializeControllers() {
+    this.controllers = {
+      auth: new AuthController(this.services.auth, this.errorHandler, this.logger),
+      profile: new ProfileController(this.services.profile, this.errorHandler, this.logger),
+      micropost: new MicropostController(this.services.micropost, this.fileUploader, this.errorHandler, this.logger),
+      system: new SystemController(this.services.system, this.errorHandler, this.logger)
+    };
   }
 
   setupMiddleware() {
@@ -737,51 +834,62 @@ class Application {
     this.app.use(expressWinston.logger({
       winstonInstance: this.logger,
       meta: true,
-      msg: (req, res) => {
-        const responseTime = res.responseTime || 0;
-        const statusCode = res.statusCode;
-        const statusColor = statusCode >= 500 ? '\x1b[31m' : // red
-                           statusCode >= 400 ? '\x1b[33m' : // yellow
-                           statusCode >= 300 ? '\x1b[36m' : // cyan
-                           '\x1b[32m'; // green
-        const reset = '\x1b[0m';
-        
-        // エラーメッセージの詳細化
-        let errorInfo = '';
-        if (res.locals.error) {
-          errorInfo = ` - Error: ${res.locals.error}`;
-        }
-        if (req.flash && req.flash('error')) {
-          const flashErrors = req.flash('error');
-          if (flashErrors.length > 0) {
-            errorInfo += ` - Flash Errors: ${flashErrors.join(', ')}`;
-          }
-        }
-
-        // リクエストの詳細情報を追加
-        const requestInfo = {
-          method: req.method,
-          url: req.url,
-          params: req.params,
-          query: req.query,
-          body: req.body,
-          headers: req.headers,
-          statusCode,
-          responseTime
-        };
-
-        // エラー時は詳細情報をログに記録
-        if (statusCode >= 400) {
-          console.error('Request Details:', requestInfo);
-          this.logger.error('Request Details:', requestInfo);
-        }
-
-        return `${req.method.padEnd(6)} ${statusColor}${statusCode}${reset} ${req.url.padEnd(30)} ${responseTime}ms${errorInfo}`;
-      },
+      msg: this.createRequestLogMessage.bind(this),
       expressFormat: false,
       colorize: true,
       ignoreRoute: (req) => req.url === '/health' || req.url === '/health-db'
     }));
+  }
+
+  createRequestLogMessage(req, res) {
+    const responseTime = res.responseTime || 0;
+    const statusCode = res.statusCode;
+    const statusColor = this.getStatusColor(statusCode);
+    const reset = '\x1b[0m';
+    
+    const errorInfo = this.getErrorInfo(req, res);
+    const requestInfo = this.getRequestInfo(req, res);
+
+    if (statusCode >= 400) {
+      console.error('Request Details:', requestInfo);
+      this.logger.error('Request Details:', requestInfo);
+    }
+
+    return `${req.method.padEnd(6)} ${statusColor}${statusCode}${reset} ${req.url.padEnd(30)} ${responseTime}ms${errorInfo}`;
+  }
+
+  getStatusColor(statusCode) {
+    if (statusCode >= 500) return '\x1b[31m'; // red
+    if (statusCode >= 400) return '\x1b[33m'; // yellow
+    if (statusCode >= 300) return '\x1b[36m'; // cyan
+    return '\x1b[32m'; // green
+  }
+
+  getErrorInfo(req, res) {
+    let errorInfo = '';
+    if (res.locals.error) {
+      errorInfo = ` - Error: ${res.locals.error}`;
+    }
+    if (req.flash && req.flash('error')) {
+      const flashErrors = req.flash('error');
+      if (flashErrors.length > 0) {
+        errorInfo += ` - Flash Errors: ${flashErrors.join(', ')}`;
+      }
+    }
+    return errorInfo;
+  }
+
+  getRequestInfo(req, res) {
+    return {
+      method: req.method,
+      url: req.url,
+      params: req.params,
+      query: req.query,
+      body: req.body,
+      headers: req.headers,
+      statusCode: res.statusCode,
+      responseTime: res.responseTime
+    };
   }
 
   setupBasicMiddleware() {
@@ -795,70 +903,63 @@ class Application {
 
   setupAuthMiddleware() {
     this.app.use(session({
-      secret: process.env.SESSION_SECRET || 'your-session-secret',
+      secret: CONFIG.auth.sessionSecret,
       resave: false,
       saveUninitialized: false,
       cookie: {
-        secure: process.env.NODE_ENV === 'production',
-        maxAge: 24 * 60 * 60 * 1000 // 24 hours
+        secure: CONFIG.app.isProduction,
+        maxAge: CONFIG.auth.sessionMaxAge
       }
     }));
     this.app.use(passport.initialize());
     this.app.use(passport.session());
     this.app.use(flash());
 
-    // Make user available to all views
-    this.app.use((req, res, next) => {
-      res.locals.user = req.user;
-      res.locals.error = req.flash('error');
-      res.locals.success = req.flash('success');
-      next();
-    });
+    this.app.use(this.addLocals);
+  }
+
+  addLocals(req, res, next) {
+    res.locals.user = req.user;
+    res.locals.error = req.flash('error');
+    res.locals.success = req.flash('success');
+    next();
   }
 
   setupErrorLogging() {
     this.app.use(expressWinston.errorLogger({
       winstonInstance: this.logger,
       meta: true,
-      msg: (req, res, err) => {
-        const responseTime = res.responseTime || 0;
-        const statusCode = res.statusCode;
-        
-        // エラーの詳細情報を収集
-        const errorDetails = {
-          message: err.message,
-          stack: err.stack,
-          type: err.name,
-          code: err.code,
-          status: statusCode,
-          request: {
-            method: req.method,
-            url: req.url,
-            params: req.params,
-            query: req.query,
-            body: req.body,
-            headers: req.headers
-          },
-          response: {
-            statusCode,
-            responseTime
-          }
-        };
-
-        // エラー詳細をログに記録
-        console.error('Error Details:', errorDetails);
-        this.logger.error('Error Details:', errorDetails);
-
-        return `ERROR ${req.method.padEnd(6)} ${statusCode} ${req.url.padEnd(30)} ${responseTime}ms\nMessage: ${err.message}\nStack: ${err.stack}\nRequest Body: ${JSON.stringify(req.body)}`;
-      },
+      msg: this.createErrorLogMessage.bind(this),
       requestWhitelist: ['url', 'headers', 'method', 'httpVersion', 'originalUrl', 'query', 'body'],
       blacklistedMetaFields: ['error', 'exception', 'process', 'os', 'trace', '_readableState']
     }));
   }
 
+  createErrorLogMessage(req, res, err) {
+    const responseTime = res.responseTime || 0;
+    const statusCode = res.statusCode;
+    
+    const errorDetails = {
+      message: err.message,
+      stack: err.stack,
+      type: err.name,
+      code: err.code,
+      status: statusCode,
+      request: this.getRequestInfo(req, res),
+      response: {
+        statusCode,
+        responseTime
+      }
+    };
+
+    console.error('Error Details:', errorDetails);
+    this.logger.error('Error Details:', errorDetails);
+
+    return `ERROR ${req.method.padEnd(6)} ${statusCode} ${req.url.padEnd(30)} ${responseTime}ms\nMessage: ${err.message}\nStack: ${err.stack}\nRequest Body: ${JSON.stringify(req.body)}`;
+  }
+
   setupRoutes() {
     const upload = this.fileUploader.createUploader();
-
     this.setupHealthRoutes();
     this.setupMainRoutes(upload);
     this.setupStaticRoutes();
@@ -871,7 +972,7 @@ class Application {
         await this.prisma.$queryRaw`SELECT 1`;
         res.json({ status: 'healthy' });
       } catch (err) {
-        console.error('Database health check failed:', err);
+        this.logger.error('Database health check failed:', err);
         res.status(500).json({ status: 'unhealthy', error: err.message });
       }
     }));
@@ -879,7 +980,9 @@ class Application {
 
   setupMainRoutes(upload) {
     const { ensureAuthenticated, forwardAuthenticated } = require('./middleware/auth');
+    const { auth, profile, micropost, system } = this.controllers;
 
+    // Public routes
     this.app.get('/', (req, res) => {
       res.render('index', {
         title: 'ホーム',
@@ -888,31 +991,19 @@ class Application {
     });
 
     // Auth routes
-    this.app.get('/auth/signup', forwardAuthenticated, (req, res) => this.authController.getSignupPage(req, res));
-    this.app.post('/auth/signup', forwardAuthenticated, asyncHandler(async (req, res) => {
-      await this.authController.signup(req, res);
-    }));
+    this.app.get('/auth/signup', forwardAuthenticated, (req, res) => auth.getSignupPage(req, res));
+    this.app.post('/auth/signup', forwardAuthenticated, asyncHandler((req, res) => auth.signup(req, res)));
+    this.app.get('/auth/login', forwardAuthenticated, (req, res) => auth.getLoginPage(req, res));
+    this.app.post('/auth/login', forwardAuthenticated, asyncHandler((req, res) => auth.login(req, res)));
+    this.app.get('/auth/logout', ensureAuthenticated, asyncHandler((req, res) => auth.logout(req, res)));
 
-    this.app.get('/auth/login', forwardAuthenticated, (req, res) => this.authController.getLoginPage(req, res));
-    this.app.post('/auth/login', forwardAuthenticated, asyncHandler(async (req, res) => {
-      await this.authController.login(req, res);
-    }));
-
-    this.app.get('/auth/logout', ensureAuthenticated, asyncHandler(async (req, res) => {
-      await this.authController.logout(req, res);
-    }));
-
-    // Profile routes (protected)
-    this.app.get('/profile/:id', ensureAuthenticated, asyncHandler((req, res) => this.profileController.show(req, res)));
-    this.app.get('/profile/:id/edit', ensureAuthenticated, asyncHandler((req, res) => this.profileController.getEditPage(req, res)));
-    this.app.post('/profile/:id/edit', ensureAuthenticated, asyncHandler((req, res) => this.profileController.update(req, res)));
-
-    // System routes (protected)
-    this.app.get('/system-status', ensureAuthenticated, asyncHandler((req, res) => this.systemController.getStatus(req, res)));
-
-    // Micropost routes (protected)
-    this.app.get('/microposts', ensureAuthenticated, asyncHandler((req, res) => this.micropostController.index(req, res)));
-    this.app.post('/microposts', ensureAuthenticated, upload.single('image'), asyncHandler((req, res) => this.micropostController.create(req, res)));
+    // Protected routes
+    this.app.get('/profile/:id', ensureAuthenticated, asyncHandler((req, res) => profile.show(req, res)));
+    this.app.get('/profile/:id/edit', ensureAuthenticated, asyncHandler((req, res) => profile.getEditPage(req, res)));
+    this.app.post('/profile/:id/edit', ensureAuthenticated, asyncHandler((req, res) => profile.update(req, res)));
+    this.app.get('/system-status', ensureAuthenticated, asyncHandler((req, res) => system.getStatus(req, res)));
+    this.app.get('/microposts', ensureAuthenticated, asyncHandler((req, res) => micropost.index(req, res)));
+    this.app.post('/microposts', ensureAuthenticated, upload.single('image'), asyncHandler((req, res) => micropost.create(req, res)));
   }
 
   setupStaticRoutes() {
@@ -926,35 +1017,35 @@ class Application {
     this.app.use((err, req, res, next) => this.errorHandler.handle(err, req, res, next));
   }
 
-  async getInstanceMetadata() {
-    return this.systemService.getInstanceMetadata();
-  }
-
   async start() {
     try {
       this.setupMiddleware();
       this.setupRoutes();
       this.setupErrorHandler();
 
-      if (process.env.APP_ENV !== 'test') {
-        const host = process.env.APP_HOST || '0.0.0.0';
-        const { publicIp, privateIp } = await this.getInstanceMetadata();
+      if (!CONFIG.app.isTest) {
+        const host = CONFIG.app.host;
+        const { publicIp, privateIp } = await this.services.system.getInstanceMetadata();
         
         this.app.listen(this.port, host, () => {
-          console.log('\n=== Server Information ===');
-          console.log(`Environment: ${process.env.APP_ENV}`);
-          console.log(`Storage:     ${this.storageConfig.isEnabled() ? 'S3' : 'Local'}`);
-          console.log('\n=== Access URLs ===');
-          console.log(`Local:       http://localhost:${this.port}`);
-          console.log(`Public:      http://${publicIp}:${this.port}`);
-          console.log(`Private:     http://${privateIp}:${this.port}`);
-          console.log('\n=== Server is ready ===\n');
+          this.logServerStartup(publicIp, privateIp);
         });
       }
     } catch (err) {
       this.logger.error('Application startup error:', err);
       process.exit(1);
     }
+  }
+
+  logServerStartup(publicIp, privateIp) {
+    console.log('\n=== Server Information ===');
+    console.log(`Environment: ${CONFIG.app.env}`);
+    console.log(`Storage:     ${this.storageConfig.isEnabled() ? 'S3' : 'Local'}`);
+    console.log('\n=== Access URLs ===');
+    console.log(`Local:       http://localhost:${this.port}`);
+    console.log(`Public:      http://${publicIp}:${this.port}`);
+    console.log(`Private:     http://${privateIp}:${this.port}`);
+    console.log('\n=== Server is ready ===\n');
   }
 
   async cleanup() {
