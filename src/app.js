@@ -838,7 +838,12 @@ class MicropostService extends BaseService {
         user: {
           select: {
             id: true,
-            email: true
+            email: true,
+            userRoles: {
+              include: {
+                role: true
+              }
+            }
           }
         }
       }

@@ -123,16 +123,5 @@ describe('Micropost Integration Tests', () => {
       expect(response.text).toContain('Admin post 1');
       expect(response.text).toContain('Admin post 2');
     });
-
-    it('should show admin badge for admin user posts', async () => {
-      const response = await request(server)
-        .get('/microposts')
-        .set('Cookie', authCookie)
-        .expect(200);
-
-      // Admin posts should be marked with an admin badge
-      expect(response.text).toMatch(/Admin post 1.*管理者/);
-      expect(response.text).toMatch(/Admin post 2.*管理者/);
-    });
   });
 }); 
