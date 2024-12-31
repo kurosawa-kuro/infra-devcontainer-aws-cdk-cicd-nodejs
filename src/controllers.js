@@ -92,7 +92,10 @@ class AuthController extends BaseController {
         secure: process.env.NODE_ENV === 'production',
         sameSite: 'strict'
       });
-      res.redirect('/auth/login');
+      this.sendResponse(req, res, {
+        message: 'ログアウトしました',
+        redirectUrl: '/auth/login'
+      });
     });
   }
 }

@@ -4,6 +4,7 @@ const TEST_USER = {
   email: 'test@example.com',
   password: 'password123',
   passwordConfirmation: 'password123',
+  name: 'TestUser123',
   terms: 'on'
 };
 
@@ -11,6 +12,7 @@ const TEST_ADMIN = {
   email: 'admin@example.com',
   password: 'admin123',
   passwordConfirmation: 'admin123',
+  name: 'AdminUser123',
   terms: 'on'
 };
 
@@ -32,15 +34,22 @@ async function createTestUser(server, userData = TEST_USER, isAdmin = false, pri
   // Add terms acceptance if not present
   const signupData = { ...userData, terms: userData.terms || 'on' };
   
+  console.log('Attempting to create test user with data:', signupData);
+  
   const response = await request(server)
     .post('/auth/signup')
     .send(signupData);
+
+  console.log('Signup response status:', response.status);
+  console.log('Signup response body:', response.body);
+  console.log('Signup response headers:', response.headers);
 
   if (!response.headers['set-cookie']) {
     throw new Error('No session cookie returned from signup');
   }
 
   if (prismaInstance) {
+    console.log('Checking database for created user...');
     let user = await prismaInstance.user.findUnique({
       where: { email: userData.email },
       include: {
@@ -51,6 +60,8 @@ async function createTestUser(server, userData = TEST_USER, isAdmin = false, pri
         }
       }
     });
+
+    console.log('Database query result:', user);
 
     if (!user) {
       throw new Error('User not created during signup');
@@ -121,6 +132,17 @@ async function loginTestUser(server, credentials = {
   };
 }
 
+async function logoutTestUser(server, authCookie) {
+  const response = await request(server)
+    .get('/auth/logout')
+    .set('Cookie', authCookie);
+
+  expect(response.status).toBe(302);
+  expect(response.header.location).toBe('/auth/login');
+
+  return response;
+}
+
 async function createTestUserAndLogin(server, userData = TEST_USER, isAdmin = false, prismaInstance = null) {
   const { response: signupResponse, user } = await createTestUser(server, userData, isAdmin, prismaInstance);
   const loginResult = await loginTestUser(server, {
@@ -152,6 +174,7 @@ module.exports = {
   TEST_ADMIN,
   createTestUser,
   loginTestUser,
+  logoutTestUser,
   createTestUserAndLogin,
   createTestMicroposts,
   ensureRolesExist

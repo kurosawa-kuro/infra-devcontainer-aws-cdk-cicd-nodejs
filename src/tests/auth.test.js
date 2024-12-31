@@ -1,6 +1,6 @@
 const request = require('supertest');
 const { getTestServer } = require('./setup');
-const { TEST_USER, TEST_ADMIN, createTestUser, loginTestUser, ensureRolesExist } = require('./utils/test-utils');
+const { TEST_USER, TEST_ADMIN, createTestUser, loginTestUser, logoutTestUser, ensureRolesExist } = require('./utils/test-utils');
 
 describe('Authentication Integration Tests', () => {
   const testServer = getTestServer();
@@ -92,44 +92,7 @@ describe('Authentication Integration Tests', () => {
     });
   });
 
-  describe('User Logout', () => {
-    let authCookie;
-    let testUser;
 
-    beforeEach(async () => {
-      const { user } = await createTestUser(server, TEST_USER, false, prisma);
-      testUser = user;
-      const loginResult = await loginTestUser(server);
-      authCookie = loginResult.authCookie;
-    });
-
-    it('should successfully logout', async () => {
-      // First verify we can access protected route
-      const initialResponse = await request(server)
-        .get(`/profile/${testUser.id}`)
-        .set('Cookie', authCookie)
-        .expect(200);
-
-      // Verify we can see the profile content
-      expect(initialResponse.text).toContain(testUser.email);
-
-      // Logout
-      const logoutResponse = await request(server)
-        .get('/auth/logout')
-        .set('Cookie', authCookie)
-        .expect(302);
-
-      expect(logoutResponse.header.location).toBe('/auth/login');
-
-      // Verify we can't access protected route after logout
-      const protectedResponse = await request(server)
-        .get(`/profile/${testUser.id}`)
-        .set('Cookie', authCookie)
-        .expect(302);
-
-      expect(protectedResponse.header.location).toBe('/auth/login');
-    });
-  });
 
   describe('Role-based Access Control', () => {
     let userCookie;

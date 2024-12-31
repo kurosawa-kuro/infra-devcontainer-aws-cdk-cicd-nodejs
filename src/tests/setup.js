@@ -2,6 +2,8 @@ const { PrismaClient } = require('@prisma/client');
 const { Application } = require('../app');
 const http = require('http');
 const request = require('supertest');
+const session = require('express-session');
+const flash = require('connect-flash');
 
 class TestServer {
   constructor() {
@@ -39,9 +41,11 @@ class TestServer {
     process.env.NODE_ENV = 'test';
     // アプリケーションの初期化
     this.app = new Application();
-    await this.app.setupMiddleware();
-    await this.app.setupRoutes();
-    await this.app.setupErrorHandler();
+
+    // Ensure session middleware is set up before routes
+    this.app.setupMiddleware();
+    this.app.setupRoutes();
+    this.app.setupErrorHandler();
 
     // Create default roles
     await this.createDefaultRoles();
