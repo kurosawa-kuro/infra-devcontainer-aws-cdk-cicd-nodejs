@@ -80,4 +80,48 @@
       </a>
     <% } %>
   </div>
+
+  <!-- フォロー状態 -->
+  <div class="mt-8 bg-white dark:bg-gray-900 shadow overflow-hidden sm:rounded-lg">
+    <div class="px-4 py-5 sm:p-6">
+      <div class="flex space-x-8">
+        <div class="text-center">
+          <div class="text-2xl font-semibold text-gray-900 dark:text-white">182</div>
+          <div class="mt-1 text-sm text-gray-500 dark:text-gray-400">フォロー中</div>
+        </div>
+        <div class="text-center">
+          <div class="text-2xl font-semibold text-gray-900 dark:text-white">12</div>
+          <div class="mt-1 text-sm text-gray-500 dark:text-gray-400">フォロワー</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 投稿一覧 -->
+  <div class="mt-8">
+    <h2 class="text-lg font-medium text-gray-900 dark:text-white mb-4">投稿一覧</h2>
+    <% if (microposts && microposts.length > 0) { %>
+      <div class="space-y-4">
+        <% microposts.forEach(post => { %>
+          <div class="bg-white dark:bg-gray-900 shadow overflow-hidden sm:rounded-lg">
+            <div class="px-4 py-5 sm:p-6">
+              <div class="text-sm text-gray-900 dark:text-white">
+                <%= post.title %>
+              </div>
+              <% if (post.imageUrl) { %>
+                <div class="mt-2">
+                  <img src="<%= post.imageUrl %>" alt="Post image" class="max-h-48 rounded-lg">
+                </div>
+              <% } %>
+              <div class="mt-2 text-xs text-gray-500 dark:text-gray-400">
+                <%= new Date(post.createdAt).toLocaleString('ja-JP') %>
+              </div>
+            </div>
+          </div>
+        <% }); %>
+      </div>
+    <% } else { %>
+      <p class="text-gray-500 dark:text-gray-400">まだ投稿がありません。</p>
+    <% } %>
+  </div>
 </div> 

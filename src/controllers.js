@@ -157,11 +157,14 @@ class ProfileController extends BaseController {
         return this.errorHandler.handleNotFoundError(req, res, 'ユーザーが見つかりません');
       }
 
+      const microposts = await this.service.getMicropostsByUser(req.params.id);
+
       res.render('profile/show', {
         title: 'プロフィール',
         path: req.path,
         user: user,
         userProfile: user.profile,
+        microposts: microposts,
         req: req
       });
     });
@@ -287,7 +290,7 @@ class DevController extends BaseController {
       });
 
       res.render('dev/index', {
-        title: '開発機能',
+        title: '開発支援機能',
         path: req.path,
         metadata,
         health,

@@ -142,6 +142,26 @@ class ProfileService extends BaseService {
     });
   }
 
+  async getMicropostsByUser(userId) {
+    return this.prisma.micropost.findMany({
+      where: {
+        userId: parseInt(userId, 10)
+      },
+      orderBy: {
+        createdAt: 'desc'
+      },
+      include: {
+        user: {
+          select: {
+            id: true,
+            email: true,
+            name: true
+          }
+        }
+      }
+    });
+  }
+
   async updateProfile(userId, profileData) {
     const parsedId = parseInt(userId, 10);
 
