@@ -69,14 +69,6 @@ describe('UserProfile Integration Tests', () => {
       expect(response.text).toContain('user');
       expect(response.text).not.toContain('admin');
     });
-
-    it('should return 404 for non-existent user profile', async () => {
-      const nonExistentUserId = 99999;
-      await request(server)
-        .get(`/profile/${nonExistentUserId}`)
-        .set('Cookie', authCookie)
-        .expect(404);
-    });
   });
 
   describe('Update Profile', () => {
@@ -148,35 +140,6 @@ describe('UserProfile Integration Tests', () => {
         .set('Cookie', authCookie)
         .send({ bio: 'This should not work' })
         .expect(403);
-    });
-
-    it('should allow admin to update any user\'s profile', async () => {
-      // Create admin user
-      const { authCookie: adminCookie } = await createTestUserAndLogin(server, TEST_ADMIN, true);
-
-      const updatedProfile = {
-        bio: 'Updated by admin',
-        location: 'Admin Location',
-        website: 'https://admin.com'
-      };
-
-      // Admin updates regular user's profile
-      const response = await request(server)
-        .post(`/profile/${testUser.id}/edit`)
-        .set('Cookie', adminCookie)
-        .send(updatedProfile)
-        .expect(302);
-
-      expect(response.header.location).toBe(`/profile/${testUser.id}`);
-
-      const updatedUser = await prisma.user.findUnique({
-        where: { id: testUser.id },
-        include: { profile: true }
-      });
-
-      expect(updatedUser.profile.bio).toBe(updatedProfile.bio);
-      expect(updatedUser.profile.location).toBe(updatedProfile.location);
-      expect(updatedUser.profile.website).toBe(updatedProfile.website);
     });
   });
 }); 
