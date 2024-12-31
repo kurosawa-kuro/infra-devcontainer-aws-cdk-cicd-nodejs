@@ -465,7 +465,7 @@ class AdminController extends BaseController {
 
   async dashboard(req, res) {
     const stats = await this.services.system.getStats();
-    res.render('admin/dashboard', {
+    res.render('pages/admin/dashboard', {
       title: '管理者ダッシュボード',
       path: req.path,
       stats
@@ -474,7 +474,7 @@ class AdminController extends BaseController {
 
   async manageUser(req, res) {
     const users = await this.services.profile.getAllUsers();
-    res.render('admin/manage-user', {
+    res.render('pages/admin/manage-user', {
       title: 'ユーザー管理',
       path: req.path,
       users
@@ -482,15 +482,12 @@ class AdminController extends BaseController {
   }
 
   async showUser(req, res) {
-    const userId = parseInt(req.params.id, 10);
-    const user = await this.services.profile.getUserProfile(userId);
-    const microposts = await this.services.micropost.getMicropostsByUser(userId);
-
-    res.render('admin/user-detail', {
-      title: 'ユーザー詳細',
-      path: req.path,
-      user,
-      microposts
+    return this.handleRequest(req, res, async () => {
+      const [user, microposts] = await Promise.all([
+        this.services.user.getUserWithRoles(req.params.id),
+        this.services.micropost.getMicropostsByUser(req.params.id)
+      ]);
+      this.renderWithUser(req, res, 'pages/admin/users/show', { user, microposts });
     });
   }
 

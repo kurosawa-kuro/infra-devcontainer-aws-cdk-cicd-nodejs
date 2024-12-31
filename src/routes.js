@@ -65,8 +65,8 @@ function setupRoutes(app, controllers, fileUploader) {
   const adminRouter = express.Router();
   adminRouter.use(isAuthenticated, isAdmin);
   adminRouter.get('/', asyncHandler((req, res) => admin.dashboard(req, res)));
-  adminRouter.get('/manage-user', asyncHandler((req, res) => admin.manageUser(req, res)));
-  adminRouter.get('/manage-user/:id', asyncHandler((req, res) => admin.showUser(req, res)));
+  adminRouter.get('/users', asyncHandler((req, res) => admin.manageUser(req, res)));
+  adminRouter.get('/users/:id', asyncHandler((req, res) => admin.showUser(req, res)));
   adminRouter.post('/users/:id/roles', asyncHandler((req, res) => admin.updateUserRoles(req, res)));
   app.use('/admin', adminRouter);
 
