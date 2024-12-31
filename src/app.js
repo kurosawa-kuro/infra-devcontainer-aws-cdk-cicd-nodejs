@@ -19,7 +19,8 @@ const {
   AuthService,
   ProfileService,
   MicropostService,
-  SystemService
+  SystemService,
+  CategoryService
 } = require('./services');
 const {
   AuthController,
@@ -27,7 +28,8 @@ const {
   MicropostController,
   SystemController,
   DevController,
-  AdminController
+  AdminController,
+  CategoryController
 } = require('./controllers');
 
 // Constants and Configuration
@@ -447,8 +449,8 @@ class Application {
     this.port = CONFIG.app.port;
     
     this.initializeCore();
-    this.initializeServices();
-    this.initializeControllers();
+    this.services = this.initializeServices();
+    this.controllers = this.initializeControllers();
   }
 
   initializeCore() {
@@ -463,22 +465,24 @@ class Application {
   }
 
   initializeServices() {
-    this.services = {
+    return {
       auth: new AuthService(this.prisma, this.logger),
       profile: new ProfileService(this.prisma, this.logger),
       micropost: new MicropostService(this.prisma, this.logger),
-      system: new SystemService(this.prisma, this.logger)
+      system: new SystemService(this.prisma, this.logger),
+      category: new CategoryService(this.prisma, this.logger)
     };
   }
 
   initializeControllers() {
-    this.controllers = {
+    return {
       auth: new AuthController(this.services.auth, this.errorHandler, this.logger),
       profile: new ProfileController(this.services.profile, this.errorHandler, this.logger),
       micropost: new MicropostController(this.services.micropost, this.fileUploader, this.errorHandler, this.logger),
       system: new SystemController(this.services.system, this.errorHandler, this.logger),
       dev: new DevController(this.services.system, this.errorHandler, this.logger),
-      admin: new AdminController(this.services, this.errorHandler, this.logger)
+      admin: new AdminController(this.services, this.errorHandler, this.logger),
+      category: new CategoryController(this.services, this.errorHandler, this.logger)
     };
   }
 

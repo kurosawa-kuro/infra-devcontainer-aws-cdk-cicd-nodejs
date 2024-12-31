@@ -412,11 +412,44 @@ class AdminController extends BaseController {
   }
 }
 
+class CategoryController extends BaseController {
+  constructor(services, errorHandler, logger) {
+    super(errorHandler, logger);
+    this.categoryService = services.category;
+  }
+
+  async index(req, res) {
+    return this.handleRequest(req, res, async () => {
+      const categories = await this.categoryService.getAllCategories();
+      res.render('categories/index', {
+        categories,
+        title: 'カテゴリー一覧',
+        path: req.path
+      });
+    });
+  }
+
+  async show(req, res) {
+    return this.handleRequest(req, res, async () => {
+      const category = await this.categoryService.getCategoryById(req.params.id);
+      if (!category) {
+        return this.errorHandler.handleNotFoundError(req, res, 'カテゴリーが見つかりません');
+      }
+      res.render('categories/show', {
+        category,
+        title: `カテゴリー: ${category.name}`,
+        path: req.path
+      });
+    });
+  }
+}
+
 module.exports = {
   AuthController,
   ProfileController,
   MicropostController,
   SystemController,
   DevController,
-  AdminController
+  AdminController,
+  CategoryController
 }; 

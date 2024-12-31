@@ -4,7 +4,7 @@ const path = require('path');
 const { isAuthenticated, forwardAuthenticated, isAdmin } = require('./middleware/auth');
 
 function setupRoutes(app, controllers, fileUploader) {
-  const { auth, profile, micropost, system, dev, admin } = controllers;
+  const { auth, profile, micropost, system, dev, admin, category } = controllers;
 
   // ===================================
   // Public Routes
@@ -17,6 +17,12 @@ function setupRoutes(app, controllers, fileUploader) {
   // System Health
   app.get('/health', asyncHandler((req, res) => system.getHealth(req, res)));
   app.get('/health-db', asyncHandler((req, res) => system.getDbHealth(req, res)));
+
+  // Categories
+  const categoryRouter = express.Router();
+  categoryRouter.get('/', asyncHandler((req, res) => category.index(req, res)));
+  categoryRouter.get('/:id', asyncHandler((req, res) => category.show(req, res)));
+  app.use('/categories', categoryRouter);
 
   // Static Assets
   if (!process.env.STORAGE_S3_BUCKET) {

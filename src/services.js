@@ -382,9 +382,44 @@ class SystemService extends BaseService {
   }
 }
 
+class CategoryService extends BaseService {
+  async getAllCategories() {
+    return this.prisma.category.findMany({
+      include: {
+        _count: {
+          select: {
+            microposts: true
+          }
+        }
+      },
+      orderBy: {
+        name: 'asc'
+      }
+    });
+  }
+
+  async getCategoryById(id) {
+    return this.prisma.category.findUnique({
+      where: { id: parseInt(id, 10) },
+      include: {
+        microposts: {
+          include: {
+            micropost: {
+              include: {
+                user: true
+              }
+            }
+          }
+        }
+      }
+    });
+  }
+}
+
 module.exports = {
   AuthService,
   ProfileService,
   MicropostService,
-  SystemService
+  SystemService,
+  CategoryService
 }; 
