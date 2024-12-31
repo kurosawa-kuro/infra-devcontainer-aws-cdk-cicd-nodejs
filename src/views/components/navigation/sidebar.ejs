@@ -8,10 +8,10 @@
             <h2 class="ml-3 text-xl font-semibold text-gray-900 dark:text-white">検証用アプリ</h2>
         </div>
         <ul class="space-y-1">
-            <%- include('nav-items', { path, locals, user: locals.user }) %>
+            <%- include('nav-bar', { path, locals, user: locals.user }) %>
         </ul>
         <% if (locals.user) { %>
-            <%- include('../components/user/profile-card', { user: locals.user, isMobile: false }) %>
+            <%- include('../user/profile-card', { user: locals.user, isMobile: false }) %>
         <% } %>
     </div>
 </nav>
@@ -26,10 +26,10 @@
             <h2 class="ml-3 text-xl font-semibold text-gray-900 dark:text-white">検証用アプリ</h2>
         </div>
         <ul class="flex flex-wrap gap-2">
-            <%- include('nav-items', { path, locals, user: locals.user }) %>
+            <%- include('nav-bar', { path, locals, user: locals.user }) %>
         </ul>
         <% if (locals.user) { %>
-            <%- include('../components/user/profile-card', { user: locals.user, isMobile: true }) %>
+            <%- include('../user/profile-card', { user: locals.user, isMobile: true }) %>
         <% } %>
     </div>
 </div> 
