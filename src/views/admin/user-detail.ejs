@@ -74,6 +74,44 @@
         </div>
     </div>
 
+    <!-- 権限管理 -->
+    <div class="bg-white dark:bg-gray-900 rounded-xl shadow-sm border border-gray-200 dark:border-gray-800 p-6 mb-8">
+        <h2 class="text-xl font-semibold mb-6 text-gray-900 dark:text-white">権限管理</h2>
+        <form action="/admin/users/<%= user.id %>/roles" method="POST" class="space-y-4">
+            <div class="space-y-2">
+                <div class="flex items-center">
+                    <input type="checkbox" id="role-user" name="roles[]" value="user" 
+                        <%= user.userRoles.some(ur => ur.role.name === 'user') ? 'checked' : '' %>
+                        class="h-4 w-4 text-rose-600 focus:ring-rose-500 border-gray-300 rounded">
+                    <label for="role-user" class="ml-2 block text-sm text-gray-900 dark:text-white">
+                        User
+                    </label>
+                </div>
+                <div class="flex items-center">
+                    <input type="checkbox" id="role-admin" name="roles[]" value="admin"
+                        <%= user.userRoles.some(ur => ur.role.name === 'admin') ? 'checked' : '' %>
+                        class="h-4 w-4 text-rose-600 focus:ring-rose-500 border-gray-300 rounded">
+                    <label for="role-admin" class="ml-2 block text-sm text-gray-900 dark:text-white">
+                        Admin
+                    </label>
+                </div>
+                <div class="flex items-center">
+                    <input type="checkbox" id="role-read-only-admin" name="roles[]" value="read-only-admin"
+                        <%= user.userRoles.some(ur => ur.role.name === 'read-only-admin') ? 'checked' : '' %>
+                        class="h-4 w-4 text-rose-600 focus:ring-rose-500 border-gray-300 rounded">
+                    <label for="role-read-only-admin" class="ml-2 block text-sm text-gray-900 dark:text-white">
+                        Read Only Admin
+                    </label>
+                </div>
+            </div>
+            <div class="pt-4">
+                <button type="submit" class="inline-flex justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-rose-600 hover:bg-rose-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-rose-500">
+                    権限を更新
+                </button>
+            </div>
+        </form>
+    </div>
+
     <!-- 最近の投稿 -->
     <div class="bg-white dark:bg-gray-900 rounded-xl shadow-sm border border-gray-200 dark:border-gray-800 p-6">
         <h2 class="text-xl font-semibold mb-6 text-gray-900 dark:text-white">最近の投稿</h2>

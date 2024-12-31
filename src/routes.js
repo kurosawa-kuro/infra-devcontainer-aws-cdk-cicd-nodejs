@@ -52,6 +52,7 @@ function setupRoutes(app, controllers, fileUploader) {
   adminRouter.get('/', asyncHandler((req, res) => admin.dashboard(req, res)));
   adminRouter.get('/manage-user', asyncHandler((req, res) => admin.manageUser(req, res)));
   adminRouter.get('/manage-user/:id', asyncHandler((req, res) => admin.showUser(req, res)));
+  adminRouter.post('/users/:id/roles', asyncHandler((req, res) => admin.updateUserRoles(req, res)));
   app.use('/admin', adminRouter);
 
   return app;

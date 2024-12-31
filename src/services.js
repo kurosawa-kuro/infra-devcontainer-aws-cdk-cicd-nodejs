@@ -111,7 +111,33 @@ class ProfileService extends BaseService {
           include: {
             role: true
           }
+        },
+        _count: {
+          select: {
+            microposts: true
+          }
         }
+      }
+    });
+  }
+
+  async getAllUsers() {
+    return this.prisma.user.findMany({
+      include: {
+        profile: true,
+        userRoles: {
+          include: {
+            role: true
+          }
+        },
+        _count: {
+          select: {
+            microposts: true
+          }
+        }
+      },
+      orderBy: {
+        id: 'desc'
       }
     });
   }
@@ -150,6 +176,43 @@ class ProfileService extends BaseService {
       profile: updatedProfile
     };
   }
+
+  async updateUserRoles(userId, roleNames) {
+    const parsedId = parseInt(userId, 10);
+
+    // Get all available roles
+    const roles = await this.prisma.role.findMany({
+      where: {
+        name: {
+          in: ['user', 'admin', 'read-only-admin']
+        }
+      }
+    });
+
+    // Create a map of role names to role IDs
+    const roleMap = new Map(roles.map(role => [role.name, role.id]));
+
+    // Get the role IDs for the selected roles
+    const selectedRoleIds = roleNames
+      .filter(name => roleMap.has(name))
+      .map(name => roleMap.get(name));
+
+    // Delete all existing roles for the user
+    await this.prisma.userRole.deleteMany({
+      where: { userId: parsedId }
+    });
+
+    // Create new roles for the user
+    await this.prisma.userRole.createMany({
+      data: selectedRoleIds.map(roleId => ({
+        userId: parsedId,
+        roleId
+      }))
+    });
+
+    // Return the updated user with roles
+    return this.getUserProfile(parsedId);
+  }
 }
 
 class MicropostService extends BaseService {
@@ -184,6 +247,27 @@ class MicropostService extends BaseService {
           select: {
             id: true,
             email: true
+          }
+        }
+      }
+    });
+  }
+
+  async getMicropostsByUser(userId) {
+    return this.prisma.micropost.findMany({
+      where: { userId: parseInt(userId, 10) },
+      orderBy: { createdAt: 'desc' },
+      take: 10,
+      include: {
+        user: {
+          select: {
+            id: true,
+            email: true,
+            userRoles: {
+              include: {
+                role: true
+              }
+            }
           }
         }
       }
@@ -229,6 +313,23 @@ class SystemService extends BaseService {
       return { status: 'healthy' };
     } catch (err) {
       throw err;
+    }
+  }
+
+  async getStats() {
+    try {
+      const [totalUsers, totalPosts] = await Promise.all([
+        this.prisma.user.count(),
+        this.prisma.micropost.count()
+      ]);
+
+      return {
+        totalUsers,
+        totalPosts
+      };
+    } catch (error) {
+      this.logError(error, { context: 'Getting system stats' });
+      throw error;
     }
   }
 }

@@ -8,26 +8,18 @@ async function hashPassword(password) {
 }
 
 async function main() {
-  // Create default roles
+  // Create roles
   const roles = [
-    {
-      name: 'user',
-      description: 'Default user role with basic permissions'
-    },
-    {
-      name: 'admin',
-      description: 'Administrator role with full permissions'
-    }
+    { name: 'user', description: 'Regular user role' },
+    { name: 'admin', description: 'Administrator role' },
+    { name: 'read-only-admin', description: 'Read-only administrator role' }
   ];
 
   for (const role of roles) {
     await prisma.role.upsert({
       where: { name: role.name },
       update: {},
-      create: {
-        name: role.name,
-        description: role.description
-      }
+      create: role
     });
   }
 
@@ -144,8 +136,10 @@ async function main() {
   ];
 
   for (const userData of sampleUsers) {
-    const user = await prisma.user.create({
-      data: {
+    const user = await prisma.user.upsert({
+      where: { email: userData.email },
+      update: {},
+      create: {
         email: userData.email,
         password: userData.password,
         name: userData.name,
@@ -162,10 +156,10 @@ async function main() {
         }
       }
     });
-    console.log(`Created sample user: ${user.name}`);
+    console.log(`Created/Updated sample user: ${user.name}`);
   }
 
-  console.log('Sample users and microposts have been created');
+  console.log('Sample users and microposts have been created/updated');
 }
 
 main()

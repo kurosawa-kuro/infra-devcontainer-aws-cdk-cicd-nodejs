@@ -331,118 +331,56 @@ class DevController extends BaseController {
   }
 }
 
-class AdminController {
-  constructor() {
-    this.prisma = new PrismaClient();
+class AdminController extends BaseController {
+  constructor(services, errorHandler, logger) {
+    super(errorHandler, logger);
+    this.services = services;
   }
 
   async dashboard(req, res) {
-    const stats = {
-      totalUsers: await this.prisma.user.count(),
-      totalPosts: await this.prisma.micropost.count()
-    };
-
-    const users = await this.prisma.user.findMany({
-      include: {
-        profile: true,
-        userRoles: {
-          include: {
-            role: true
-          }
-        },
-        _count: {
-          select: {
-            microposts: true
-          }
-        }
-      },
-      orderBy: {
-        id: 'desc'
-      }
-    });
-
+    const stats = await this.services.system.getStats();
     res.render('admin/dashboard', {
       title: '管理者ダッシュボード',
-      stats,
-      users,
-      path: req.path
+      path: req.path,
+      stats
     });
   }
 
   async manageUser(req, res) {
-    try {
-      const users = await this.prisma.user.findMany({
-        include: {
-          profile: true,
-          userRoles: {
-            include: {
-              role: true
-            }
-          },
-          _count: {
-            select: {
-              microposts: true
-            }
-          }
-        },
-        orderBy: {
-          id: 'desc'
-        }
-      });
-
-      res.render('admin/manage-user', {
-        title: 'ユーザー管理',
-        users,
-        path: req.path
-      });
-    } catch (error) {
-      console.error('[AdminController.manageUser] Error:', error);
-      throw error;
-    }
+    const users = await this.services.profile.getAllUsers();
+    res.render('admin/manage-user', {
+      title: 'ユーザー管理',
+      path: req.path,
+      users
+    });
   }
 
   async showUser(req, res) {
+    const userId = parseInt(req.params.id, 10);
+    const user = await this.services.profile.getUserProfile(userId);
+    const microposts = await this.services.micropost.getMicropostsByUser(userId);
+
+    res.render('admin/user-detail', {
+      title: 'ユーザー詳細',
+      path: req.path,
+      user,
+      microposts
+    });
+  }
+
+  async updateUserRoles(req, res) {
+    const userId = parseInt(req.params.id, 10);
+    const roles = Array.isArray(req.body.roles) ? req.body.roles : [];
+
     try {
-      const userId = parseInt(req.params.id, 10);
-      const user = await this.prisma.user.findUnique({
-        where: { id: userId },
-        include: {
-          profile: true,
-          userRoles: {
-            include: {
-              role: true
-            }
-          },
-          _count: {
-            select: {
-              microposts: true
-            }
-          }
-        }
-      });
-
-      if (!user) {
-        req.flash('error', 'ユーザーが見つかりません');
-        return res.redirect('/admin/manage-user');
-      }
-
-      const microposts = await this.prisma.micropost.findMany({
-        where: { userId },
-        orderBy: { createdAt: 'desc' },
-        take: 10
-      });
-
-      res.render('admin/user-detail', {
-        title: 'ユーザー詳細',
-        path: req.path,
-        user,
-        microposts
-      });
+      await this.services.profile.updateUserRoles(userId, roles);
+      req.flash('success', 'ユーザーの権限を更新しました');
     } catch (error) {
-      console.error('Error in showUser:', error);
-      req.flash('error', 'ユーザー詳細の取得中にエラーが発生しました');
-      res.redirect('/admin/manage-user');
+      this.logger.error('Failed to update user roles:', error);
+      req.flash('error', 'ユーザーの権限更新に失敗しました');
     }
+
+    res.redirect(`/admin/manage-user/${userId}`);
   }
 }
 
