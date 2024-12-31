@@ -631,32 +631,40 @@ class ProfileController extends BaseController {
         title: 'プロフィール編集',
         path: req.path,
         user,
-        userProfile: user.profile,
-        email: user.email,
-        roles: user.userRoles.map(ur => ur.role.name)
+        userProfile: user.profile
       });
     });
   }
 
   async update(req, res) {
     return this.handleRequest(req, res, async () => {
-      const user = await this.service.getUserProfile(req.params.id);
+      const userId = parseInt(req.params.id, 10);
+      const user = await this.service.getUserProfile(userId);
+      
       if (!user) {
         return this.errorHandler.handleNotFoundError(req, res, 'ユーザーが見つかりません');
       }
 
-      const isOwnProfile = req.user.id === parseInt(req.params.id, 10);
+      const isOwnProfile = req.user.id === userId;
       const isAdmin = req.user.userRoles.some(ur => ur.role.name === 'admin');
 
       if (!isOwnProfile && !isAdmin) {
         return this.errorHandler.handlePermissionError(req, res, '他のユーザーのプロフィールは編集できません');
       }
 
-      const updatedUser = await this.service.updateProfile(req.params.id, req.body);
+      let avatarPath = user.profile?.avatarPath;
+      if (req.file) {
+        avatarPath = path.basename(req.file.path);
+      }
+
+      const updatedUser = await this.service.updateProfile(userId, {
+        ...req.body,
+        avatarPath
+      });
       
       this.sendResponse(req, res, {
         message: 'プロフィールを更新しました',
-        redirectUrl: `/profile/${req.params.id}`
+        redirectUrl: `/profile/${userId}`
       });
     });
   }
@@ -782,36 +790,39 @@ class ProfileService extends BaseService {
 
   async updateProfile(userId, profileData) {
     const parsedId = parseInt(userId, 10);
-    return this.prisma.user.update({
+
+    // 名前の更新
+    const updatedUser = await this.prisma.user.update({
       where: { id: parsedId },
       data: {
-        name: profileData.name,
-        profile: {
-          upsert: {
-            create: {
-              bio: profileData.bio,
-              location: profileData.location,
-              website: profileData.website,
-              birthDate: profileData.birthDate ? new Date(profileData.birthDate) : null
-            },
-            update: {
-              bio: profileData.bio,
-              location: profileData.location,
-              website: profileData.website,
-              birthDate: profileData.birthDate ? new Date(profileData.birthDate) : null
-            }
-          }
-        }
-      },
-      include: {
-        profile: true,
-        userRoles: {
-          include: {
-            role: true
-          }
-        }
+        name: profileData.name || '',
       }
     });
+
+    // プロフィール情報の更新
+    const updatedProfile = await this.prisma.userProfile.upsert({
+      where: { userId: parsedId },
+      create: {
+        userId: parsedId,
+        bio: profileData.bio || '',
+        location: profileData.location || '',
+        website: profileData.website || '',
+        birthDate: profileData.birthDate ? new Date(profileData.birthDate) : null,
+        avatarPath: profileData.avatarPath || 'default_avatar.png'
+      },
+      update: {
+        bio: profileData.bio || '',
+        location: profileData.location || '',
+        website: profileData.website || '',
+        birthDate: profileData.birthDate ? new Date(profileData.birthDate) : null,
+        ...(profileData.avatarPath && { avatarPath: profileData.avatarPath })
+      }
+    });
+
+    return {
+      ...updatedUser,
+      profile: updatedProfile
+    };
   }
 }
 
@@ -1103,11 +1114,138 @@ class Application {
     this.app.post('/auth/login', forwardAuthenticated, asyncHandler((req, res) => auth.login(req, res)));
     this.app.get('/auth/logout', isAuthenticated, asyncHandler((req, res) => auth.logout(req, res)));
 
-    // Protected routes
-    this.app.get('/profile/:id', isAuthenticated, asyncHandler((req, res) => profile.show(req, res)));
-    this.app.get('/profile/:id/edit', canManageUser, asyncHandler((req, res) => profile.getEditPage(req, res)));
-    this.app.put('/profile/:id', canManageUser, asyncHandler((req, res) => profile.update(req, res)));
-    this.app.post('/profile/:id', canManageUser, asyncHandler((req, res) => profile.update(req, res)));
+    // Profile routes
+    this.app.get('/profile/:id', isAuthenticated, asyncHandler(async (req, res) => {
+      const user = await this.prisma.user.findUnique({
+        where: { id: parseInt(req.params.id) },
+        include: {
+          profile: true,
+          userRoles: {
+            include: {
+              role: true
+            }
+          }
+        }
+      });
+
+      if (!user) {
+        return res.status(404).render('error', {
+          title: 'エラー',
+          message: 'ユーザーが見つかりません',
+          error: { status: 404 }
+        });
+      }
+
+      res.render('profile/show', {
+        title: 'プロフィール',
+        path: req.path,
+        user,
+        userProfile: user.profile,
+        roles: user.userRoles.map(ur => ur.role.name),
+        req
+      });
+    }));
+
+    // プロフィール編集画面の表示
+    this.app.get('/profile/:id/edit', isAuthenticated, asyncHandler(async (req, res) => {
+      const userId = parseInt(req.params.id);
+      const user = await this.prisma.user.findUnique({
+        where: { id: userId },
+        include: {
+          profile: true,
+          userRoles: {
+            include: {
+              role: true
+            }
+          }
+        }
+      });
+
+      if (!user) {
+        return res.status(404).render('error', {
+          title: 'エラー',
+          message: 'ユーザーが見つかりません',
+          error: { status: 404 }
+        });
+      }
+
+      const isOwnProfile = req.user.id === userId;
+      const isAdmin = req.user.userRoles.some(ur => ur.role.name === 'admin');
+
+      if (!isOwnProfile && !isAdmin) {
+        return res.status(403).render('error', {
+          title: 'エラー',
+          message: '他のユーザーのプロフィールは編集できません',
+          error: { status: 403 }
+        });
+      }
+
+      res.render('profile/edit', {
+        title: 'プロフィール編集',
+        path: req.path,
+        user,
+        userProfile: user.profile,
+        roles: user.userRoles.map(ur => ur.role.name)
+      });
+    }));
+
+    // プロフィール更新の処理
+    this.app.post('/profile/:id/edit', isAuthenticated, upload.single('avatar'), asyncHandler(async (req, res) => {
+      const userId = parseInt(req.params.id);
+      const user = await this.prisma.user.findUnique({
+        where: { id: userId },
+        include: {
+          profile: true,
+          userRoles: {
+            include: {
+              role: true
+            }
+          }
+        }
+      });
+
+      if (!user) {
+        return res.status(404).json({ error: 'ユーザーが見つかりません' });
+      }
+
+      const isOwnProfile = req.user.id === userId;
+      const isAdmin = req.user.userRoles.some(ur => ur.role.name === 'admin');
+
+      if (!isOwnProfile && !isAdmin) {
+        return res.status(403).json({ error: '他のユーザーのプロフィールは編集できません' });
+      }
+
+      const updateData = {
+        bio: req.body.bio,
+        location: req.body.location,
+        website: req.body.website
+      };
+
+      if (req.file) {
+        const relativePath = path.relative(
+          path.join(__dirname, '..'),
+          req.file.path
+        ).replace(/\\/g, '/');
+        updateData.avatarPath = relativePath;
+      }
+
+      await this.prisma.userProfile.upsert({
+        where: { userId },
+        create: {
+          userId,
+          ...updateData
+        },
+        update: updateData
+      });
+
+      if (req.xhr || req.headers.accept?.includes('application/json')) {
+        return res.json({ message: 'プロフィールを更新しました', redirectUrl: `/profile/${userId}` });
+      }
+
+      res.redirect(`/profile/${userId}`);
+    }));
+
+    // Micropost routes
     this.app.get('/microposts', isAuthenticated, asyncHandler((req, res) => micropost.index(req, res)));
     this.app.post('/microposts', isAuthenticated, upload.single('image'), asyncHandler((req, res) => micropost.create(req, res)));
   }
