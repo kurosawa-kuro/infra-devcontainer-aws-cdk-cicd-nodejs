@@ -1,5 +1,4 @@
 const express = require('express');
-const asyncHandler = require('express-async-handler');
 const winston = require('winston');
 const WinstonCloudWatch = require('winston-cloudwatch');
 const expressWinston = require('express-winston');
@@ -9,13 +8,25 @@ const { PrismaClient } = require('@prisma/client');
 const { S3Client } = require('@aws-sdk/client-s3');
 const multerS3 = require('multer-s3');
 const fs = require('fs');
-const axios = require('axios');
 const expressLayouts = require('express-ejs-layouts');
 require('dotenv').config();
-const bcrypt = require('bcrypt');
 const passport = require('passport');
 const session = require('express-session');
 const flash = require('connect-flash');
+
+const setupRoutes = require('./routes');
+const {
+  AuthService,
+  ProfileService,
+  MicropostService,
+  SystemService
+} = require('./services');
+const {
+  AuthController,
+  ProfileController,
+  MicropostController,
+  SystemController
+} = require('./controllers');
 
 // Constants and Configuration
 const CONFIG = {
@@ -55,17 +66,8 @@ const CONFIG = {
   }
 };
 
-
 // Utility Functions
 const utils = {
-  async withErrorHandling(req, res, handler, errorHandler) {
-    try {
-      await handler();
-    } catch (error) {
-      errorHandler.handle(error, req, res);
-    }
-  },
-
   generateUniqueFileName(originalName) {
     const uniqueSuffix = `${Date.now()}-${Math.round(Math.random() * 1E9)}`;
     const fileExtension = path.extname(originalName);
@@ -82,52 +84,6 @@ const utils = {
       : { status, redirect: redirectUrl, flash: message };
   }
 };
-
-// Base Interfaces
-class BaseService {
-  constructor(prisma, logger) {
-    this.prisma = prisma;
-    this.logger = logger;
-  }
-
-  logError(error, context = {}) {
-    this.logger.error({
-      message: error.message,
-      stack: error.stack,
-      ...context
-    });
-  }
-}
-
-class BaseController {
-  constructor(service, errorHandler, logger) {
-    this.service = service;
-    this.errorHandler = errorHandler;
-    this.logger = logger;
-  }
-
-  async handleRequest(req, res, handler) {
-    return utils.withErrorHandling(req, res, handler, this.errorHandler);
-  }
-
-  sendResponse(req, res, { status = 200, message, data, redirectUrl }) {
-    const response = utils.createResponse(utils.isApiRequest(req), {
-      status,
-      message,
-      data,
-      redirectUrl
-    });
-
-    if (response.json) {
-      return res.status(response.status).json(response.json);
-    }
-
-    if (response.flash) {
-      req.flash('success', response.flash);
-    }
-    return res.redirect(response.redirect);
-  }
-}
 
 // ロギングシステムの設定と管理
 class LoggingSystem {
@@ -349,7 +305,6 @@ class ErrorHandler {
     this.logger = logger;
   }
 
-  // 詳細なエラーログを生成する共通関数
   createDetailedErrorLog(error, req, additionalInfo = {}) {
     const errorDetails = {
       error: error.message,
@@ -376,7 +331,6 @@ class ErrorHandler {
       ...additionalInfo
     };
 
-    // エラー詳細をログに出力
     console.error(`${error.name || 'Error'} Details:`, errorDetails);
     if (this.logger) {
       this.logger.error(`${error.name || 'Error'} Details:`, errorDetails);
@@ -385,7 +339,6 @@ class ErrorHandler {
     return errorDetails;
   }
 
-  // バリデーションエラーを作成する共通関数
   createValidationError(message, details = {}) {
     const error = new Error(message);
     error.name = 'ValidationError';
@@ -399,7 +352,7 @@ class ErrorHandler {
     return error;
   }
 
-  handle(err, req, res, next) {
+  handle(err, req, res) {
     this.createDetailedErrorLog(err, req);
     
     if (err instanceof multer.MulterError) {
@@ -442,7 +395,6 @@ class ErrorHandler {
     );
   }
 
-  // 共通のエラーレスポンス送信関数
   sendErrorResponse(req, res, status, message, details = {}) {
     const isApiRequest = req.xhr || req.headers.accept?.includes('application/json');
     
@@ -482,420 +434,6 @@ class ErrorHandler {
     const error = this.createValidationError(message, { code: 'NOT_FOUND' });
     this.createDetailedErrorLog(error, req);
     return this.sendErrorResponse(req, res, 404, error.message);
-  }
-}
-
-// 各コントローラーを基底クラスを継承するように修正
-class AuthController extends BaseController {
-  constructor(service, errorHandler, logger) {
-    super(service, errorHandler, logger);
-  }
-
-  getSignupPage(req, res) {
-    return this.handleRequest(req, res, async () => {
-      res.render('auth/signup', { 
-        title: 'ユーザー登録',
-        path: req.path
-      });
-    });
-  }
-
-  getLoginPage(req, res) {
-    return this.handleRequest(req, res, async () => {
-      res.render('auth/login', { 
-        title: 'ログイン',
-        path: req.path
-      });
-    });
-  }
-
-  async signup(req, res) {
-    return this.handleRequest(req, res, async () => {
-      const user = await this.service.signup(req.body);
-      await new Promise((resolve, reject) => {
-        req.logIn(user, (err) => err ? reject(err) : resolve());
-      });
-      this.sendResponse(req, res, {
-        message: 'ユーザー登録が完了しました',
-        redirectUrl: '/'
-      });
-    });
-  }
-
-  async login(req, res) {
-    return this.handleRequest(req, res, async () => {
-      await this.service.login(req, res);
-      this.sendResponse(req, res, {
-        message: 'ログインしました',
-        redirectUrl: '/'
-      });
-    });
-  }
-
-  async logout(req, res) {
-    return this.handleRequest(req, res, async () => {
-      await this.service.logout(req);
-      res.clearCookie('connect.sid', {
-        path: '/',
-        httpOnly: true,
-        secure: CONFIG.app.isProduction,
-        sameSite: 'strict'
-      });
-      res.redirect('/auth/login');
-    });
-  }
-}
-
-class MicropostController extends BaseController {
-  constructor(service, fileUploader, errorHandler, logger) {
-    super(service, errorHandler, logger);
-    this.fileUploader = fileUploader;
-  }
-
-  async index(req, res) {
-    return this.handleRequest(req, res, async () => {
-      const microposts = await this.service.getAllMicroposts();
-      res.render('microposts', { 
-        microposts,
-        title: '投稿一覧',
-        path: req.path
-      });
-    });
-  }
-
-  async create(req, res) {
-    return this.handleRequest(req, res, async () => {
-      const { title } = req.body;
-      if (!title?.trim()) {
-        throw this.errorHandler.createValidationError('投稿内容を入力してください', {
-          code: 'EMPTY_CONTENT',
-          field: 'title',
-          value: title,
-          constraint: 'required'
-        });
-      }
-
-      let imageUrl = null;
-      if (req.file) {
-        imageUrl = this.fileUploader.generateFileUrl(req.file);
-      }
-
-      await this.service.createMicropost({
-        title: title.trim(),
-        imageUrl,
-        userId: req.user.id
-      });
-      
-      this.sendResponse(req, res, {
-        message: '投稿が完了しました',
-        redirectUrl: '/microposts'
-      });
-    });
-  }
-}
-
-class ProfileController extends BaseController {
-  constructor(service, errorHandler, logger) {
-    super(service, errorHandler, logger);
-  }
-
-  async show(req, res) {
-    return this.handleRequest(req, res, async () => {
-      const user = await this.service.getUserProfile(req.params.id);
-      if (!user) {
-        return this.errorHandler.handleNotFoundError(req, res, 'ユーザーが見つかりません');
-      }
-
-      res.render('profile/show', {
-        title: 'プロフィール',
-        path: req.path,
-        user: user,
-        userProfile: user.profile,
-        req: req
-      });
-    });
-  }
-
-  async getEditPage(req, res) {
-    return this.handleRequest(req, res, async () => {
-      const userId = parseInt(req.params.id, 10);
-      const user = await this.service.getUserProfile(userId);
-      
-      if (!user) {
-        return this.errorHandler.handleNotFoundError(req, res, 'ユーザーが見つかりません');
-      }
-
-      const isOwnProfile = req.user.id === userId;
-      const isAdmin = req.user.userRoles.some(ur => ur.role.name === 'admin');
-
-      if (!isOwnProfile && !isAdmin) {
-        return this.errorHandler.handlePermissionError(req, res, '他のユーザーのプロフィールは編集できません');
-      }
-
-      res.render('profile/edit', {
-        title: 'プロフィール編集',
-        path: req.path,
-        user,
-        userProfile: user.profile
-      });
-    });
-  }
-
-  async update(req, res) {
-    return this.handleRequest(req, res, async () => {
-      const userId = parseInt(req.params.id, 10);
-      const user = await this.service.getUserProfile(userId);
-      
-      if (!user) {
-        return this.errorHandler.handleNotFoundError(req, res, 'ユーザーが見つかりません');
-      }
-
-      const isOwnProfile = req.user.id === userId;
-      const isAdmin = req.user.userRoles.some(ur => ur.role.name === 'admin');
-
-      if (!isOwnProfile && !isAdmin) {
-        return this.errorHandler.handlePermissionError(req, res, '他のユーザーのプロフィールは編集できません');
-      }
-
-      let avatarPath = user.profile?.avatarPath;
-      if (req.file) {
-        avatarPath = path.basename(req.file.path);
-      }
-
-      const updatedUser = await this.service.updateProfile(userId, {
-        ...req.body,
-        avatarPath
-      });
-      
-      this.sendResponse(req, res, {
-        message: 'プロフィールを更新しました',
-        redirectUrl: `/profile/${userId}`
-      });
-    });
-  }
-}
-
-class SystemController extends BaseController {
-  constructor(service, errorHandler, logger) {
-    super(service, errorHandler, logger);
-  }
-
-  async getStatus(req, res) {
-    return this.handleRequest(req, res, async () => {
-      const metadata = await this.service.getInstanceMetadata();
-      res.render('system-status', {
-        title: 'システム状態',
-        path: req.path,
-        metadata
-      });
-    });
-  }
-}
-
-// サービスクラス
-class AuthService extends BaseService {
-  async signup(userData) {
-    const { email, password, passwordConfirmation } = userData;
-    
-    if (!email || !password) {
-      throw new Error('メールアドレスとパスワードは必須です');
-    }
-
-    if (password !== passwordConfirmation) {
-      throw new Error('パスワードが一致しません');
-    }
-
-    const existingUser = await this.prisma.user.findUnique({
-      where: { email }
-    });
-    
-    if (existingUser) {
-      throw new Error('このメールアドレスは既に登録されています');
-    }
-
-    const hashedPassword = await bcrypt.hash(password, 10);
-    
-    // Get the default user role
-    const userRole = await this.prisma.role.findUnique({
-      where: { name: 'user' }
-    });
-
-    if (!userRole) {
-      throw new Error('デフォルトのユーザーロールが見つかりません');
-    }
-
-    // Create user with default role
-    const user = await this.prisma.user.create({
-      data: {
-        email,
-        password: hashedPassword,
-        userRoles: {
-          create: {
-            roleId: userRole.id
-          }
-        }
-      },
-      include: {
-        userRoles: {
-          include: {
-            role: true
-          }
-        }
-      }
-    });
-
-    return user;
-  }
-
-  async login(req, res) {
-    return new Promise((resolve, reject) => {
-      passport.authenticate('local', (err, user, info) => {
-        if (err) return reject(err);
-        if (!user) return reject(new Error(info?.message || 'ログインに失敗しました'));
-        
-        req.logIn(user, (err) => {
-          if (err) return reject(err);
-          resolve(user);
-        });
-      })(req, res);
-    });
-  }
-
-  async logout(req) {
-    return new Promise((resolve, reject) => {
-      req.logout((err) => {
-        if (err) return reject(err);
-        if (req.session) {
-          req.session.destroy((err) => {
-            if (err) return reject(err);
-            resolve();
-          });
-        } else {
-          resolve();
-        }
-      });
-    });
-  }
-}
-
-class ProfileService extends BaseService {
-  async getUserProfile(userId) {
-    return this.prisma.user.findUnique({
-      where: { id: parseInt(userId, 10) },
-      include: {
-        profile: true,
-        userRoles: {
-          include: {
-            role: true
-          }
-        }
-      }
-    });
-  }
-
-  async updateProfile(userId, profileData) {
-    const parsedId = parseInt(userId, 10);
-
-    // 名前の更新
-    const updatedUser = await this.prisma.user.update({
-      where: { id: parsedId },
-      data: {
-        name: profileData.name || '',
-      }
-    });
-
-    // プロフィール情報の更新
-    const updatedProfile = await this.prisma.userProfile.upsert({
-      where: { userId: parsedId },
-      create: {
-        userId: parsedId,
-        bio: profileData.bio || '',
-        location: profileData.location || '',
-        website: profileData.website || '',
-        birthDate: profileData.birthDate ? new Date(profileData.birthDate) : null,
-        avatarPath: profileData.avatarPath || 'default_avatar.png'
-      },
-      update: {
-        bio: profileData.bio || '',
-        location: profileData.location || '',
-        website: profileData.website || '',
-        birthDate: profileData.birthDate ? new Date(profileData.birthDate) : null,
-        ...(profileData.avatarPath && { avatarPath: profileData.avatarPath })
-      }
-    });
-
-    return {
-      ...updatedUser,
-      profile: updatedProfile
-    };
-  }
-}
-
-class MicropostService extends BaseService {
-  async getAllMicroposts() {
-    return this.prisma.micropost.findMany({
-      orderBy: { createdAt: 'desc' },
-      include: {
-        user: {
-          select: {
-            id: true,
-            email: true,
-            userRoles: {
-              include: {
-                role: true
-              }
-            }
-          }
-        }
-      }
-    });
-  }
-
-  async createMicropost(data) {
-    return this.prisma.micropost.create({
-      data: {
-        title: data.title,
-        imageUrl: data.imageUrl,
-        userId: data.userId
-      },
-      include: {
-        user: {
-          select: {
-            id: true,
-            email: true
-          }
-        }
-      }
-    });
-  }
-}
-
-class SystemService extends BaseService {
-  async getInstanceMetadata() {
-    if (CONFIG.app.env === 'development') {
-      return {
-        publicIp: 'localhost',
-        privateIp: 'localhost'
-      };
-    }
-
-    try {
-      const [publicIpResponse, privateIpResponse] = await Promise.all([
-        axios.get('http://169.254.169.254/latest/meta-data/public-ipv4', { timeout: 2000 }),
-        axios.get('http://169.254.169.254/latest/meta-data/local-ipv4', { timeout: 2000 })
-      ]);
-      
-      return {
-        publicIp: publicIpResponse.data,
-        privateIp: privateIpResponse.data
-      };
-    } catch (error) {
-      this.logError(error, { context: 'EC2 metadata fetch' });
-      return {
-        publicIp: 'localhost',
-        privateIp: 'localhost'
-      };
-    }
   }
 }
 
@@ -1029,7 +567,6 @@ class Application {
       }
     };
 
-    // テスト環境ではcookieのsecureオプションを無効化
     if (CONFIG.app.isTest) {
       sessionConfig.cookie.secure = false;
       sessionConfig.resave = true;
@@ -1084,187 +621,7 @@ class Application {
   }
 
   setupRoutes() {
-    const upload = this.fileUploader.createUploader();
-    this.setupHealthRoutes();
-    this.setupMainRoutes(upload);
-    this.setupStaticRoutes();
-  }
-
-  setupHealthRoutes() {
-    this.app.get('/health', (_, res) => res.json({ status: 'healthy' }));
-    this.app.get('/health-db', asyncHandler(async (_, res) => {
-      try {
-        await this.prisma.$queryRaw`SELECT 1`;
-        res.json({ status: 'healthy' });
-      } catch (err) {
-        this.logger.error('Database health check failed:', err);
-        res.status(500).json({ status: 'unhealthy', error: err.message });
-      }
-    }));
-  }
-
-  setupMainRoutes(upload) {
-    const { isAuthenticated, forwardAuthenticated, canManageUser } = require('./middleware/auth');
-    const { auth, profile, micropost, system } = this.controllers;
-
-    // Public routes
-    this.app.get('/', (req, res) => {
-      res.render('index', {
-        title: 'ホーム',
-        path: req.path
-      });
-    });
-
-    this.app.get('/system-status', asyncHandler((req, res) => system.getStatus(req, res)));
-
-    // Auth routes
-    this.app.get('/auth/signup', forwardAuthenticated, (req, res) => auth.getSignupPage(req, res));
-    this.app.post('/auth/signup', forwardAuthenticated, asyncHandler((req, res) => auth.signup(req, res)));
-    this.app.get('/auth/login', forwardAuthenticated, (req, res) => auth.getLoginPage(req, res));
-    this.app.post('/auth/login', forwardAuthenticated, asyncHandler((req, res) => auth.login(req, res)));
-    this.app.get('/auth/logout', isAuthenticated, asyncHandler((req, res) => auth.logout(req, res)));
-
-    // Profile routes
-    this.app.get('/profile/:id', isAuthenticated, asyncHandler(async (req, res) => {
-      const user = await this.prisma.user.findUnique({
-        where: { id: parseInt(req.params.id) },
-        include: {
-          profile: true,
-          userRoles: {
-            include: {
-              role: true
-            }
-          }
-        }
-      });
-
-      if (!user) {
-        return res.status(404).render('error', {
-          title: 'エラー',
-          message: 'ユーザーが見つかりません',
-          error: { status: 404 }
-        });
-      }
-
-      res.render('profile/show', {
-        title: 'プロフィール',
-        path: req.path,
-        user,
-        userProfile: user.profile,
-        roles: user.userRoles.map(ur => ur.role.name),
-        req
-      });
-    }));
-
-    // プロフィール編集画面の表示
-    this.app.get('/profile/:id/edit', isAuthenticated, asyncHandler(async (req, res) => {
-      const userId = parseInt(req.params.id);
-      const user = await this.prisma.user.findUnique({
-        where: { id: userId },
-        include: {
-          profile: true,
-          userRoles: {
-            include: {
-              role: true
-            }
-          }
-        }
-      });
-
-      if (!user) {
-        return res.status(404).render('error', {
-          title: 'エラー',
-          message: 'ユーザーが見つかりません',
-          error: { status: 404 }
-        });
-      }
-
-      const isOwnProfile = req.user.id === userId;
-      const isAdmin = req.user.userRoles.some(ur => ur.role.name === 'admin');
-
-      if (!isOwnProfile && !isAdmin) {
-        return res.status(403).render('error', {
-          title: 'エラー',
-          message: '他のユーザーのプロフィールは編集できません',
-          error: { status: 403 }
-        });
-      }
-
-      res.render('profile/edit', {
-        title: 'プロフィール編集',
-        path: req.path,
-        user,
-        userProfile: user.profile,
-        roles: user.userRoles.map(ur => ur.role.name)
-      });
-    }));
-
-    // プロフィール更新の処理
-    this.app.post('/profile/:id/edit', isAuthenticated, upload.single('avatar'), asyncHandler(async (req, res) => {
-      const userId = parseInt(req.params.id);
-      const user = await this.prisma.user.findUnique({
-        where: { id: userId },
-        include: {
-          profile: true,
-          userRoles: {
-            include: {
-              role: true
-            }
-          }
-        }
-      });
-
-      if (!user) {
-        return res.status(404).json({ error: 'ユーザーが見つかりません' });
-      }
-
-      const isOwnProfile = req.user.id === userId;
-      const isAdmin = req.user.userRoles.some(ur => ur.role.name === 'admin');
-
-      if (!isOwnProfile && !isAdmin) {
-        return res.status(403).json({ error: '他のユーザーのプロフィールは編集できません' });
-      }
-
-      const updateData = {
-        bio: req.body.bio,
-        location: req.body.location,
-        website: req.body.website
-      };
-
-      if (req.file) {
-        const relativePath = path.relative(
-          path.join(__dirname, '..'),
-          req.file.path
-        ).replace(/\\/g, '/');
-        updateData.avatarPath = relativePath;
-      }
-
-      await this.prisma.userProfile.upsert({
-        where: { userId },
-        create: {
-          userId,
-          ...updateData
-        },
-        update: updateData
-      });
-
-      if (req.xhr || req.headers.accept?.includes('application/json')) {
-        return res.json({ message: 'プロフィールを更新しました', redirectUrl: `/profile/${userId}` });
-      }
-
-      res.redirect(`/profile/${userId}`);
-    }));
-
-    // Micropost routes
-    this.app.get('/microposts', isAuthenticated, asyncHandler((req, res) => micropost.index(req, res)));
-    this.app.post('/microposts', isAuthenticated, upload.single('image'), asyncHandler((req, res) => micropost.create(req, res)));
-  }
-
-  setupStaticRoutes() {
-    if (!this.storageConfig.isEnabled()) {
-      this.app.use('/uploads', express.static(path.join(__dirname, '..', 'uploads')));
-    }
-    this.app.use('/css', express.static(path.join(__dirname, 'public/css')));
+    setupRoutes(this.app, this.controllers, this.fileUploader);
   }
 
   setupErrorHandler() {

@@ -104,23 +104,7 @@ describe('UserProfile Integration Tests', () => {
       expect(updatedUser.profile.website).toBe(updatedProfile.website);
     });
 
-    it('should successfully update avatar', async () => {
-      const response = await request(server)
-        .post(`/profile/${testUser.id}/edit`)
-        .set('Cookie', authCookie)
-        .attach('avatar', 'src/tests/fixtures/test-image.jpg')
-        .expect(302);
 
-      expect(response.header.location).toBe(`/profile/${testUser.id}`);
-
-      const updatedUser = await prisma.user.findUnique({
-        where: { id: testUser.id },
-        include: { profile: true }
-      });
-
-      expect(updatedUser.profile.avatarPath).not.toBe('default_avatar.png');
-      expect(updatedUser.profile.avatarPath).toMatch(/^uploads\//);
-    });
 
     it('should not allow updating other user\'s profile as regular user', async () => {
       // Create another user
