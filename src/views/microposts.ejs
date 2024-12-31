@@ -5,6 +5,29 @@
         <p class="text-base text-gray-600 dark:text-gray-400">みんなの投稿を見る</p>
     </div>
 
+    <style>
+        .category-btn-wrapper input:checked + .category-btn {
+            background-color: rgb(244 63 94 / 0.1);
+            color: rgb(244 63 94);
+        }
+        .dark .category-btn-wrapper input:checked + .category-btn {
+            background-color: rgb(244 63 94 / 0.2);
+            color: rgb(251 113 133);
+        }
+    </style>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            const categoryBtns = document.querySelectorAll('.category-btn-wrapper');
+            categoryBtns.forEach(wrapper => {
+                wrapper.addEventListener('click', function(e) {
+                    const checkbox = this.querySelector('input[type="checkbox"]');
+                    checkbox.checked = !checkbox.checked;
+                });
+            });
+        });
+    </script>
+
     <div class="space-y-6">
         <div class="bg-white dark:bg-gray-900 rounded-xl shadow-sm border border-gray-200 dark:border-gray-800">
             <div class="p-6">
@@ -17,6 +40,23 @@
                                   placeholder="いまどうしてる？"
                                   required
                                   class="block w-full rounded-lg border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-900 dark:text-white shadow-sm focus:border-rose-500 dark:focus:border-rose-500 focus:ring-rose-500 dark:focus:ring-rose-500"></textarea>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">カテゴリー</label>
+                        <div class="flex flex-wrap gap-2">
+                            <% categories.forEach(category => { %>
+                                <label class="category-btn-wrapper">
+                                    <input type="checkbox"
+                                           name="categories"
+                                           value="<%= category.id %>"
+                                           class="hidden category-checkbox">
+                                    <span class="inline-flex items-center px-3 py-1.5 rounded-full text-sm font-medium bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-200 cursor-pointer hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors category-btn">
+                                        <%= category.name %>
+                                    </span>
+                                </label>
+                            <% }) %>
+                        </div>
+                        <p class="mt-2 text-sm text-gray-500 dark:text-gray-400">複数選択可能です</p>
                     </div>
                     <div>
                         <label for="image" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">画像を追加</label>
@@ -51,11 +91,20 @@
                                 <p class="text-gray-600 dark:text-gray-300">
                                     <%= post.title %>
                                 </p>
-                                <% if (post.user?.userRoles?.some(ur => ur.role.name === 'admin')) { %>
-                                    <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-rose-100 text-rose-800 dark:bg-rose-900 dark:text-rose-200">
-                                        管理者
-                                    </span>
-                                <% } %>
+                                <div class="flex items-center space-x-2">
+                                    <% if (post.categories && post.categories.length > 0) { %>
+                                        <% post.categories.forEach(relation => { %>
+                                            <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200">
+                                                <%= relation.category.name %>
+                                            </span>
+                                        <% }) %>
+                                    <% } %>
+                                    <% if (post.user?.userRoles?.some(ur => ur.role.name === 'admin')) { %>
+                                        <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-rose-100 text-rose-800 dark:bg-rose-900 dark:text-rose-200">
+                                            管理者
+                                        </span>
+                                    <% } %>
+                                </div>
                             </div>
                             <% if (post.imageUrl) { %>
                                 <div class="mt-3">

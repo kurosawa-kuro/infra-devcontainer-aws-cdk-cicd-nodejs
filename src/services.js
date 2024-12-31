@@ -278,6 +278,11 @@ class MicropostService extends BaseService {
               }
             }
           }
+        },
+        categories: {
+          include: {
+            category: true
+          }
         }
       }
     });
@@ -288,13 +293,23 @@ class MicropostService extends BaseService {
       data: {
         title: data.title,
         imageUrl: data.imageUrl,
-        userId: data.userId
+        userId: data.userId,
+        categories: {
+          create: (data.categories || []).map(categoryId => ({
+            categoryId: parseInt(categoryId, 10)
+          }))
+        }
       },
       include: {
         user: {
           select: {
             id: true,
             email: true
+          }
+        },
+        categories: {
+          include: {
+            category: true
           }
         }
       }

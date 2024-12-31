@@ -108,9 +108,15 @@ class MicropostController extends BaseController {
 
   async index(req, res) {
     return this.handleRequest(req, res, async () => {
-      const microposts = await this.service.getAllMicroposts();
+      const [microposts, categories] = await Promise.all([
+        this.service.getAllMicroposts(),
+        this.service.prisma.category.findMany({
+          orderBy: { name: 'asc' }
+        })
+      ]);
       res.render('microposts', { 
         microposts,
+        categories,
         title: '投稿一覧',
         path: req.path
       });
@@ -119,7 +125,7 @@ class MicropostController extends BaseController {
 
   async create(req, res) {
     return this.handleRequest(req, res, async () => {
-      const { title } = req.body;
+      const { title, categories } = req.body;
       if (!title?.trim()) {
         throw this.errorHandler.createValidationError('投稿内容を入力してください', {
           code: 'EMPTY_CONTENT',
@@ -137,7 +143,8 @@ class MicropostController extends BaseController {
       await this.service.createMicropost({
         title: title.trim(),
         imageUrl,
-        userId: req.user.id
+        userId: req.user.id,
+        categories: Array.isArray(categories) ? categories : categories ? [categories] : []
       });
       
       this.sendResponse(req, res, {
