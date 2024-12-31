@@ -2,35 +2,99 @@
 <div class="max-w-2xl mx-auto px-4">
   <div class="bg-white dark:bg-gray-900 shadow sm:rounded-lg">
     <div class="px-4 py-5 sm:p-6">
-      <h3 class="text-lg font-medium leading-6 text-gray-900 dark:text-white">
+      <h3 class="text-lg leading-6 font-medium text-gray-900 dark:text-white">
         プロフィール編集
       </h3>
-      <div class="mt-2 max-w-xl text-sm text-gray-500">
-        <p>プロフィール情報を更新します</p>
-      </div>
-      <form action="/profile/<%= user.id %>/edit" method="POST" class="mt-5 space-y-6">
+      <form action="/profile/<%= user.id %>" method="POST" enctype="multipart/form-data" class="mt-5 space-y-6">
+        <input type="hidden" name="_method" value="PUT">
+        
         <div>
-          <label for="email" class="block text-sm font-medium text-gray-700 dark:text-gray-300">
-            メールアドレス
+          <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">
+            プロフィール画像
+          </label>
+          <div class="mt-2 flex items-center">
+            <img src="<%= userProfile?.avatarPath || '/images/default_avatar.png' %>" alt="Current Avatar" class="h-20 w-20 rounded-full">
+            <input type="file" name="avatar" accept="image/*" class="ml-4 text-sm text-gray-500 dark:text-gray-400
+              file:mr-4 file:py-2 file:px-4
+              file:rounded-full file:border-0
+              file:text-sm file:font-semibold
+              file:bg-indigo-50 file:text-indigo-700
+              hover:file:bg-indigo-100
+            ">
+          </div>
+        </div>
+
+        <div>
+          <label for="bio" class="block text-sm font-medium text-gray-700 dark:text-gray-300">
+            自己紹介
+          </label>
+          <div class="mt-1">
+            <textarea
+              id="bio"
+              name="bio"
+              rows="3"
+              class="shadow-sm focus:ring-indigo-500 focus:border-indigo-500 block w-full sm:text-sm border-gray-300 rounded-md dark:bg-gray-800 dark:border-gray-700 dark:text-white"
+            ><%= userProfile?.bio || '' %></textarea>
+          </div>
+        </div>
+
+        <div>
+          <label for="location" class="block text-sm font-medium text-gray-700 dark:text-gray-300">
+            場所
           </label>
           <div class="mt-1">
             <input
-              type="email"
-              name="email"
-              id="email"
-              value="<%= user.email %>"
-              required
-              class="block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm dark:bg-gray-800 dark:border-gray-700 dark:text-white"
+              type="text"
+              name="location"
+              id="location"
+              value="<%= userProfile?.location || '' %>"
+              class="shadow-sm focus:ring-indigo-500 focus:border-indigo-500 block w-full sm:text-sm border-gray-300 rounded-md dark:bg-gray-800 dark:border-gray-700 dark:text-white"
             >
           </div>
         </div>
 
-        <div class="flex justify-end">
+        <div>
+          <label for="website" class="block text-sm font-medium text-gray-700 dark:text-gray-300">
+            ウェブサイト
+          </label>
+          <div class="mt-1">
+            <input
+              type="url"
+              name="website"
+              id="website"
+              value="<%= userProfile?.website || '' %>"
+              class="shadow-sm focus:ring-indigo-500 focus:border-indigo-500 block w-full sm:text-sm border-gray-300 rounded-md dark:bg-gray-800 dark:border-gray-700 dark:text-white"
+            >
+          </div>
+        </div>
+
+        <div>
+          <label for="birthDate" class="block text-sm font-medium text-gray-700 dark:text-gray-300">
+            生年月日
+          </label>
+          <div class="mt-1">
+            <input
+              type="date"
+              name="birthDate"
+              id="birthDate"
+              value="<%= userProfile?.birthDate ? new Date(userProfile.birthDate).toISOString().split('T')[0] : '' %>"
+              class="shadow-sm focus:ring-indigo-500 focus:border-indigo-500 block w-full sm:text-sm border-gray-300 rounded-md dark:bg-gray-800 dark:border-gray-700 dark:text-white"
+            >
+          </div>
+        </div>
+
+        <div class="flex justify-end space-x-3">
+          <a
+            href="/profile/<%= user.id %>"
+            class="inline-flex items-center px-4 py-2 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 dark:bg-gray-800 dark:text-gray-300 dark:border-gray-600 dark:hover:bg-gray-700"
+          >
+            キャンセル
+          </a>
           <button
             type="submit"
-            class="ml-3 inline-flex justify-center rounded-md border border-transparent bg-indigo-600 py-2 px-4 text-sm font-medium text-white shadow-sm hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2"
+            class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
           >
-            更新
+            保存
           </button>
         </div>
       </form>

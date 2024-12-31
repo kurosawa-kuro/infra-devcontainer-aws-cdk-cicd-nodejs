@@ -14,7 +14,14 @@ module.exports = function(passport) {
         console.log('Attempting to authenticate user:', { email });
         
         const user = await prisma.user.findUnique({
-          where: { email: email }
+          where: { email: email },
+          include: {
+            userRoles: {
+              include: {
+                role: true
+              }
+            }
+          }
         });
 
         if (!user) {
@@ -47,7 +54,14 @@ module.exports = function(passport) {
     try {
       console.log('Deserializing user:', { userId: id });
       const user = await prisma.user.findUnique({
-        where: { id: id }
+        where: { id: id },
+        include: {
+          userRoles: {
+            include: {
+              role: true
+            }
+          }
+        }
       });
       if (!user) {
         console.log('User not found during deserialization:', { userId: id });

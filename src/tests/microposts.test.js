@@ -1,6 +1,6 @@
 const request = require('supertest');
 const { getTestServer } = require('./setup');
-const { createTestUserAndLogin, createTestMicroposts } = require('./utils/test-utils');
+const { createTestUserAndLogin, createTestMicroposts, TEST_ADMIN, ensureRolesExist } = require('./utils/test-utils');
 
 describe('Micropost Integration Tests', () => {
   const testServer = getTestServer();
@@ -9,16 +9,24 @@ describe('Micropost Integration Tests', () => {
   let testUser;
   let authCookie;
 
-  beforeAll(() => {
+  beforeAll(async () => {
     server = testServer.getServer();
     prisma = testServer.getPrisma();
+    await ensureRolesExist(prisma);
   });
 
   beforeEach(async () => {
     const { response, authCookie: cookie } = await createTestUserAndLogin(server);
     authCookie = cookie;
     testUser = await prisma.user.findUnique({
-      where: { email: 'test@example.com' }
+      where: { email: 'test@example.com' },
+      include: {
+        userRoles: {
+          include: {
+            role: true
+          }
+        }
+      }
     });
   });
 
@@ -73,11 +81,26 @@ describe('Micropost Integration Tests', () => {
   });
 
   describe('Read Microposts', () => {
+    let adminUser;
+    let adminCookie;
+
     beforeEach(async () => {
+      // Create posts for regular user
       await createTestMicroposts(prisma, testUser.id);
+
+      // Create admin user and their posts
+      const { response, authCookie: cookie } = await createTestUserAndLogin(server, TEST_ADMIN, true);
+      adminCookie = cookie;
+      adminUser = await prisma.user.findUnique({
+        where: { email: TEST_ADMIN.email }
+      });
+      await createTestMicroposts(prisma, adminUser.id, [
+        { title: 'Admin post 1' },
+        { title: 'Admin post 2' }
+      ]);
     });
 
-    it('should list all microposts on home page', async () => {
+    it('should list all microposts on home page for regular user', async () => {
       const response = await request(server)
         .get('/microposts')
         .set('Cookie', authCookie)
@@ -85,6 +108,31 @@ describe('Micropost Integration Tests', () => {
 
       expect(response.text).toContain('First post');
       expect(response.text).toContain('Second post');
+      expect(response.text).toContain('Admin post 1');
+      expect(response.text).toContain('Admin post 2');
+    });
+
+    it('should list all microposts on home page for admin', async () => {
+      const response = await request(server)
+        .get('/microposts')
+        .set('Cookie', adminCookie)
+        .expect(200);
+
+      expect(response.text).toContain('First post');
+      expect(response.text).toContain('Second post');
+      expect(response.text).toContain('Admin post 1');
+      expect(response.text).toContain('Admin post 2');
+    });
+
+    it('should show admin badge for admin user posts', async () => {
+      const response = await request(server)
+        .get('/microposts')
+        .set('Cookie', authCookie)
+        .expect(200);
+
+      // Admin posts should be marked with an admin badge
+      expect(response.text).toMatch(/Admin post 1.*管理者/);
+      expect(response.text).toMatch(/Admin post 2.*管理者/);
     });
   });
 }); 

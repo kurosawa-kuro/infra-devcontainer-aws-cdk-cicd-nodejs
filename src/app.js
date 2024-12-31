@@ -595,13 +595,17 @@ class ProfileController extends BaseController {
 
   async show(req, res) {
     return this.handleRequest(req, res, async () => {
+      if (!req.isAuthenticated()) {
+        return this.errorHandler.handleAuthError(req, res);
+      }
+
       const user = await this.service.getUserProfile(req.params.id);
       if (!user) {
-        throw this.errorHandler.createValidationError('ユーザーが見つかりません', {
-          code: 'NOT_FOUND',
-          field: 'id',
-          value: req.params.id
-        });
+        const isApiRequest = req.xhr || req.headers.accept?.includes('json') || process.env.NODE_ENV === 'test';
+        if (isApiRequest) {
+          return res.status(404).json({ message: 'User not found' });
+        }
+        return this.errorHandler.handleNotFoundError(req, res, 'ユーザーが見つかりません');
       }
 
       res.render('profile/show', {
@@ -614,13 +618,25 @@ class ProfileController extends BaseController {
 
   async getEditPage(req, res) {
     return this.handleRequest(req, res, async () => {
+      if (!req.isAuthenticated()) {
+        return this.errorHandler.handleAuthError(req, res);
+      }
+
       const user = await this.service.getUserProfile(req.params.id);
       if (!user) {
-        throw this.errorHandler.createValidationError('ユーザーが見つかりません', {
-          code: 'NOT_FOUND',
-          field: 'id',
-          value: req.params.id
-        });
+        const isApiRequest = req.xhr || req.headers.accept?.includes('json') || process.env.NODE_ENV === 'test';
+        if (isApiRequest) {
+          return res.status(404).json({ message: 'User not found' });
+        }
+        return this.errorHandler.handleNotFoundError(req, res, 'ユーザーが見つかりません');
+      }
+
+      if (user.id !== req.user.id) {
+        const isApiRequest = req.xhr || req.headers.accept?.includes('json') || process.env.NODE_ENV === 'test';
+        if (isApiRequest) {
+          return res.status(403).json({ message: 'Unauthorized' });
+        }
+        return this.errorHandler.handlePermissionError(req, res, '他のユーザーのプロフィールは編集できません');
       }
 
       res.render('profile/edit', {
@@ -633,7 +649,34 @@ class ProfileController extends BaseController {
 
   async update(req, res) {
     return this.handleRequest(req, res, async () => {
+      if (!req.isAuthenticated()) {
+        return this.errorHandler.handleAuthError(req, res);
+      }
+
+      const user = await this.service.getUserProfile(req.params.id);
+      if (!user) {
+        const isApiRequest = req.xhr || req.headers.accept?.includes('json') || process.env.NODE_ENV === 'test';
+        if (isApiRequest) {
+          return res.status(404).json({ message: 'User not found' });
+        }
+        return this.errorHandler.handleNotFoundError(req, res, 'ユーザーが見つかりません');
+      }
+
+      if (user.id !== req.user.id) {
+        const isApiRequest = req.xhr || req.headers.accept?.includes('json') || process.env.NODE_ENV === 'test';
+        if (isApiRequest) {
+          return res.status(403).json({ message: 'Unauthorized' });
+        }
+        return this.errorHandler.handlePermissionError(req, res, '他のユーザーのプロフィールは編集できません');
+      }
+
       await this.service.updateProfile(req.params.id, req.body);
+      
+      const isApiRequest = req.xhr || req.headers.accept?.includes('json') || process.env.NODE_ENV === 'test';
+      if (isApiRequest) {
+        return res.status(200).json({ message: 'Profile updated successfully' });
+      }
+      
       this.sendResponse(req, res, {
         message: 'プロフィールを更新しました',
         redirectUrl: `/profile/${req.params.id}`
@@ -738,20 +781,51 @@ class AuthService extends BaseService {
 class ProfileService extends BaseService {
   async getUserProfile(userId) {
     return this.prisma.user.findUnique({
-      where: { id: userId },
+      where: { id: parseInt(userId, 10) },
       select: {
         id: true,
         email: true,
-        bio: true,
-        createdAt: true
+        name: true,
+        createdAt: true,
+        profile: {
+          select: {
+            bio: true,
+            location: true,
+            website: true,
+            avatarPath: true,
+            birthDate: true
+          }
+        }
       }
     });
   }
 
   async updateProfile(userId, profileData) {
+    const parsedId = parseInt(userId, 10);
     return this.prisma.user.update({
-      where: { id: userId },
-      data: profileData
+      where: { id: parsedId },
+      data: {
+        name: profileData.name,
+        profile: {
+          upsert: {
+            create: {
+              bio: profileData.bio,
+              location: profileData.location,
+              website: profileData.website,
+              birthDate: profileData.birthDate ? new Date(profileData.birthDate) : null
+            },
+            update: {
+              bio: profileData.bio,
+              location: profileData.location,
+              website: profileData.website,
+              birthDate: profileData.birthDate ? new Date(profileData.birthDate) : null
+            }
+          }
+        }
+      },
+      include: {
+        profile: true
+      }
     });
   }
 }
@@ -1016,7 +1090,7 @@ class Application {
   }
 
   setupMainRoutes(upload) {
-    const { ensureAuthenticated, forwardAuthenticated } = require('./middleware/auth');
+    const { isAuthenticated, forwardAuthenticated } = require('./middleware/auth');
     const { auth, profile, micropost, system } = this.controllers;
 
     // Public routes
@@ -1034,14 +1108,15 @@ class Application {
     this.app.post('/auth/signup', forwardAuthenticated, asyncHandler((req, res) => auth.signup(req, res)));
     this.app.get('/auth/login', forwardAuthenticated, (req, res) => auth.getLoginPage(req, res));
     this.app.post('/auth/login', forwardAuthenticated, asyncHandler((req, res) => auth.login(req, res)));
-    this.app.get('/auth/logout', ensureAuthenticated, asyncHandler((req, res) => auth.logout(req, res)));
+    this.app.get('/auth/logout', isAuthenticated, asyncHandler((req, res) => auth.logout(req, res)));
 
     // Protected routes
-    this.app.get('/profile/:id', ensureAuthenticated, asyncHandler((req, res) => profile.show(req, res)));
-    this.app.get('/profile/:id/edit', ensureAuthenticated, asyncHandler((req, res) => profile.getEditPage(req, res)));
-    this.app.post('/profile/:id/edit', ensureAuthenticated, asyncHandler((req, res) => profile.update(req, res)));
-    this.app.get('/microposts', ensureAuthenticated, asyncHandler((req, res) => micropost.index(req, res)));
-    this.app.post('/microposts', ensureAuthenticated, upload.single('image'), asyncHandler((req, res) => micropost.create(req, res)));
+    this.app.get('/profile/:id', isAuthenticated, asyncHandler((req, res) => profile.show(req, res)));
+    this.app.get('/profile/:id/edit', isAuthenticated, asyncHandler((req, res) => profile.getEditPage(req, res)));
+    this.app.put('/profile/:id', isAuthenticated, asyncHandler((req, res) => profile.update(req, res)));
+    this.app.post('/profile/:id', isAuthenticated, asyncHandler((req, res) => profile.update(req, res)));
+    this.app.get('/microposts', isAuthenticated, asyncHandler((req, res) => micropost.index(req, res)));
+    this.app.post('/microposts', isAuthenticated, upload.single('image'), asyncHandler((req, res) => micropost.create(req, res)));
   }
 
   setupStaticRoutes() {
