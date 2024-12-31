@@ -19,10 +19,21 @@ describe('Authentication Integration Tests', () => {
       expect(response.header.location).toBe('/');
 
       const user = await prisma.user.findUnique({
-        where: { email: TEST_USER.email }
+        where: { email: TEST_USER.email },
+        include: {
+          userRoles: {
+            include: {
+              role: true
+            }
+          }
+        }
       });
       expect(user).toBeTruthy();
       expect(user.email).toBe(TEST_USER.email);
+      
+      // ユーザーロールの検証
+      expect(user.userRoles).toHaveLength(1);
+      expect(user.userRoles[0].role.name).toBe('user');
 
       const protectedResponse = await request(server)
         .get('/microposts')

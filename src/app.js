@@ -682,10 +682,32 @@ class AuthService extends BaseService {
 
     const hashedPassword = await bcrypt.hash(password, 10);
     
+    // Get the default user role
+    const userRole = await this.prisma.role.findUnique({
+      where: { name: 'user' }
+    });
+
+    if (!userRole) {
+      throw new Error('デフォルトのユーザーロールが見つかりません');
+    }
+
+    // Create user with default role
     const user = await this.prisma.user.create({
       data: {
         email,
-        password: hashedPassword
+        password: hashedPassword,
+        userRoles: {
+          create: {
+            roleId: userRole.id
+          }
+        }
+      },
+      include: {
+        userRoles: {
+          include: {
+            role: true
+          }
+        }
       }
     });
 
