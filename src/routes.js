@@ -89,6 +89,46 @@ function setupRoutes(app, controllers, fileUploader) {
   app.get('/:id/edit', isAuthenticated, asyncHandler((req, res) => profile.getEditPage(req, res)));
   app.post('/:id/edit', isAuthenticated, fileUploader.createUploader().single('avatar'), asyncHandler((req, res) => profile.update(req, res)));
 
+  // ===================================
+  // Error Handlers (最後に配置)
+  // ===================================
+  
+  // 404 Error Handler
+  app.use((req, res, next) => {
+    const isApiRequest = req.xhr || req.headers.accept?.includes('application/json');
+    if (isApiRequest) {
+      return res.status(404).json({
+        error: 'Not Found',
+        message: 'リクエストされたページは存在しません'
+      });
+    }
+    res.status(404).render('pages/errors/404', {
+      title: 'ページが見つかりません',
+      path: req.path
+    });
+  });
+
+  // 500 Error Handler
+  app.use((err, req, res, next) => {
+    console.error('Server Error:', err);
+
+    const isApiRequest = req.xhr || req.headers.accept?.includes('application/json');
+    if (isApiRequest) {
+      return res.status(500).json({
+        error: 'Internal Server Error',
+        message: process.env.NODE_ENV === 'production' 
+          ? 'サーバーエラーが発生しました'
+          : err.message
+      });
+    }
+
+    res.status(500).render('pages/errors/500', {
+      title: 'サーバーエラー',
+      path: req.path,
+      error: process.env.NODE_ENV === 'production' ? null : err
+    });
+  });
+
   return app;
 }
 
