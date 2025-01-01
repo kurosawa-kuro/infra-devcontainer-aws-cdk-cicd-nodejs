@@ -4,6 +4,7 @@ const { PrismaClient } = require('@prisma/client');
 const prisma = new PrismaClient();
 
 module.exports = function(passport) {
+  
   passport.use(new LocalStrategy(
     { 
       usernameField: 'email',
