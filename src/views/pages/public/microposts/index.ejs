@@ -1,150 +1,176 @@
 <%- contentFor('body') %>
-<div class="max-w-3xl mx-auto px-4">
-    <div class="mb-12">
-        <h1 class="text-3xl font-semibold mb-3 text-gray-900 dark:text-white">投稿一覧</h1>
-        <p class="text-base text-gray-600 dark:text-gray-400">みんなの投稿を見る</p>
-    </div>
-
-    <style>
-        .category-btn-wrapper input:checked + .category-btn {
-            background-color: rgb(244 63 94 / 0.1);
-            color: rgb(244 63 94);
-        }
-        .dark .category-btn-wrapper input:checked + .category-btn {
-            background-color: rgb(244 63 94 / 0.2);
-            color: rgb(251 113 133);
-        }
-    </style>
-
-    <script>
-        document.addEventListener('DOMContentLoaded', function() {
-            const categoryBtns = document.querySelectorAll('.category-btn-wrapper');
-            categoryBtns.forEach(wrapper => {
-                wrapper.addEventListener('click', function(e) {
-                    const checkbox = this.querySelector('input[type="checkbox"]');
-                    checkbox.checked = !checkbox.checked;
-                });
-            });
-        });
-    </script>
-
-    <div class="space-y-6">
-        <% if (locals.user) { %>
-            <div class="bg-white dark:bg-gray-900 rounded-xl shadow-sm border border-gray-200 dark:border-gray-800">
-                <div class="p-6">
-                    <form action="/microposts" method="POST" class="space-y-4" enctype="multipart/form-data">
-                        <div>
-                            <label for="title" class="sr-only">投稿内容</label>
-                            <textarea id="title"
-                                      name="title"
-                                      rows="3"
-                                      placeholder="いまどうしてる？"
-                                      required
-                                      class="block w-full rounded-lg border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-900 dark:text-white shadow-sm focus:border-rose-500 dark:focus:border-rose-500 focus:ring-rose-500 dark:focus:ring-rose-500"></textarea>
-                        </div>
-                        <div>
-                            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">カテゴリー</label>
-                            <div class="flex flex-wrap gap-2">
-                                <% categories.forEach(category => { %>
-                                    <label class="category-btn-wrapper">
-                                        <input type="checkbox"
-                                               name="categories"
-                                               value="<%= category.id %>"
-                                               class="hidden category-checkbox">
-                                        <span class="inline-flex items-center px-3 py-1.5 rounded-full text-sm font-medium bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-200 cursor-pointer hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors category-btn">
-                                            <%= category.name %>
-                                        </span>
-                                    </label>
-                                <% }) %>
-                            </div>
-                            <p class="mt-2 text-sm text-gray-500 dark:text-gray-400">複数選択可能です</p>
-                        </div>
-                        <div>
-                            <label for="image" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">画像を追加</label>
-                            <input type="file"
-                                   id="image"
-                                   name="image"
-                                   accept="image/*"
-                                   class="block w-full text-sm text-gray-500 dark:text-gray-400
-                                          file:mr-4 file:py-2 file:px-4
-                                          file:rounded-lg file:border-0
-                                          file:text-sm file:font-medium
-                                          file:bg-rose-50 file:text-rose-600
-                                          dark:file:bg-rose-900 dark:file:text-rose-400
-                                          hover:file:bg-rose-100 dark:hover:file:bg-rose-800">
-                        </div>
-                        <div class="flex items-center justify-end">
-                            <button type="submit" 
-                                    class="inline-flex items-center px-4 py-2 border border-transparent rounded-lg text-sm font-medium text-white bg-rose-600 hover:bg-rose-700 dark:bg-rose-500 dark:hover:bg-rose-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-rose-500 dark:focus:ring-offset-gray-900 transition-colors">
-                                投稿する
-                            </button>
-                        </div>
-                    </form>
-                </div>
+<div class="max-w-7xl mx-auto px-4">
+    <div class="flex gap-8">
+        <!-- Main content -->
+        <div class="flex-1">
+            <div class="mb-12">
+                <h1 class="text-3xl font-semibold mb-3 text-gray-900 dark:text-white">投稿一覧</h1>
+                <p class="text-base text-gray-600 dark:text-gray-400">みんなの投稿を見る</p>
             </div>
-        <% } %>
 
-        <div class="space-y-4">
-            <% microposts.forEach(post => { %>
-                <div class="bg-white dark:bg-gray-900 rounded-xl shadow-sm border border-gray-200 dark:border-gray-800">
-                    <div class="p-6">
-                        <div class="space-y-3">
-                            <div class="flex items-center justify-between">
-                                <p class="text-gray-600 dark:text-gray-300">
-                                    <%= post.title %>
-                                </p>
-                                <div class="flex items-center space-x-2">
-                                    <% if (post.categories && post.categories.length > 0) { %>
-                                        <% post.categories.forEach(relation => { %>
-                                            <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200">
-                                                <%= relation.category.name %>
-                                            </span>
-                                        <% }) %>
-                                    <% } %>
-                                    <% if (post.user?.userRoles?.some(ur => ur.role.name === 'admin')) { %>
-                                        <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-rose-100 text-rose-800 dark:bg-rose-900 dark:text-rose-200">
-                                            管理者
-                                        </span>
-                                    <% } %>
+            <style>
+                .category-btn-wrapper input:checked + .category-btn {
+                    background-color: rgb(244 63 94 / 0.1);
+                    color: rgb(244 63 94);
+                }
+                .dark .category-btn-wrapper input:checked + .category-btn {
+                    background-color: rgb(244 63 94 / 0.2);
+                    color: rgb(251 113 133);
+                }
+            </style>
+
+            <script>
+                document.addEventListener('DOMContentLoaded', function() {
+                    const categoryBtns = document.querySelectorAll('.category-btn-wrapper');
+                    categoryBtns.forEach(wrapper => {
+                        wrapper.addEventListener('click', function(e) {
+                            const checkbox = this.querySelector('input[type="checkbox"]');
+                            checkbox.checked = !checkbox.checked;
+                        });
+                    });
+                });
+            </script>
+
+            <div class="space-y-6">
+                <div class="flex gap-8">
+                    <!-- Post form and posts list -->
+                    <div class="flex-1">
+                        <% if (locals.user) { %>
+                            <div class="bg-white dark:bg-gray-900 rounded-xl shadow-sm border border-gray-200 dark:border-gray-800 mb-6">
+                                <div class="p-6">
+                                    <form action="/microposts" method="POST" class="space-y-4" enctype="multipart/form-data">
+                                        <div>
+                                            <label for="title" class="sr-only">投稿内容</label>
+                                            <textarea id="title"
+                                                      name="title"
+                                                      rows="3"
+                                                      placeholder="いまどうしてる？"
+                                                      required
+                                                      class="block w-full rounded-lg border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-900 dark:text-white shadow-sm focus:border-rose-500 dark:focus:border-rose-500 focus:ring-rose-500 dark:focus:ring-rose-500"></textarea>
+                                        </div>
+                                        <div>
+                                            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">カテゴリー</label>
+                                            <div class="flex flex-wrap gap-2">
+                                                <% categories.forEach(category => { %>
+                                                    <label class="category-btn-wrapper">
+                                                        <input type="checkbox"
+                                                               name="categories"
+                                                               value="<%= category.id %>"
+                                                               class="hidden category-checkbox">
+                                                        <span class="inline-flex items-center px-3 py-1.5 rounded-full text-sm font-medium bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-200 cursor-pointer hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors category-btn">
+                                                            <%= category.name %>
+                                                        </span>
+                                                    </label>
+                                                <% }) %>
+                                            </div>
+                                            <p class="mt-2 text-sm text-gray-500 dark:text-gray-400">複数選択可能です</p>
+                                        </div>
+                                        <div>
+                                            <label for="image" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">画像を追加</label>
+                                            <input type="file"
+                                                   id="image"
+                                                   name="image"
+                                                   accept="image/*"
+                                                   class="block w-full text-sm text-gray-500 dark:text-gray-400
+                                                          file:mr-4 file:py-2 file:px-4
+                                                          file:rounded-lg file:border-0
+                                                          file:text-sm file:font-medium
+                                                          file:bg-rose-50 file:text-rose-600
+                                                          dark:file:bg-rose-900 dark:file:text-rose-400
+                                                          hover:file:bg-rose-100 dark:hover:file:bg-rose-800">
+                                        </div>
+                                        <div class="flex items-center justify-end">
+                                            <button type="submit" 
+                                                    class="inline-flex items-center px-4 py-2 border border-transparent rounded-lg text-sm font-medium text-white bg-rose-600 hover:bg-rose-700 dark:bg-rose-500 dark:hover:bg-rose-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-rose-500 dark:focus:ring-offset-gray-900 transition-colors">
+                                                投稿する
+                                            </button>
+                                        </div>
+                                    </form>
                                 </div>
                             </div>
-                            <% if (post.imageUrl) { %>
-                                <div class="mt-3">
-                                    <img src="<%= post.imageUrl %>" alt="投稿画像" class="rounded-lg max-h-96 w-auto">
+                        <% } %>
+
+                        <div class="space-y-4">
+                            <% microposts.forEach(post => { %>
+                                <div class="bg-white dark:bg-gray-900 rounded-xl shadow-sm border border-gray-200 dark:border-gray-800">
+                                    <div class="p-6">
+                                        <div class="space-y-3">
+                                            <div class="flex items-center justify-between">
+                                                <p class="text-gray-600 dark:text-gray-300">
+                                                    <%= post.title %>
+                                                </p>
+                                                <div class="flex items-center space-x-2">
+                                                    <% if (post.categories && post.categories.length > 0) { %>
+                                                        <% post.categories.forEach(relation => { %>
+                                                            <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200">
+                                                                <%= relation.category.name %>
+                                                            </span>
+                                                        <% }) %>
+                                                    <% } %>
+                                                    <% if (post.user?.userRoles?.some(ur => ur.role.name === 'admin')) { %>
+                                                        <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-rose-100 text-rose-800 dark:bg-rose-900 dark:text-rose-200">
+                                                            管理者
+                                                        </span>
+                                                    <% } %>
+                                                </div>
+                                            </div>
+                                            <% if (post.imageUrl) { %>
+                                                <div class="mt-3">
+                                                    <img src="<%= post.imageUrl %>" alt="投稿画像" class="rounded-lg max-h-96 w-auto">
+                                                </div>
+                                            <% } %>
+                                            <div class="flex items-center justify-between">
+                                                <p class="text-sm text-gray-500 dark:text-gray-400">
+                                                    <%= new Date(post.createdAt).toLocaleString('ja-JP') %>
+                                                </p>
+                                                <div class="flex items-center space-x-4">
+                                                    <button class="flex items-center text-gray-500 dark:text-gray-400 hover:text-rose-600 dark:hover:text-rose-400">
+                                                        <svg class="w-5 h-5 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z"/>
+                                                        </svg>
+                                                        <span class="text-sm">いいね</span>
+                                                    </button>
+                                                    <button class="flex items-center text-gray-500 dark:text-gray-400 hover:text-rose-600 dark:hover:text-rose-400">
+                                                        <svg class="w-5 h-5 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"/>
+                                                        </svg>
+                                                        <span class="text-sm">コメント</span>
+                                                    </button>
+                                                    <form action="/microposts/<%= post.id %>" method="POST" class="inline">
+                                                        <input type="hidden" name="_method" value="DELETE">
+                                                        <button type="submit" class="flex items-center text-gray-500 dark:text-gray-400 hover:text-rose-600 dark:hover:text-rose-400">
+                                                            <svg class="w-5 h-5 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
+                                                            </svg>
+                                                            <span class="text-sm">削除</span>
+                                                        </button>
+                                                    </form>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
                                 </div>
-                            <% } %>
-                            <div class="flex items-center justify-between">
-                                <p class="text-sm text-gray-500 dark:text-gray-400">
-                                    <%= new Date(post.createdAt).toLocaleString('ja-JP') %>
-                                </p>
-                                <div class="flex items-center space-x-4">
-                                    <button class="flex items-center text-gray-500 dark:text-gray-400 hover:text-rose-600 dark:hover:text-rose-400">
-                                        <svg class="w-5 h-5 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z"/>
-                                        </svg>
-                                        <span class="text-sm">いいね</span>
-                                    </button>
-                                    <button class="flex items-center text-gray-500 dark:text-gray-400 hover:text-rose-600 dark:hover:text-rose-400">
-                                        <svg class="w-5 h-5 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"/>
-                                        </svg>
-                                        <span class="text-sm">コメント</span>
-                                    </button>
-                                    <form action="/microposts/<%= post.id %>" method="POST" class="inline">
-                                        <input type="hidden" name="_method" value="DELETE">
-                                        <button type="submit" class="flex items-center text-gray-500 dark:text-gray-400 hover:text-rose-600 dark:hover:text-rose-400">
-                                            <svg class="w-5 h-5 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
-                                            </svg>
-                                            <span class="text-sm">削除</span>
-                                        </button>
-                                    </form>
+                            <% }) %>
+                        </div>
+                    </div>
+
+                    <!-- Sidebar -->
+                    <div class="w-72 shrink-0">
+                        <div class="sticky top-0">
+                            <div class="bg-white dark:bg-gray-900 rounded-xl shadow-sm border border-gray-200 dark:border-gray-800 p-6">
+                                <h2 class="text-lg font-semibold text-gray-900 dark:text-white mb-4">カテゴリー</h2>
+                                <div class="space-y-2">
+                                    <% categories.forEach(category => { %>
+                                        <a href="#" class="block px-3 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors">
+                                            <%= category.name %>
+                                        </a>
+                                    <% }) %>
                                 </div>
                             </div>
                         </div>
                     </div>
                 </div>
-            <% }) %>
+            </div>
         </div>
     </div>
 </div> 
