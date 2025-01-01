@@ -305,6 +305,11 @@ class ProfileService extends BaseService {
 
 // フォロー関連サービス
 class FollowService extends BaseService {
+  constructor(prisma, logger) {
+    super(prisma, logger);
+    this.notificationService = new NotificationService(prisma, logger);
+  }
+
   async isFollowing(followerId, followingId) {
     const follow = await this.prisma.follow.findUnique({
       where: {
@@ -318,12 +323,21 @@ class FollowService extends BaseService {
   }
 
   async follow(followerId, followingId) {
-    return this.prisma.follow.create({
+    const follow = await this.prisma.follow.create({
       data: {
         followerId: this.validateId(followerId),
         followingId: this.validateId(followingId)
       }
     });
+
+    // フォロー通知の作成
+    await this.notificationService.createNotification({
+      type: 'FOLLOW',
+      recipientId: followingId,
+      actorId: followerId
+    });
+
+    return follow;
   }
 
   async unfollow(followerId, followingId) {
@@ -771,17 +785,38 @@ class PassportService extends BaseService {
 
 // いいね関連サービス
 class LikeService extends BaseService {
+  constructor(prisma, logger) {
+    super(prisma, logger);
+    this.notificationService = new NotificationService(prisma, logger);
+  }
+
   async like(userId, micropostId) {
     const validUserId = this.validateId(userId);
     const validMicropostId = this.validateId(micropostId);
 
-    await this.prisma.like.createMany({
+    const like = await this.prisma.like.createMany({
       data: {
         userId: validUserId,
         micropostId: validMicropostId
       },
       skipDuplicates: true
     });
+
+    // 投稿の作成者を取得
+    const micropost = await this.prisma.micropost.findUnique({
+      where: { id: validMicropostId },
+      select: { userId: true }
+    });
+
+    // 自分の投稿以外にいいねした場合のみ通知を作成
+    if (micropost && micropost.userId !== validUserId) {
+      await this.notificationService.createNotification({
+        type: 'LIKE',
+        recipientId: micropost.userId,
+        actorId: validUserId,
+        micropostId: validMicropostId
+      });
+    }
 
     return this.prisma.like.findUnique({
       where: {
@@ -867,19 +902,38 @@ class CommentService {
   constructor(prisma, logger) {
     this.prisma = prisma;
     this.logger = logger;
+    this.notificationService = new NotificationService(prisma, logger);
   }
 
   async createComment({ content, userId, micropostId }) {
-    return this.prisma.comment.create({
+    const comment = await this.prisma.comment.create({
       data: {
         content,
         userId,
         micropostId
       },
       include: {
-        user: true
+        user: true,
+        micropost: {
+          select: {
+            userId: true
+          }
+        }
       }
     });
+
+    // 自分の投稿以外にコメントした場合のみ通知を作成
+    if (comment.micropost.userId !== userId) {
+      await this.notificationService.createNotification({
+        type: 'COMMENT',
+        recipientId: comment.micropost.userId,
+        actorId: userId,
+        micropostId,
+        commentId: comment.id
+      });
+    }
+
+    return comment;
   }
 
   async getCommentsByMicropostId(micropostId) {
@@ -948,14 +1002,29 @@ class NotificationService extends BaseService {
   }
 
   async createNotification({ type, recipientId, actorId, micropostId = null, commentId = null }) {
+    // 通知タイプの検証
+    const validTypes = ['FOLLOW', 'LIKE', 'COMMENT'];
+    if (!validTypes.includes(type)) {
+      throw new Error('Invalid notification type');
+    }
+
     return this.prisma.notification.create({
       data: {
         type,
-        recipientId,
-        actorId,
-        micropostId,
-        commentId,
+        recipientId: this.validateId(recipientId),
+        actorId: this.validateId(actorId),
+        micropostId: micropostId ? this.validateId(micropostId) : null,
+        commentId: commentId ? this.validateId(commentId) : null,
         read: false
+      },
+      include: {
+        actor: {
+          include: {
+            profile: true
+          }
+        },
+        micropost: true,
+        comment: true
       }
     });
   }
