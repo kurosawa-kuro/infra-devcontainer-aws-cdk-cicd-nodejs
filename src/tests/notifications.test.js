@@ -36,7 +36,15 @@ describe('Notification Integration Tests', () => {
       data: {
         email: 'other@example.com',
         password: '$2b$10$77777777777777777777777777777777777777777777777777',
-        name: 'OtherUser'
+        name: 'OtherUser',
+        profile: {
+          create: {
+            avatarPath: '/uploads/default_avatar.png'
+          }
+        }
+      },
+      include: {
+        profile: true
       }
     });
 
