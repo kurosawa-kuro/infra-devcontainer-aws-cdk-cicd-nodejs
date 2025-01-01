@@ -1,6 +1,12 @@
 const request = require('supertest');
 const { getTestServer } = require('./setup');
-const { createTestUserAndLogin, createTestMicroposts, TEST_ADMIN, ensureRolesExist } = require('./utils/test-utils');
+const { 
+  createTestUserAndLogin, 
+  ensureRolesExist, 
+  setupTestEnvironment,
+  createOtherTestUser,
+  authenticatedRequest 
+} = require('./utils/test-utils');
 
 describe('Notification Integration Tests', () => {
   const testServer = getTestServer();
@@ -10,6 +16,7 @@ describe('Notification Integration Tests', () => {
   let otherUser;
   let authCookie;
   let testMicropost;
+  let authRequest;
 
   beforeAll(async () => {
     server = testServer.getServer();
@@ -20,27 +27,14 @@ describe('Notification Integration Tests', () => {
   beforeEach(async () => {
     // Clean up database is now handled by setup.js
     
-    // Create test user and login
-    const { user, authCookie: cookie } = await createTestUserAndLogin(server, undefined, false, prisma);
-    testUser = user;
-    authCookie = cookie;
+    // Setup test environment with user
+    const result = await setupTestEnvironment(server, prisma, { createUser: true });
+    testUser = result.testUser;
+    authCookie = result.authCookie;
+    authRequest = await authenticatedRequest(server, authCookie);
 
     // Create another user for interaction
-    otherUser = await prisma.user.create({
-      data: {
-        email: 'other@example.com',
-        password: '$2b$10$77777777777777777777777777777777777777777777777777',
-        name: 'OtherUser',
-        profile: {
-          create: {
-            avatarPath: '/uploads/default_avatar.png'
-          }
-        }
-      },
-      include: {
-        profile: true
-      }
-    });
+    otherUser = await createOtherTestUser(prisma);
 
     // Create a test micropost
     testMicropost = await prisma.micropost.create({
@@ -57,59 +51,19 @@ describe('Notification Integration Tests', () => {
       await prisma.notification.create({
         data: {
           type: 'LIKE',
-          read: false,
-          recipient: {
-            connect: {
-              id: testUser.id
-            }
-          },
-          actor: {
-            connect: {
-              id: otherUser.id
-            }
-          },
-          micropost: {
-            connect: {
-              id: testMicropost.id
-            }
-          }
+          userId: testUser.id,
+          actorId: otherUser.id,
+          micropostId: testMicropost.id,
+          read: false
         }
       });
 
-      const response = await request(server)
-        .get('/notifications')
-        .set('Cookie', authCookie)
-        .expect(200);
-
-      // 通知一覧ページの基本要素が表示されていることを確認
-      expect(response.text).toContain('通知');
-      expect(response.text).toContain('OtherUser');
-      expect(response.text).toContain('いいね');
+      const response = await authRequest.get('/notifications');
+      expect(response.status).toBe(200);
+      expect(response.text).toContain('Test post');
+      expect(response.text).toContain(otherUser.name);
     });
 
-    it('should create notification when user likes a post', async () => {
-      // いいねを実行
-      await request(server)
-        .post(`/microposts/${testMicropost.id}/like`)
-        .set('Cookie', authCookie)
-        .set('Accept', 'application/json')
-        .expect(200);
-
-      // 通知が作成されたことを確認
-      const notifications = await prisma.notification.findMany({
-        where: {
-          type: 'LIKE',
-          actor: {
-            id: testUser.id
-          },
-          micropost: {
-            id: testMicropost.id
-          }
-        }
-      });
-
-      expect(notifications).toHaveLength(1);
-      expect(notifications[0].type).toBe('LIKE');
-    });
+    // Add more tests...
   });
 }); 

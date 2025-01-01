@@ -1,6 +1,6 @@
 const request = require('supertest');
 const { getTestServer } = require('./setup');
-const { createTestUserAndLogin, TEST_ADMIN, ensureRolesExist } = require('./utils/test-utils');
+const { createTestUserAndLogin,  ensureRolesExist } = require('./utils/test-utils');
 const path = require('path');
 
 describe('UserProfile Integration Tests', () => {

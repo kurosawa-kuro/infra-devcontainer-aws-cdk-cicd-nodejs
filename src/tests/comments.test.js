@@ -1,6 +1,11 @@
 const request = require('supertest');
 const { getTestServer } = require('./setup');
-const { createTestUserAndLogin, createTestMicroposts, TEST_ADMIN, ensureRolesExist } = require('./utils/test-utils');
+const { 
+  createTestUserAndLogin,
+  ensureRolesExist,
+  setupTestEnvironment,
+  authenticatedRequest
+} = require('./utils/test-utils');
 
 describe('Comment Integration Tests', () => {
   const testServer = getTestServer();
@@ -9,6 +14,7 @@ describe('Comment Integration Tests', () => {
   let testUser;
   let authCookie;
   let testMicropost;
+  let authRequest;
 
   beforeAll(async () => {
     server = testServer.getServer();
@@ -19,10 +25,11 @@ describe('Comment Integration Tests', () => {
   beforeEach(async () => {
     // Clean up database is now handled by setup.js
 
-    // Create test user and login with prisma instance
-    const { user, authCookie: cookie } = await createTestUserAndLogin(server, undefined, false, prisma);
-    testUser = user;
-    authCookie = cookie;
+    // Setup test environment with user
+    const result = await setupTestEnvironment(server, prisma, { createUser: true });
+    testUser = result.testUser;
+    authCookie = result.authCookie;
+    authRequest = await authenticatedRequest(server, authCookie);
 
     // Create a test micropost
     testMicropost = await prisma.micropost.create({
@@ -35,11 +42,8 @@ describe('Comment Integration Tests', () => {
 
   describe('Comment Display', () => {
     it('should show no comments message when there are no comments', async () => {
-      const response = await request(server)
-        .get(`/microposts/${testMicropost.id}`)
-        .set('Cookie', authCookie)
-        .expect(200);
-
+      const response = await authRequest.get(`/microposts/${testMicropost.id}`);
+      expect(response.status).toBe(200);
       expect(response.text).toContain('まだコメントはありません。');
     });
 
@@ -54,11 +58,8 @@ describe('Comment Integration Tests', () => {
         }
       });
 
-      const response = await request(server)
-        .get(`/microposts/${testMicropost.id}`)
-        .set('Cookie', authCookie)
-        .expect(200);
-
+      const response = await authRequest.get(`/microposts/${testMicropost.id}`);
+      expect(response.status).toBe(200);
       expect(response.text).toContain(commentContent);
       expect(response.text).toContain(testUser.name);
       expect(response.text).not.toContain('まだコメントはありません。');
@@ -68,11 +69,11 @@ describe('Comment Integration Tests', () => {
   describe('Comment Creation', () => {
     it('should successfully add a comment to a micropost', async () => {
       const commentContent = 'This is a test comment';
-      const response = await request(server)
+      const response = await authRequest
         .post(`/microposts/${testMicropost.id}/comments`)
-        .set('Cookie', authCookie)
-        .send({ content: commentContent })
-        .expect(302); // Redirects back to the micropost page
+        .send({ content: commentContent });
+
+      expect(response.status).toBe(302); // Redirects back to the micropost page
 
       // Verify comment in database
       const comment = await prisma.comment.findFirst({
@@ -85,11 +86,8 @@ describe('Comment Integration Tests', () => {
       expect(comment).toBeTruthy();
 
       // Verify comment appears on the page
-      const pageResponse = await request(server)
-        .get(`/microposts/${testMicropost.id}`)
-        .set('Cookie', authCookie)
-        .expect(200);
-
+      const pageResponse = await authRequest.get(`/microposts/${testMicropost.id}`);
+      expect(pageResponse.status).toBe(200);
       expect(pageResponse.text).toContain(commentContent);
       expect(pageResponse.text).toContain(testUser.name);
       expect(pageResponse.text).not.toContain('まだコメントはありません。');

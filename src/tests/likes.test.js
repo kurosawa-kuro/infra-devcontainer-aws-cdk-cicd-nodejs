@@ -1,6 +1,12 @@
 const request = require('supertest');
 const { getTestServer } = require('./setup');
-const { createTestUserAndLogin, createTestMicroposts, TEST_ADMIN, ensureRolesExist } = require('./utils/test-utils');
+const { 
+  createTestUserAndLogin,
+  ensureRolesExist,
+  setupTestEnvironment,
+  createOtherTestUser,
+  authenticatedRequest
+} = require('./utils/test-utils');
 
 describe('Like Integration Tests', () => {
   const testServer = getTestServer();
@@ -9,6 +15,7 @@ describe('Like Integration Tests', () => {
   let testUser;
   let authCookie;
   let testMicropost;
+  let authRequest;
 
   beforeAll(async () => {
     server = testServer.getServer();
@@ -19,10 +26,11 @@ describe('Like Integration Tests', () => {
   beforeEach(async () => {
     // Clean up database is now handled by setup.js
 
-    // Create test user and login with prisma instance
-    const { user, authCookie: cookie } = await createTestUserAndLogin(server, undefined, false, prisma);
-    testUser = user;
-    authCookie = cookie;
+    // Setup test environment with user
+    const result = await setupTestEnvironment(server, prisma, { createUser: true });
+    testUser = result.testUser;
+    authCookie = result.authCookie;
+    authRequest = await authenticatedRequest(server, authCookie);
 
     // Create a test micropost
     testMicropost = await prisma.micropost.create({
@@ -35,12 +43,11 @@ describe('Like Integration Tests', () => {
 
   describe('Like Operations', () => {
     it('should successfully like a micropost', async () => {
-      const response = await request(server)
+      const response = await authRequest
         .post(`/microposts/${testMicropost.id}/like`)
-        .set('Cookie', authCookie)
-        .set('Accept', 'application/json')
-        .expect(200);
+        .set('Accept', 'application/json');
 
+      expect(response.status).toBe(200);
       expect(response.body.success).toBe(true);
       expect(response.body.message).toBe('いいねしました');
       expect(response.body.data.likeCount).toBe(1);
@@ -64,12 +71,11 @@ describe('Like Integration Tests', () => {
         }
       });
 
-      const response = await request(server)
+      const response = await authRequest
         .delete(`/microposts/${testMicropost.id}/like`)
-        .set('Cookie', authCookie)
-        .set('Accept', 'application/json')
-        .expect(200);
+        .set('Accept', 'application/json');
 
+      expect(response.status).toBe(200);
       expect(response.body.success).toBe(true);
       expect(response.body.message).toBe('いいねを取り消しました');
       expect(response.body.data.likeCount).toBe(0);
@@ -85,30 +91,19 @@ describe('Like Integration Tests', () => {
     });
 
     it('should show correct like count on micropost page', async () => {
+      // Create another user and their like
+      const otherUser = await createOtherTestUser(prisma);
+
       // Create multiple likes
       await prisma.like.createMany({
         data: [
           { userId: testUser.id, micropostId: testMicropost.id },
-          // Create another user and their like
-          { 
-            userId: (await prisma.user.create({
-              data: {
-                email: 'another@example.com',
-                password: 'password123',
-                name: 'AnotherUser'
-              }
-            })).id, 
-            micropostId: testMicropost.id 
-          }
+          { userId: otherUser.id, micropostId: testMicropost.id }
         ]
       });
 
-      const response = await request(server)
-        .get(`/microposts/${testMicropost.id}`)
-        .set('Cookie', authCookie)
-        .expect(200);
-
-      // Check for the like count element
+      const response = await authRequest.get(`/microposts/${testMicropost.id}`);
+      expect(response.status).toBe(200);
       expect(response.text).toMatch(/<span class="text-sm like-count">2<\/span>/);
     });
   });

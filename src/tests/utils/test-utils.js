@@ -169,6 +169,70 @@ async function createTestMicroposts(prisma, userId, posts = [
   });
 }
 
+// 共通のテストセットアップ関数
+async function setupTestEnvironment(server, prisma, options = {}) {
+  const {
+    createUser = true,
+    isAdmin = false,
+    createMicroposts = false,
+    createCategories = false
+  } = options;
+
+  let testUser;
+  let authCookie;
+
+  if (createUser) {
+    const result = await createTestUserAndLogin(server, undefined, isAdmin, prisma);
+    testUser = result.user;
+    authCookie = result.authCookie;
+  }
+
+  if (createMicroposts && testUser) {
+    await createTestMicroposts(prisma, testUser.id);
+  }
+
+  if (createCategories) {
+    await prisma.category.createMany({
+      data: [
+        { name: 'プログラミング' },
+        { name: 'インフラ' },
+        { name: 'セキュリティ' }
+      ]
+    });
+  }
+
+  return { testUser, authCookie };
+}
+
+// 認証付きリクエストヘルパー
+async function authenticatedRequest(server, authCookie) {
+  return {
+    get: (url) => request(server).get(url).set('Cookie', authCookie),
+    post: (url, data) => request(server).post(url).set('Cookie', authCookie).send(data),
+    put: (url, data) => request(server).put(url).set('Cookie', authCookie).send(data),
+    delete: (url) => request(server).delete(url).set('Cookie', authCookie)
+  };
+}
+
+// テストユーザーの作成
+async function createOtherTestUser(prisma, email = 'other@example.com', name = 'OtherUser') {
+  return await prisma.user.create({
+    data: {
+      email,
+      password: '$2b$10$77777777777777777777777777777777777777777777777777',
+      name,
+      profile: {
+        create: {
+          avatarPath: '/uploads/default_avatar.png'
+        }
+      }
+    },
+    include: {
+      profile: true
+    }
+  });
+}
+
 module.exports = {
   TEST_USER,
   TEST_ADMIN,
@@ -177,5 +241,8 @@ module.exports = {
   logoutTestUser,
   createTestUserAndLogin,
   createTestMicroposts,
-  ensureRolesExist
+  ensureRolesExist,
+  setupTestEnvironment,
+  authenticatedRequest,
+  createOtherTestUser
 }; 

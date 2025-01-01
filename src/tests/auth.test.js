@@ -1,6 +1,6 @@
 const request = require('supertest');
 const { getTestServer } = require('./setup');
-const { TEST_USER, TEST_ADMIN, createTestUser, loginTestUser, logoutTestUser, ensureRolesExist } = require('./utils/test-utils');
+const { TEST_USER, TEST_ADMIN, createTestUser, loginTestUser , ensureRolesExist } = require('./utils/test-utils');
 
 describe('Authentication Integration Tests', () => {
   const testServer = getTestServer();
