@@ -74,7 +74,7 @@
     <% if (user) { %>
       <% if (profileUser.id === user.id || user.userRoles.some(ur => ur.role.name === 'admin')) { %>
         <a
-          href="/<%= profileUser.name || profileUser.id %>/edit"
+          href="/users/<%= profileUser.name || profileUser.id %>/edit"
           class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
         >
           編集
@@ -99,13 +99,13 @@
   <div class="mt-8 bg-white dark:bg-gray-900 shadow overflow-hidden sm:rounded-lg">
     <div class="px-4 py-5 sm:p-6">
       <div class="flex space-x-8">
-        <a href="/<%= profileUser.name || profileUser.id %>/following" class="text-center hover:opacity-75">
+        <a href="/users/<%= profileUser.name || profileUser.id %>/following" class="text-center hover:opacity-75">
           <div class="text-2xl font-semibold text-gray-900 dark:text-white following-count">
             <%= followCounts.followingCount %>
           </div>
           <div class="mt-1 text-sm text-gray-500 dark:text-gray-400">フォロー中</div>
         </a>
-        <a href="/<%= profileUser.name || profileUser.id %>/followers" class="text-center hover:opacity-75">
+        <a href="/users/<%= profileUser.name || profileUser.id %>/followers" class="text-center hover:opacity-75">
           <div class="text-2xl font-semibold text-gray-900 dark:text-white followers-count">
             <%= followCounts.followersCount %>
           </div>
@@ -124,7 +124,7 @@
       }
 
       const isFollowing = button.getAttribute('data-following') === 'true';
-      const endpoint = isFollowing ? `/users/${userId}/unfollow` : `/users/${userId}/follow`;
+      const endpoint = isFollowing ? `/api/users/${userId}/unfollow` : `/api/users/${userId}/follow`;
       
       console.log('Debug - Toggle Follow:', {
         userId,

@@ -120,7 +120,7 @@ class MicropostController extends BaseController {
           orderBy: { name: 'asc' }
         })
       ]);
-      res.render('pages/microposts/index', { 
+      res.render('pages/public/microposts/index', { 
         microposts,
         categories,
         title: '投稿一覧',
@@ -205,7 +205,7 @@ class ProfileController extends BaseController {
         micropostsCount: microposts.length
       });
 
-      this.renderWithUser(req, res, 'pages/users/profile/show', {
+      this.renderWithUser(req, res, 'pages/public/users/profile/show', {
         title: 'プロフィール',
         profileUser: profileUser,
         userProfile: profileUser.profile,
@@ -241,7 +241,7 @@ class ProfileController extends BaseController {
         return this.errorHandler.handlePermissionError(req, res, '他のユーザーのプロフィールは編集できません');
       }
 
-      res.render('profile/edit', {
+      res.render('pages/public/users/profile/edit', {
         title: 'プロフィール編集',
         path: req.path,
         user,
@@ -353,17 +353,37 @@ class ProfileController extends BaseController {
 
   async following(req, res) {
     return this.handleRequest(req, res, async () => {
-      const { identifier } = req.params;
+      this.logger.debug('Following request:', {
+        params: req.params,
+        path: req.path,
+        url: req.url,
+        method: req.method
+      });
+
+      const identifier = req.params.id;
+      this.logger.debug('Looking up user:', { identifier });
+      
       const profileUser = await this.service.findUserByIdentifier(identifier);
 
       if (!profileUser) {
+        this.logger.debug('Profile not found:', { identifier });
         return this.errorHandler.handleNotFoundError(req, res, 'ユーザーが見つかりません');
       }
+
+      this.logger.debug('Found profile user:', {
+        id: profileUser.id,
+        name: profileUser.name
+      });
 
       const following = await this.service.getFollowing(profileUser.id);
       const followCounts = await this.service.getFollowCounts(profileUser.id);
 
-      this.renderWithUser(req, res, 'pages/users/following', {
+      this.logger.debug('Following data:', {
+        followingCount: following.length,
+        followCounts
+      });
+
+      this.renderWithUser(req, res, 'pages/public/users/following', {
         profileUser,
         following: following.map(f => f.following),
         followCounts,
@@ -374,17 +394,37 @@ class ProfileController extends BaseController {
 
   async followers(req, res) {
     return this.handleRequest(req, res, async () => {
-      const { identifier } = req.params;
+      this.logger.debug('Followers request:', {
+        params: req.params,
+        path: req.path,
+        url: req.url,
+        method: req.method
+      });
+
+      const identifier = req.params.id;
+      this.logger.debug('Looking up user:', { identifier });
+      
       const profileUser = await this.service.findUserByIdentifier(identifier);
 
       if (!profileUser) {
+        this.logger.debug('Profile not found:', { identifier });
         return this.errorHandler.handleNotFoundError(req, res, 'ユーザーが見つかりません');
       }
+
+      this.logger.debug('Found profile user:', {
+        id: profileUser.id,
+        name: profileUser.name
+      });
 
       const followers = await this.service.getFollowers(profileUser.id);
       const followCounts = await this.service.getFollowCounts(profileUser.id);
 
-      this.renderWithUser(req, res, 'pages/users/followers', {
+      this.logger.debug('Followers data:', {
+        followersCount: followers.length,
+        followCounts
+      });
+
+      this.renderWithUser(req, res, 'pages/public/users/followers', {
         profileUser,
         followers: followers.map(f => f.follower),
         followCounts,
@@ -558,7 +598,7 @@ class CategoryController extends BaseController {
   async index(req, res) {
     return this.handleRequest(req, res, async () => {
       const categories = await this.categoryService.getAllCategories();
-      res.render('pages/categories/index', {
+      res.render('pages/public/categories/index', {
         categories,
         title: 'カテゴリー一覧',
         path: req.path
@@ -572,7 +612,7 @@ class CategoryController extends BaseController {
       if (!category) {
         return this.errorHandler.handleNotFoundError(req, res, 'カテゴリーが見つかりません');
       }
-      res.render('pages/categories/show', {
+      res.render('pages/public/categories/show', {
         category,
         title: `カテゴリー: ${category.name}`,
         path: req.path

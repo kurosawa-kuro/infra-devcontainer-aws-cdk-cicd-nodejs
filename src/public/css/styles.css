@@ -827,6 +827,10 @@ p:is(.dark *) {
   height: 2.5rem;
 }
 
+.h-12 {
+  height: 3rem;
+}
+
 .h-20 {
   height: 5rem;
 }
@@ -855,10 +859,6 @@ p:is(.dark *) {
   height: 100%;
 }
 
-.h-12 {
-  height: 3rem;
-}
-
 .max-h-48 {
   max-height: 12rem;
 }
@@ -873,6 +873,10 @@ p:is(.dark *) {
 
 .w-10 {
   width: 2.5rem;
+}
+
+.w-12 {
+  width: 3rem;
 }
 
 .w-20 {
@@ -907,16 +911,8 @@ p:is(.dark *) {
   width: 100%;
 }
 
-.w-12 {
-  width: 3rem;
-}
-
 .min-w-full {
   min-width: 100%;
-}
-
-.min-w-0 {
-  min-width: 0px;
 }
 
 .max-w-2xl {
@@ -945,10 +941,6 @@ p:is(.dark *) {
 
 .flex-1 {
   flex: 1 1 0%;
-}
-
-.flex-shrink-0 {
-  flex-shrink: 0;
 }
 
 .-translate-x-1\/2 {
@@ -1067,12 +1059,6 @@ p:is(.dark *) {
 
 .overflow-x-auto {
   overflow-x: auto;
-}
-
-.truncate {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 .whitespace-nowrap {
