@@ -31,6 +31,7 @@ model User {
   userRoles  UserRole[]
   microposts Micropost[]
   comments   Comment[]
+  likes      Like[]
   
   // Social relations
   following  Follow[]    @relation("Following")
