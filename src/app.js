@@ -21,7 +21,8 @@ const {
   MicropostService,
   SystemService,
   CategoryService,
-  LogUploader
+  LogUploader,
+  PassportService
 } = require('./services');
 const {
   AuthController,
@@ -468,7 +469,8 @@ class Application {
     this.fileUploader = new FileUploader(this.storageConfig);
     this.errorHandler = new ErrorHandler(this.storageConfig.getUploadLimits(), this.logger);
 
-    require('./config/passport')(passport);
+    const passportService = new PassportService(this.prisma, this.logger);
+    passportService.configurePassport(passport);
   }
 
   initializeServices() {
@@ -477,7 +479,8 @@ class Application {
       profile: new ProfileService(this.prisma, this.logger),
       micropost: new MicropostService(this.prisma, this.logger),
       system: new SystemService(this.prisma, this.logger),
-      category: new CategoryService(this.prisma, this.logger)
+      category: new CategoryService(this.prisma, this.logger),
+      passport: new PassportService(this.prisma, this.logger)
     };
   }
 
