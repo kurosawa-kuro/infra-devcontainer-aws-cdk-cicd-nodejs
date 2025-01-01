@@ -26,6 +26,7 @@ document.querySelectorAll('.like-button').forEach(button => {
         method: isLiked ? 'DELETE' : 'POST',
         headers: { 
           'Content-Type': 'application/json',
+          'Accept': 'application/json',
           'X-Requested-With': 'XMLHttpRequest'
         },
         credentials: 'same-origin'

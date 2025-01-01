@@ -31,7 +31,9 @@ class BaseController {
   }
 
   sendResponse(req, res, { status = 200, message, data, redirectUrl }) {
-    const isApiRequest = req.xhr || req.headers.accept?.includes('application/json');
+    const isApiRequest = req.xhr || 
+                        req.headers.accept?.toLowerCase().includes('application/json') ||
+                        req.headers['x-requested-with']?.toLowerCase() === 'xmlhttprequest';
     
     if (isApiRequest) {
       return res.status(status).json({
