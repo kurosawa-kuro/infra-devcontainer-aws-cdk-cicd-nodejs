@@ -103,9 +103,11 @@ function setupRoutes(app, controllers, fileUploader) {
   // ===================================
   // User Profile Routes
   // ===================================
-  app.get('/:id', asyncHandler((req, res) => profile.show(req, res)));
-  app.get('/:id/edit', isAuthenticated, asyncHandler((req, res) => profile.getEditPage(req, res)));
-  app.post('/:id/edit', isAuthenticated, fileUploader.getUploader().single('avatar'), asyncHandler((req, res) => profile.update(req, res)));
+  const profileRouter = express.Router();
+  profileRouter.get('/:id', asyncHandler((req, res) => profile.show(req, res)));
+  profileRouter.get('/:id/edit', isAuthenticated, asyncHandler((req, res) => profile.getEditPage(req, res)));
+  profileRouter.post('/:id/edit', isAuthenticated, fileUploader.getUploader().single('avatar'), asyncHandler((req, res) => profile.update(req, res)));
+  app.use('/profile', profileRouter);
 
   // ===================================
   // Error Handlers
