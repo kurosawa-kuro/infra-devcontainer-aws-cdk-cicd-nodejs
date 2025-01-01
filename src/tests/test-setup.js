@@ -85,6 +85,7 @@ class TestServer {
     await this.prisma.micropost.deleteMany();
     await this.prisma.userRole.deleteMany();
     await this.prisma.userProfile.deleteMany();
+    await this.prisma.follow.deleteMany();
     await this.prisma.user.deleteMany();
     await this.prisma.role.deleteMany();
     

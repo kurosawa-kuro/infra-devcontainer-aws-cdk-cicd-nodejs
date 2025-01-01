@@ -23,7 +23,7 @@ describe('UserProfile Integration Tests', () => {
   describe('View Profile', () => {
     it('should show user profile page with role information', async () => {
       const response = await request(server)
-        .get(`/profile/${testUser.id}`)
+        .get(`/profile/${testUser.name || testUser.id}`)
         .set('Cookie', authCookie)
         .expect(200);
 
@@ -42,12 +42,12 @@ describe('UserProfile Integration Tests', () => {
       };
 
       const response = await request(server)
-        .post(`/profile/${testUser.id}/edit`)
+        .post(`/profile/${testUser.name || testUser.id}/edit`)
         .set('Cookie', authCookie)
         .send(updatedProfile)
         .expect(302);
 
-      expect(response.header.location).toBe(`/profile/${testUser.id}`);
+      expect(response.header.location).toBe(`/profile/${testUser.name || testUser.id}`);
 
       const updatedUser = await prisma.user.findUnique({
         where: { id: testUser.id },

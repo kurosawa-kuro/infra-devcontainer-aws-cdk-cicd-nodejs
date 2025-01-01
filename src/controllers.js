@@ -355,7 +355,7 @@ class ProfileController extends BaseController {
       
       this.sendResponse(req, res, {
         message: 'プロフィールを更新しました',
-        redirectUrl: `/profile/${updatedUser.name || userId}`
+        redirectUrl: `/profile/${updatedUser.name || updatedUser.id}`
       });
     });
   }

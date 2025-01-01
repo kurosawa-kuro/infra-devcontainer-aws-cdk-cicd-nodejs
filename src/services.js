@@ -222,12 +222,15 @@ class ProfileService extends BaseService {
       throw new Error('お名前は半角英数字のみ使用可能です');
     }
 
-    const [updatedUser, updatedProfile] = await this.prisma.$transaction([
-      this.prisma.user.update({
+    const updatedUser = await this.prisma.$transaction(async (prisma) => {
+      const user = await prisma.user.update({
         where: { id: parsedId },
-        data: { name: profileData.name || '' }
-      }),
-      this.prisma.userProfile.upsert({
+        data: { 
+          name: profileData.name || undefined  // 空文字列ではなく、undefinedを使用
+        }
+      });
+
+      await prisma.userProfile.upsert({
         where: { userId: parsedId },
         create: {
           userId: parsedId,
@@ -244,10 +247,23 @@ class ProfileService extends BaseService {
           birthDate: profileData.birthDate ? new Date(profileData.birthDate) : null,
           ...(profileData.avatarPath && { avatarPath: profileData.avatarPath })
         }
-      })
-    ]);
+      });
 
-    return { ...updatedUser, profile: updatedProfile };
+      // トランザクション内で最新のユーザー情報を取得
+      return prisma.user.findUnique({
+        where: { id: parsedId },
+        include: {
+          profile: true,
+          userRoles: {
+            include: {
+              role: true
+            }
+          }
+        }
+      });
+    });
+
+    return updatedUser;
   }
 
   async updateUserRoles(userId, roleNames) {
