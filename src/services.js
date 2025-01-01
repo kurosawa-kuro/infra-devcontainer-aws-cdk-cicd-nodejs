@@ -303,22 +303,24 @@ class ProfileService extends BaseService {
   }
 
   async getFollowCounts(userId) {
-    const counts = await this.prisma.follow.aggregate({
-      _count: {
-        followerId: true,
-        followingId: true,
-      },
-      where: {
-        OR: [
-          { followerId: userId },
-          { followingId: userId }
-        ]
-      }
-    });
+    const [followingCount, followersCount] = await Promise.all([
+      // フォロー中の数（自分がフォローしている人の数）
+      this.prisma.follow.count({
+        where: {
+          followerId: parseInt(userId, 10)
+        }
+      }),
+      // フォロワーの数（自分をフォローしている人の数）
+      this.prisma.follow.count({
+        where: {
+          followingId: parseInt(userId, 10)
+        }
+      })
+    ]);
 
     return {
-      followingCount: counts._count.followerId,
-      followersCount: counts._count.followingId
+      followingCount,
+      followersCount
     };
   }
 
@@ -348,6 +350,21 @@ class ProfileService extends BaseService {
       },
       include: {
         following: {
+          include: {
+            profile: true
+          }
+        }
+      }
+    });
+  }
+
+  async getFollowers(userId) {
+    return await this.prisma.follow.findMany({
+      where: {
+        followingId: userId
+      },
+      include: {
+        follower: {
           include: {
             profile: true
           }

@@ -84,6 +84,7 @@ function setupRoutes(app, controllers, fileUploader) {
   
   // フォロー中一覧表示 (idルートの前に配置)
   app.get('/:identifier/following', isAuthenticated, asyncHandler((req, res) => profile.following(req, res)));
+  app.get('/:identifier/followers', isAuthenticated, asyncHandler((req, res) => profile.followers(req, res)));
   
   // 既存のプロフィールルート
   app.get('/:id', asyncHandler((req, res) => profile.show(req, res)));

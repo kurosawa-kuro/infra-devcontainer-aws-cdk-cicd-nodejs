@@ -1,0 +1,51 @@
+<%- contentFor('body') %>
+<div class="max-w-2xl mx-auto px-4">
+  <div class="mb-6">
+    <h1 class="text-2xl font-bold text-gray-900 dark:text-white">
+      <%= profileUser.name %>のフォロワー
+    </h1>
+    <a href="/<%= profileUser.name || profileUser.id %>" class="text-indigo-600 hover:text-indigo-500">
+      ← プロフィールに戻る
+    </a>
+  </div>
+
+  <div class="bg-white dark:bg-gray-900 shadow overflow-hidden sm:rounded-lg">
+    <ul class="divide-y divide-gray-200 dark:divide-gray-700">
+      <% if (followers && followers.length > 0) { %>
+        <% followers.forEach(follower => { %>
+          <li class="p-4">
+            <div class="flex items-center space-x-4">
+              <img 
+                src="<%= follower.profile?.avatarPath ? `/uploads/${follower.profile.avatarPath}` : '/uploads/default_avatar.png' %>"
+                alt="Profile Avatar"
+                class="h-12 w-12 rounded-full object-cover"
+              >
+              <div class="flex-1">
+                <a href="/<%= follower.name || follower.id %>" class="text-sm font-medium text-gray-900 dark:text-white hover:underline">
+                  <%= follower.name %>
+                </a>
+                <p class="text-sm text-gray-500 dark:text-gray-400">
+                  <%= follower.profile?.bio || '自己紹介はありません' %>
+                </p>
+              </div>
+              <% if (user && user.id !== follower.id) { %>
+                <button
+                  onclick="toggleFollow('<%= follower.id %>', this)"
+                  class="inline-flex items-center px-3 py-1 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+                  data-following="true"
+                  data-user-id="<%= follower.id %>"
+                >
+                  <span class="follow-text" data-following="true">フォロー中</span>
+                </button>
+              <% } %>
+            </div>
+          </li>
+        <% }); %>
+      <% } else { %>
+        <li class="p-4 text-center text-gray-500 dark:text-gray-400">
+          フォロワーはいません
+        </li>
+      <% } %>
+    </ul>
+  </div>
+</div> 
