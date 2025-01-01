@@ -885,6 +885,18 @@ p:is(.dark *) {
   margin-inline-end: auto;
 }
 
+.mb-0 {
+  margin-bottom: 0px;
+}
+
+.me-3 {
+  margin-inline-end: 0.75rem;
+}
+
+.me-2 {
+  margin-inline-end: 0.5rem;
+}
+
 .block {
   display: block;
 }

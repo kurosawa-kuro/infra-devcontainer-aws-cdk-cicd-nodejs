@@ -497,12 +497,32 @@ class Application {
   initializeControllers() {
     return {
       auth: new AuthController(this.services.auth, this.errorHandler, this.logger),
-      profile: new ProfileController(this.services.profile, this.errorHandler, this.logger),
-      micropost: new MicropostController(this.services.micropost, this.fileUploader, this.errorHandler, this.logger),
+      profile: new ProfileController(
+        { 
+          profile: this.services.profile,
+          micropost: this.services.micropost
+        },
+        this.errorHandler,
+        this.logger
+      ),
+      micropost: new MicropostController(
+        { micropost: this.services.micropost, like: this.services.like },
+        this.fileUploader,
+        this.errorHandler,
+        this.logger
+      ),
       system: new SystemController(this.services.system, this.errorHandler, this.logger),
-      dev: new DevController(this.services.system, this.errorHandler, this.logger),
+      dev: new DevController(
+        { 
+          system: this.services.system,
+          profile: this.services.profile,
+          micropost: this.services.micropost
+        },
+        this.errorHandler,
+        this.logger
+      ),
       admin: new AdminController(this.services, this.errorHandler, this.logger),
-      category: new CategoryController(this.services, this.errorHandler, this.logger),
+      category: new CategoryController(this.services.category, this.errorHandler, this.logger),
       like: new LikeController(this.services.like, this.errorHandler, this.logger)
     };
   }

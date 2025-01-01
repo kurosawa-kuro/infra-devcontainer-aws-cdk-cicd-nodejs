@@ -384,6 +384,7 @@ class MicropostService extends BaseService {
           select: {
             id: true,
             email: true,
+            name: true,
             userRoles: {
               include: { role: true }
             }
@@ -393,7 +394,10 @@ class MicropostService extends BaseService {
           include: { category: true }
         },
         _count: {
-          select: { views: true }
+          select: { 
+            views: true,
+            likes: true
+          }
         }
       }
     });

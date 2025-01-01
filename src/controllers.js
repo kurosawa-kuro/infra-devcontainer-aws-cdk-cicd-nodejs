@@ -1,6 +1,6 @@
 class BaseController {
-  constructor(service, errorHandler, logger) {
-    this.service = service;
+  constructor(services, errorHandler, logger) {
+    this.services = services;
     this.errorHandler = errorHandler;
     this.logger = logger;
   }
@@ -9,7 +9,16 @@ class BaseController {
     try {
       await handler();
     } catch (error) {
-      this.errorHandler.handle(error, req, res);
+      if (this.errorHandler && typeof this.errorHandler.handleError === 'function') {
+        this.errorHandler.handleError(error, req, res);
+      } else {
+        // フォールバックのエラーハンドリング
+        console.error('Error:', error);
+        res.status(500).json({
+          success: false,
+          message: 'サーバーエラーが発生しました'
+        });
+      }
     }
   }
 
@@ -40,8 +49,8 @@ class BaseController {
 }
 
 class AuthController extends BaseController {
-  constructor(service, errorHandler, logger) {
-    super(service, errorHandler, logger);
+  constructor(services, errorHandler, logger) {
+    super(services, errorHandler, logger);
   }
 
   getSignupPage(req, res) {
@@ -62,7 +71,7 @@ class AuthController extends BaseController {
 
   async signup(req, res) {
     return this.handleRequest(req, res, async () => {
-      const user = await this.service.signup(req.body);
+      const user = await this.services.signup(req.body);
       await new Promise((resolve, reject) => {
         req.logIn(user, (err) => err ? reject(err) : resolve());
       });
@@ -75,7 +84,7 @@ class AuthController extends BaseController {
 
   async login(req, res) {
     return this.handleRequest(req, res, async () => {
-      await this.service.login(req, res);
+      await this.services.login(req, res);
       this.sendResponse(req, res, {
         message: 'ログインしました',
         redirectUrl: '/'
@@ -86,7 +95,7 @@ class AuthController extends BaseController {
   async logout(req, res) {
     return this.handleRequest(req, res, async () => {
       try {
-        await this.service.logout(req);
+        await this.services.logout(req);
       } catch (error) {
         // Continue with logout even if session destruction fails
         console.error('Session destruction error:', error);
@@ -113,24 +122,37 @@ class AuthController extends BaseController {
 }
 
 class MicropostController extends BaseController {
-  constructor(service, fileUploader, errorHandler, logger) {
-    super(service, errorHandler, logger);
+  constructor(services, fileUploader, errorHandler, logger) {
+    super(services, errorHandler, logger);
     this.fileUploader = fileUploader;
   }
 
   async index(req, res) {
     return this.handleRequest(req, res, async () => {
       const [microposts, categories] = await Promise.all([
-        this.service.getAllMicroposts(),
-        this.service.prisma.category.findMany({
+        this.services.micropost.getAllMicroposts(),
+        this.services.micropost.prisma.category.findMany({
           orderBy: { name: 'asc' }
         })
       ]);
+
+      // 各投稿のいいね情報を取得
+      const micropostsWithLikes = await Promise.all(
+        microposts.map(async (micropost) => {
+          const [isLiked, likeCount] = await Promise.all([
+            req.user ? this.services.like.isLiked(req.user.id, micropost.id) : false,
+            this.services.like.getLikeCount(micropost.id)
+          ]);
+          return { ...micropost, isLiked, likeCount };
+        })
+      );
+
       res.render('pages/public/microposts/index', { 
-        microposts,
+        microposts: micropostsWithLikes,
         categories,
         title: '投稿一覧',
-        path: req.path
+        path: req.path,
+        user: req.user
       });
     });
   }
@@ -147,16 +169,23 @@ class MicropostController extends BaseController {
                        req.socket.remoteAddress;
 
       // Track the view
-      await this.service.trackView(micropostId, ipAddress);
+      await this.services.micropost.trackView(micropostId, ipAddress);
 
-      // Get micropost with updated view count
-      const micropost = await this.service.getMicropostWithViews(micropostId);
+      // Get micropost with updated view count and check if user has liked it
+      const [micropost, isLiked, likeCount] = await Promise.all([
+        this.services.micropost.getMicropostWithViews(micropostId),
+        req.user ? this.services.like.isLiked(req.user.id, micropostId) : false,
+        this.services.like.getLikeCount(micropostId)
+      ]);
+
       if (!micropost) {
         return this.errorHandler.handleNotFoundError(req, res, '投稿が見つかりません');
       }
 
       res.render('pages/public/microposts/show', {
         micropost,
+        isLiked,
+        likeCount,
         title: micropost.title,
         path: req.path,
         user: req.user
@@ -181,7 +210,7 @@ class MicropostController extends BaseController {
         imageUrl = this.fileUploader.generateFileUrl(req.file);
       }
 
-      await this.service.createMicropost({
+      await this.services.createMicropost({
         title: title.trim(),
         imageUrl,
         userId: req.user.id,
@@ -197,8 +226,8 @@ class MicropostController extends BaseController {
 }
 
 class ProfileController extends BaseController {
-  constructor(service, errorHandler, logger) {
-    super(service, errorHandler, logger);
+  constructor(services, errorHandler, logger) {
+    super(services, errorHandler, logger);
   }
 
   async show(req, res) {
@@ -211,9 +240,9 @@ class ProfileController extends BaseController {
 
       let profileUser;
       if (req.params.id.match(/^[0-9]+$/)) {
-        profileUser = await this.service.getUserProfile(req.params.id);
+        profileUser = await this.services.profile.getUserProfile(req.params.id);
       } else {
-        profileUser = await this.service.getUserProfileByName(req.params.id);
+        profileUser = await this.services.profile.getUserProfileByName(req.params.id);
       }
 
       if (!profileUser) {
@@ -229,9 +258,9 @@ class ProfileController extends BaseController {
       });
 
       const [microposts, followCounts, isFollowing] = await Promise.all([
-        this.service.getMicropostsByUser(profileUser.id),
-        this.service.getFollowCounts(profileUser.id),
-        req.user ? this.service.isFollowing(req.user.id, profileUser.id) : false
+        this.services.micropost.getMicropostsByUser(profileUser.id),
+        this.services.profile.getFollowCounts(profileUser.id),
+        req.user ? this.services.profile.isFollowing(req.user.id, profileUser.id) : false
       ]);
 
       this.logger.debug('Profile data loaded:', {
@@ -494,17 +523,17 @@ class SystemController extends BaseController {
 }
 
 class DevController extends BaseController {
-  constructor(service, errorHandler, logger) {
-    super(service, errorHandler, logger);
+  constructor(services, errorHandler, logger) {
+    super(services, errorHandler, logger);
   }
 
   async index(req, res) {
     return this.handleRequest(req, res, async () => {
-      const metadata = await this.service.getInstanceMetadata();
-      const health = await this.service.getHealth();
-      const dbHealth = await this.service.getDbHealth();
+      const metadata = await this.services.system.getInstanceMetadata();
+      const health = await this.services.system.getHealth();
+      const dbHealth = await this.services.system.getDbHealth();
 
-      const recentUsers = await this.service.prisma.user.findMany({
+      const recentUsers = await this.services.profile.prisma.user.findMany({
         take: 10,
         orderBy: { createdAt: 'desc' },
         include: {
@@ -516,7 +545,7 @@ class DevController extends BaseController {
         }
       });
 
-      const recentMicroposts = await this.service.prisma.micropost.findMany({
+      const recentMicroposts = await this.services.micropost.prisma.micropost.findMany({
         take: 10,
         orderBy: { createdAt: 'desc' },
         include: {
@@ -545,7 +574,7 @@ class DevController extends BaseController {
   async quickLogin(req, res) {
     return this.handleRequest(req, res, async () => {
       const { email } = req.params;
-      const user = await this.service.prisma.user.findUnique({
+      const user = await this.services.profile.prisma.user.findUnique({
         where: { email },
         include: {
           userRoles: {
@@ -665,8 +694,8 @@ class CategoryController extends BaseController {
 }
 
 class LikeController extends BaseController {
-  constructor(service, errorHandler, logger) {
-    super(service, errorHandler, logger);
+  constructor(services, errorHandler, logger) {
+    super(services, errorHandler, logger);
   }
 
   async like(req, res) {
@@ -676,8 +705,8 @@ class LikeController extends BaseController {
       }
 
       const micropostId = req.params.id;
-      await this.service.like(req.user.id, micropostId);
-      const likeCount = await this.service.getLikeCount(micropostId);
+      await this.services.like(req.user.id, micropostId);
+      const likeCount = await this.services.getLikeCount(micropostId);
 
       this.sendResponse(req, res, {
         status: 200,
@@ -694,8 +723,8 @@ class LikeController extends BaseController {
       }
 
       const micropostId = req.params.id;
-      await this.service.unlike(req.user.id, micropostId);
-      const likeCount = await this.service.getLikeCount(micropostId);
+      await this.services.unlike(req.user.id, micropostId);
+      const likeCount = await this.services.getLikeCount(micropostId);
 
       this.sendResponse(req, res, {
         status: 200,
@@ -708,7 +737,7 @@ class LikeController extends BaseController {
   async getLikedUsers(req, res) {
     return this.handleRequest(req, res, async () => {
       const micropostId = req.params.id;
-      const likedUsers = await this.service.getLikedUsers(micropostId);
+      const likedUsers = await this.services.getLikedUsers(micropostId);
       
       this.sendResponse(req, res, {
         status: 200,
@@ -724,7 +753,7 @@ class LikeController extends BaseController {
       }
 
       const userId = req.params.id;
-      const likes = await this.service.getUserLikes(userId);
+      const likes = await this.services.getUserLikes(userId);
       
       this.sendResponse(req, res, {
         status: 200,
