@@ -167,6 +167,7 @@ model Comment {
   content    String
   userId     Int
   micropostId Int
+  
 
   // Timestamps
   createdAt  DateTime  @default(now())
