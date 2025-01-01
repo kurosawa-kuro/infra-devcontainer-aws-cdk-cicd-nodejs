@@ -95,17 +95,37 @@ class AuthService extends BaseService {
 
   async logout(req) {
     return new Promise((resolve, reject) => {
-      req.logout((err) => {
-        if (err) return reject(err);
+      if (!req.session) {
+        resolve();
+        return;
+      }
+
+      const logoutCallback = (err) => {
+        if (err) {
+          this.logger.error('Logout error:', err);
+          reject(err);
+          return;
+        }
+
         if (req.session) {
           req.session.destroy((err) => {
-            if (err) return reject(err);
+            if (err) {
+              this.logger.error('Session destruction error:', err);
+              reject(err);
+              return;
+            }
             resolve();
           });
         } else {
           resolve();
         }
-      });
+      };
+
+      if (req.logout) {
+        req.logout(logoutCallback);
+      } else {
+        logoutCallback();
+      }
     });
   }
 }

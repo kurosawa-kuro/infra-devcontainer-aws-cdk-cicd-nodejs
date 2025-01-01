@@ -91,7 +91,13 @@ class AuthController extends BaseController {
 
   async logout(req, res) {
     return this.handleRequest(req, res, async () => {
-      await this.service.logout(req);
+      try {
+        await this.service.logout(req);
+      } catch (error) {
+        // Continue with logout even if session destruction fails
+        console.error('Session destruction error:', error);
+      }
+
       res.clearCookie('connect.sid', {
         path: '/',
         httpOnly: true,

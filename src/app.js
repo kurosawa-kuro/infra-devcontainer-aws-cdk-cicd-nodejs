@@ -409,7 +409,13 @@ class ErrorHandler {
         ...details
       });
     } else {
-      req.flash('error', message);
+      try {
+        if (req.session && req.flash) {
+          req.flash('error', message);
+        }
+      } catch (e) {
+        // Ignore flash errors if session is not available
+      }
       const fallbackUrl = req.header('Referer') || '/';
       return res.redirect(fallbackUrl);
     }
@@ -488,9 +494,9 @@ class Application {
   }
 
   setupMiddleware() {
-    this.setupRequestLogging();
     this.setupBasicMiddleware();
     this.setupAuthMiddleware();
+    this.setupRequestLogging();
     this.setupErrorLogging();
   }
 
@@ -534,10 +540,14 @@ class Application {
     if (res.locals.error) {
       errorInfo = ` - Error: ${res.locals.error}`;
     }
-    if (req.flash && req.flash('error')) {
-      const flashErrors = req.flash('error');
-      if (flashErrors.length > 0) {
-        errorInfo += ` - Flash Errors: ${flashErrors.join(', ')}`;
+    if (req.session && req.flash) {
+      try {
+        const flashErrors = req.flash('error');
+        if (flashErrors && flashErrors.length > 0) {
+          errorInfo += ` - Flash Errors: ${flashErrors.join(', ')}`;
+        }
+      } catch (e) {
+        // Ignore flash errors if session is not available
       }
     }
     return errorInfo;
