@@ -7,6 +7,7 @@ const fs = require('fs').promises;
 const path = require('path');
 require('dotenv').config({ path: path.join(__dirname, '../.env') });
 
+// ベース抽象クラス - 共通機能を提供
 class BaseService {
   constructor(prisma, logger) {
     this.prisma = prisma;
@@ -20,12 +21,35 @@ class BaseService {
       ...context
     });
   }
+
+  // 共通のユーティリティメソッド
+  validateId(id) {
+    const parsedId = parseInt(id, 10);
+    if (isNaN(parsedId)) {
+      throw new Error('Invalid ID format');
+    }
+    return parsedId;
+  }
+
+  async findUserById(userId) {
+    return this.prisma.user.findUnique({
+      where: { id: this.validateId(userId) },
+      include: {
+        profile: true,
+        userRoles: {
+          include: {
+            role: true
+          }
+        }
+      }
+    });
+  }
 }
 
+// 認証関連サービス
 class AuthService extends BaseService {
-  async signup(userData) {
-    const { email, password, passwordConfirmation, name } = userData;
-    
+  async signup({ email, password, passwordConfirmation, name }) {
+    // バリデーション
     if (!email || !password || !name) {
       throw new Error('メールアドレス、パスワード、お名前は必須です');
     }
@@ -38,45 +62,34 @@ class AuthService extends BaseService {
       throw new Error('お名前は半角英数字のみ使用可能です');
     }
 
-    const existingUser = await this.prisma.user.findUnique({
-      where: { email }
-    });
-    
+    // 既存ユーザーチェック
+    const existingUser = await this.prisma.user.findUnique({ where: { email } });
     if (existingUser) {
       throw new Error('このメールアドレスは既に登録されています');
     }
 
+    // ユーザー作成
     const hashedPassword = await bcrypt.hash(password, 10);
-    
-    const userRole = await this.prisma.role.findUnique({
-      where: { name: 'user' }
-    });
-
+    const userRole = await this.prisma.role.findUnique({ where: { name: 'user' } });
     if (!userRole) {
       throw new Error('デフォルトのユーザーロールが見つかりません');
     }
 
-    const user = await this.prisma.user.create({
+    return this.prisma.user.create({
       data: {
         email,
         name,
         password: hashedPassword,
         userRoles: {
-          create: {
-            roleId: userRole.id
-          }
+          create: { roleId: userRole.id }
         }
       },
       include: {
         userRoles: {
-          include: {
-            role: true
-          }
+          include: { role: true }
         }
       }
     });
-
-    return user;
   }
 
   async login(req, res) {
@@ -130,25 +143,23 @@ class AuthService extends BaseService {
   }
 }
 
+// プロフィール関連サービス
 class ProfileService extends BaseService {
   constructor(prisma, logger) {
     super(prisma, logger);
+    this.followService = new FollowService(prisma, logger);
   }
 
   async getUserProfile(userId) {
     return this.prisma.user.findUnique({
-      where: { id: parseInt(userId, 10) },
+      where: { id: this.validateId(userId) },
       include: {
         profile: true,
         userRoles: {
-          include: {
-            role: true
-          }
+          include: { role: true }
         },
         _count: {
-          select: {
-            microposts: true
-          }
+          select: { microposts: true }
         }
       }
     });
@@ -160,14 +171,10 @@ class ProfileService extends BaseService {
       include: {
         profile: true,
         userRoles: {
-          include: {
-            role: true
-          }
+          include: { role: true }
         },
         _count: {
-          select: {
-            microposts: true
-          }
+          select: { microposts: true }
         }
       }
     });
@@ -178,30 +185,20 @@ class ProfileService extends BaseService {
       include: {
         profile: true,
         userRoles: {
-          include: {
-            role: true
-          }
+          include: { role: true }
         },
         _count: {
-          select: {
-            microposts: true
-          }
+          select: { microposts: true }
         }
       },
-      orderBy: {
-        id: 'desc'
-      }
+      orderBy: { id: 'desc' }
     });
   }
 
   async getMicropostsByUser(userId) {
     return this.prisma.micropost.findMany({
-      where: {
-        userId: parseInt(userId, 10)
-      },
-      orderBy: {
-        createdAt: 'desc'
-      },
+      where: { userId: this.validateId(userId) },
+      orderBy: { createdAt: 'desc' },
       include: {
         user: {
           select: {
@@ -215,87 +212,85 @@ class ProfileService extends BaseService {
   }
 
   async updateProfile(userId, profileData) {
-    const parsedId = parseInt(userId, 10);
+    const parsedId = this.validateId(userId);
 
     if (profileData.name && !profileData.name.match(/^[a-zA-Z0-9]+$/)) {
       throw new Error('お名前は半角英数字のみ使用可能です');
     }
 
-    const updatedUser = await this.prisma.user.update({
-      where: { id: parsedId },
-      data: {
-        name: profileData.name || '',
-      }
-    });
+    const [updatedUser, updatedProfile] = await this.prisma.$transaction([
+      this.prisma.user.update({
+        where: { id: parsedId },
+        data: { name: profileData.name || '' }
+      }),
+      this.prisma.userProfile.upsert({
+        where: { userId: parsedId },
+        create: {
+          userId: parsedId,
+          bio: profileData.bio || '',
+          location: profileData.location || '',
+          website: profileData.website || '',
+          birthDate: profileData.birthDate ? new Date(profileData.birthDate) : null,
+          avatarPath: profileData.avatarPath || 'default_avatar.png'
+        },
+        update: {
+          bio: profileData.bio || '',
+          location: profileData.location || '',
+          website: profileData.website || '',
+          birthDate: profileData.birthDate ? new Date(profileData.birthDate) : null,
+          ...(profileData.avatarPath && { avatarPath: profileData.avatarPath })
+        }
+      })
+    ]);
 
-    const updatedProfile = await this.prisma.userProfile.upsert({
-      where: { userId: parsedId },
-      create: {
-        userId: parsedId,
-        bio: profileData.bio || '',
-        location: profileData.location || '',
-        website: profileData.website || '',
-        birthDate: profileData.birthDate ? new Date(profileData.birthDate) : null,
-        avatarPath: profileData.avatarPath || 'default_avatar.png'
-      },
-      update: {
-        bio: profileData.bio || '',
-        location: profileData.location || '',
-        website: profileData.website || '',
-        birthDate: profileData.birthDate ? new Date(profileData.birthDate) : null,
-        ...(profileData.avatarPath && { avatarPath: profileData.avatarPath })
-      }
-    });
-
-    return {
-      ...updatedUser,
-      profile: updatedProfile
-    };
+    return { ...updatedUser, profile: updatedProfile };
   }
 
   async updateUserRoles(userId, roleNames) {
-    const parsedId = parseInt(userId, 10);
-
-    // Get all available roles
+    const parsedId = this.validateId(userId);
     const roles = await this.prisma.role.findMany({
       where: {
-        name: {
-          in: ['user', 'admin', 'read-only-admin']
-        }
+        name: { in: ['user', 'admin', 'read-only-admin'] }
       }
     });
 
-    // Create a map of role names to role IDs
     const roleMap = new Map(roles.map(role => [role.name, role.id]));
-
-    // Get the role IDs for the selected roles
     const selectedRoleIds = roleNames
       .filter(name => roleMap.has(name))
       .map(name => roleMap.get(name));
 
-    // Delete all existing roles for the user
-    await this.prisma.userRole.deleteMany({
-      where: { userId: parsedId }
-    });
+    await this.prisma.$transaction([
+      this.prisma.userRole.deleteMany({
+        where: { userId: parsedId }
+      }),
+      this.prisma.userRole.createMany({
+        data: selectedRoleIds.map(roleId => ({
+          userId: parsedId,
+          roleId
+        }))
+      })
+    ]);
 
-    // Create new roles for the user
-    await this.prisma.userRole.createMany({
-      data: selectedRoleIds.map(roleId => ({
-        userId: parsedId,
-        roleId
-      }))
-    });
-
-    // Return the updated user with roles
     return this.getUserProfile(parsedId);
   }
 
+  async getFollowCounts(userId) {
+    return this.followService.getFollowCounts(userId);
+  }
+
+  async isFollowing(followerId, followingId) {
+    return this.followService.isFollowing(followerId, followingId);
+  }
+}
+
+// フォロー関連サービス
+class FollowService extends BaseService {
   async isFollowing(followerId, followingId) {
     const follow = await this.prisma.follow.findUnique({
       where: {
         followerId_followingId: {
-          followerId: parseInt(followerId, 10),
-          followingId: parseInt(followingId, 10)
+          followerId: this.validateId(followerId),
+          followingId: this.validateId(followingId)
         }
       }
     });
@@ -305,8 +300,8 @@ class ProfileService extends BaseService {
   async follow(followerId, followingId) {
     return this.prisma.follow.create({
       data: {
-        followerId: parseInt(followerId, 10),
-        followingId: parseInt(followingId, 10)
+        followerId: this.validateId(followerId),
+        followingId: this.validateId(followingId)
       }
     });
   }
@@ -315,85 +310,51 @@ class ProfileService extends BaseService {
     return this.prisma.follow.delete({
       where: {
         followerId_followingId: {
-          followerId: parseInt(followerId, 10),
-          followingId: parseInt(followingId, 10)
+          followerId: this.validateId(followerId),
+          followingId: this.validateId(followingId)
         }
       }
     });
   }
 
   async getFollowCounts(userId) {
+    const parsedId = this.validateId(userId);
     const [followingCount, followersCount] = await Promise.all([
-      // フォロー中の数（自分がフォローしている人の数）
       this.prisma.follow.count({
-        where: {
-          followerId: parseInt(userId, 10)
-        }
+        where: { followerId: parsedId }
       }),
-      // フォロワーの数（自分をフォローしている人の数）
       this.prisma.follow.count({
-        where: {
-          followingId: parseInt(userId, 10)
-        }
+        where: { followingId: parsedId }
       })
     ]);
 
-    return {
-      followingCount,
-      followersCount
-    };
-  }
-
-  async findUserByIdentifier(identifier) {
-    return await this.prisma.user.findFirst({
-      where: {
-        OR: [
-          { name: identifier },
-          { id: isNaN(identifier) ? undefined : parseInt(identifier) }
-        ]
-      },
-      include: {
-        profile: true,
-        userRoles: {
-          include: {
-            role: true
-          }
-        }
-      }
-    });
+    return { followingCount, followersCount };
   }
 
   async getFollowing(userId) {
-    return await this.prisma.follow.findMany({
-      where: {
-        followerId: userId
-      },
+    return this.prisma.follow.findMany({
+      where: { followerId: this.validateId(userId) },
       include: {
         following: {
-          include: {
-            profile: true
-          }
+          include: { profile: true }
         }
       }
     });
   }
 
   async getFollowers(userId) {
-    return await this.prisma.follow.findMany({
-      where: {
-        followingId: userId
-      },
+    return this.prisma.follow.findMany({
+      where: { followingId: this.validateId(userId) },
       include: {
         follower: {
-          include: {
-            profile: true
-          }
+          include: { profile: true }
         }
       }
     });
   }
 }
 
+// 投稿関連サービス
 class MicropostService extends BaseService {
   async getAllMicroposts() {
     return this.prisma.micropost.findMany({
@@ -404,30 +365,26 @@ class MicropostService extends BaseService {
             id: true,
             email: true,
             userRoles: {
-              include: {
-                role: true
-              }
+              include: { role: true }
             }
           }
         },
         categories: {
-          include: {
-            category: true
-          }
+          include: { category: true }
         }
       }
     });
   }
 
-  async createMicropost(data) {
+  async createMicropost({ title, imageUrl, userId, categories = [] }) {
     return this.prisma.micropost.create({
       data: {
-        title: data.title,
-        imageUrl: data.imageUrl,
-        userId: data.userId,
+        title,
+        imageUrl,
+        userId: this.validateId(userId),
         categories: {
-          create: (data.categories || []).map(categoryId => ({
-            categoryId: parseInt(categoryId, 10)
+          create: categories.map(categoryId => ({
+            categoryId: this.validateId(categoryId)
           }))
         }
       },
@@ -435,13 +392,10 @@ class MicropostService extends BaseService {
         user: {
           select: {
             id: true,
-            email: true
-          }
+            email: true }
         },
         categories: {
-          include: {
-            category: true
-          }
+          include: { category: true }
         }
       }
     });
@@ -449,7 +403,7 @@ class MicropostService extends BaseService {
 
   async getMicropostsByUser(userId) {
     return this.prisma.micropost.findMany({
-      where: { userId: parseInt(userId, 10) },
+      where: { userId: this.validateId(userId) },
       orderBy: { createdAt: 'desc' },
       take: 10,
       include: {
@@ -458,9 +412,7 @@ class MicropostService extends BaseService {
             id: true,
             email: true,
             userRoles: {
-              include: {
-                role: true
-              }
+              include: { role: true }
             }
           }
         }
@@ -469,6 +421,36 @@ class MicropostService extends BaseService {
   }
 }
 
+// カテゴリ関連サービス
+class CategoryService extends BaseService {
+  async getAllCategories() {
+    return this.prisma.category.findMany({
+      include: {
+        _count: {
+          select: { microposts: true }
+        }
+      },
+      orderBy: { name: 'asc' }
+    });
+  }
+
+  async getCategoryById(id) {
+    return this.prisma.category.findUnique({
+      where: { id: this.validateId(id) },
+      include: {
+        microposts: {
+          include: {
+            micropost: {
+              include: { user: true }
+            }
+          }
+        }
+      }
+    });
+  }
+}
+
+// システム関連サービス
 class SystemService extends BaseService {
   async getInstanceMetadata() {
     if (process.env.APP_ENV === 'development') {
@@ -517,10 +499,7 @@ class SystemService extends BaseService {
         this.prisma.micropost.count()
       ]);
 
-      return {
-        totalUsers,
-        totalPosts
-      };
+      return { totalUsers, totalPosts };
     } catch (error) {
       this.logError(error, { context: 'Getting system stats' });
       throw error;
@@ -528,40 +507,7 @@ class SystemService extends BaseService {
   }
 }
 
-class CategoryService extends BaseService {
-  async getAllCategories() {
-    return this.prisma.category.findMany({
-      include: {
-        _count: {
-          select: {
-            microposts: true
-          }
-        }
-      },
-      orderBy: {
-        name: 'asc'
-      }
-    });
-  }
-
-  async getCategoryById(id) {
-    return this.prisma.category.findUnique({
-      where: { id: parseInt(id, 10) },
-      include: {
-        microposts: {
-          include: {
-            micropost: {
-              include: {
-                user: true
-              }
-            }
-          }
-        }
-      }
-    });
-  }
-}
-
+// ログアップロード関連サービス
 class LogUploader extends BaseService {
   constructor(prisma, logger) {
     super(prisma, logger);
@@ -668,5 +614,6 @@ module.exports = {
   MicropostService,
   SystemService,
   CategoryService,
-  LogUploader
+  LogUploader,
+  FollowService
 }; 

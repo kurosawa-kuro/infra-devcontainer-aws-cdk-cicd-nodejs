@@ -566,9 +566,9 @@ class AdminController extends BaseController {
     });
   }
 
-  async manageUser(req, res) {
+  async manageUsers(req, res) {
     const users = await this.services.profile.getAllUsers();
-    res.render('pages/admin/manage-user', {
+    res.render('pages/admin/users/index', {
       title: 'ユーザー管理',
       path: req.path,
       users
@@ -576,28 +576,27 @@ class AdminController extends BaseController {
   }
 
   async showUser(req, res) {
-    return this.handleRequest(req, res, async () => {
-      const [user, microposts] = await Promise.all([
-        this.services.user.getUserWithRoles(req.params.id),
-        this.services.micropost.getMicropostsByUser(req.params.id)
-      ]);
-      this.renderWithUser(req, res, 'pages/admin/users/show', { user, microposts });
-    });
+    const { id } = req.params;
+    const user = await this.services.profile.findUserById(id);
+    if (!user) {
+      req.flash('error', 'ユーザーが見つかりません');
+      return res.redirect('/admin/users');
+    }
+    res.render('pages/admin/users/show', { user });
   }
 
   async updateUserRoles(req, res) {
-    const userId = parseInt(req.params.id, 10);
-    const roles = Array.isArray(req.body.roles) ? req.body.roles : [];
+    const { id: userId } = req.params;
+    const { roles } = req.body;
 
     try {
-      await this.services.profile.updateUserRoles(userId, roles);
-      req.flash('success', 'ユーザーの権限を更新しました');
+      await this.services.profile.updateUserRoles(userId, roles || []);
+      req.flash('success', 'ユーザーロールを更新しました');
     } catch (error) {
-      this.logger.error('Failed to update user roles:', error);
-      req.flash('error', 'ユーザーの権限更新に失敗しました');
+      req.flash('error', error.message);
     }
 
-    res.redirect(`/admin/manage-user/${userId}`);
+    res.redirect(`/admin/users/${userId}`);
   }
 }
 
