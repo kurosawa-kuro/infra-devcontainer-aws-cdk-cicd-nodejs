@@ -11,122 +11,211 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-// User related models
+//==================================
+// User Management Models
+//==================================
+
 model User {
+  // Core fields
   id         Int         @id @default(autoincrement())
   email      String      @unique
   password   String
   name       String
+
+  // Timestamps
   createdAt  DateTime    @default(now())
   updatedAt  DateTime    @updatedAt
+
+  // Relations
   profile    UserProfile?
   userRoles  UserRole[]
   microposts Micropost[]
+  comments   Comment[]
+  
+  // Social relations
   following  Follow[]    @relation("Following")
   followers  Follow[]    @relation("Followers")
 }
 
 model UserProfile {
+  // Core fields
   id          Int       @id @default(autoincrement())
   userId      Int       @unique
   avatarPath  String    @default("default_avatar.png")
+  
+  // Optional profile fields
   bio         String?
   location    String?
   website     String?
   birthDate   DateTime?
+
+  // Timestamps
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
+
+  // Relations
   user        User      @relation(fields: [userId], references: [id])
 }
 
 model UserRole {
+  // Core fields
   id        Int      @id @default(autoincrement())
   userId    Int
   roleId    Int
+
+  // Timestamps
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  // Relations
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   role      Role     @relation(fields: [roleId], references: [id], onDelete: Cascade)
 
+  // Constraints and indexes
   @@unique([userId, roleId])
   @@index([userId])
   @@index([roleId])
 }
 
 model Role {
+  // Core fields
   id          Int        @id @default(autoincrement())
   name        String     @unique
   description String?
+
+  // Timestamps
   createdAt   DateTime   @default(now())
   updatedAt   DateTime   @updatedAt
+
+  // Relations
   userRoles   UserRole[]
 }
 
-// Content related models
+//==================================
+// Content Management Models
+//==================================
+
 model Micropost {
+  // Core fields
   id         Int                 @id @default(autoincrement())
   title      String
   imageUrl   String?
-  createdAt  DateTime           @default(now())
-  updatedAt  DateTime           @updatedAt
   userId     Int
-  user       User               @relation(fields: [userId], references: [id])
-  likes      Like[]
+
+  // Timestamps
+  createdAt  DateTime            @default(now())
+  updatedAt  DateTime            @updatedAt
+
+  // Relations
+  user       User                @relation(fields: [userId], references: [id])
   categories CategoryMicropost[]
+  likes      Like[]
   views      MicropostView[]
-}
-
-model Like {
-  id         Int       @id @default(autoincrement())
-  userId     Int
-  micropostId Int
-  createdAt  DateTime  @default(now())
-  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  micropost  Micropost @relation(fields: [micropostId], references: [id], onDelete: Cascade)
-
-  @@unique([userId, micropostId])
-}
-
-model MicropostView {
-  id          Int      @id @default(autoincrement())
-  micropostId Int
-  ipAddress   String
-  viewedAt    DateTime @default(now())
-  micropost   Micropost @relation(fields: [micropostId], references: [id], onDelete: Cascade)
-
-  @@unique([micropostId, ipAddress])
-  @@index([micropostId])
+  comments   Comment[]
 }
 
 model Category {
+  // Core fields
   id         Int                 @id @default(autoincrement())
   name       String              @unique
+
+  // Relations
   microposts CategoryMicropost[]
 }
 
 model CategoryMicropost {
+  // Core fields
   id           Int       @id @default(autoincrement())
   micropostId  Int
   categoryId   Int
+
+  // Relations
   micropost    Micropost @relation(fields: [micropostId], references: [id], onDelete: Cascade)
   category     Category  @relation(fields: [categoryId], references: [id], onDelete: Cascade)
 
+  // Constraints and indexes
   @@unique([micropostId, categoryId])
   @@index([micropostId])
   @@index([categoryId])
 }
 
-// Social related models
+//==================================
+// Engagement Models
+//==================================
+
+model Like {
+  // Core fields
+  id         Int       @id @default(autoincrement())
+  userId     Int
+  micropostId Int
+
+  // Timestamp
+  createdAt  DateTime  @default(now())
+
+  // Relations
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  micropost  Micropost @relation(fields: [micropostId], references: [id], onDelete: Cascade)
+
+  // Constraints
+  @@unique([userId, micropostId])
+}
+
+model Comment {
+  // Core fields
+  id         Int       @id @default(autoincrement())
+  content    String
+  userId     Int
+  micropostId Int
+
+  // Timestamps
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  // Relations
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  micropost  Micropost @relation(fields: [micropostId], references: [id], onDelete: Cascade)
+
+  // Indexes
+  @@index([userId])
+  @@index([micropostId])
+}
+
+model MicropostView {
+  // Core fields
+  id          Int      @id @default(autoincrement())
+  micropostId Int
+  ipAddress   String
+
+  // Timestamp
+  viewedAt    DateTime @default(now())
+
+  // Relations
+  micropost   Micropost @relation(fields: [micropostId], references: [id], onDelete: Cascade)
+
+  // Constraints and indexes
+  @@unique([micropostId, ipAddress])
+  @@index([micropostId])
+}
+
+//==================================
+// Social Interaction Models
+//==================================
+
 model Follow {
+  // Core fields
   id          Int      @id @default(autoincrement())
   followerId  Int
   followingId Int
+
+  // Timestamp
   createdAt   DateTime @default(now())
+
+  // Relations
   follower    User     @relation("Following", fields: [followerId], references: [id])
   following   User     @relation("Followers", fields: [followingId], references: [id])
 
+  // Constraints and indexes
   @@unique([followerId, followingId])
   @@index([followerId])
   @@index([followingId])
 }
-
