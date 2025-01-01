@@ -892,6 +892,10 @@ p:is(.dark *) {
   max-height: 24rem;
 }
 
+.max-h-\[32rem\] {
+  max-height: 32rem;
+}
+
 .min-h-full {
   min-height: 100%;
 }
@@ -1660,6 +1664,11 @@ p:is(.dark *) {
   background-color: rgb(190 18 60 / var(--tw-bg-opacity, 1));
 }
 
+.hover\:bg-blue-200:hover {
+  --tw-bg-opacity: 1;
+  background-color: rgb(191 219 254 / var(--tw-bg-opacity, 1));
+}
+
 .hover\:text-indigo-500:hover {
   --tw-text-opacity: 1;
   color: rgb(99 102 241 / var(--tw-text-opacity, 1));
@@ -1928,6 +1937,11 @@ p:is(.dark *) {
 .dark\:hover\:bg-rose-600:hover:is(.dark *) {
   --tw-bg-opacity: 1;
   background-color: rgb(225 29 72 / var(--tw-bg-opacity, 1));
+}
+
+.dark\:hover\:bg-blue-800:hover:is(.dark *) {
+  --tw-bg-opacity: 1;
+  background-color: rgb(30 64 175 / var(--tw-bg-opacity, 1));
 }
 
 .dark\:hover\:text-rose-300:hover:is(.dark *) {
