@@ -14,10 +14,7 @@ describe('Authentication Integration Tests', () => {
   });
 
   beforeEach(async () => {
-    // Clear users before each test
-    await prisma.userProfile.deleteMany({});
-    await prisma.userRole.deleteMany({});
-    await prisma.user.deleteMany({});
+    // Clean up database is now handled by setup.js
   });
 
   describe('User Registration', () => {

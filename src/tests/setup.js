@@ -73,6 +73,12 @@ class TestServer {
   }
 
   async resetDatabase() {
+    // Delete all entities in the correct order to avoid foreign key constraints
+    await this.prisma.notification.deleteMany();
+    await this.prisma.like.deleteMany();
+    await this.prisma.comment.deleteMany();
+    await this.prisma.categoryMicropost.deleteMany();
+    await this.prisma.category.deleteMany();
     await this.prisma.micropost.deleteMany();
     await this.prisma.userRole.deleteMany();
     await this.prisma.userProfile.deleteMany();

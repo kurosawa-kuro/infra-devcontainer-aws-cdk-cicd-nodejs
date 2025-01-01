@@ -17,13 +17,7 @@ describe('Like Integration Tests', () => {
   });
 
   beforeEach(async () => {
-    // Clean up database
-    await prisma.like.deleteMany({});
-    await prisma.micropost.deleteMany({});
-    await prisma.userProfile.deleteMany({});
-    await prisma.userRole.deleteMany({});
-    await prisma.user.deleteMany({});
-    await ensureRolesExist(prisma);
+    // Clean up database is now handled by setup.js
 
     // Create test user and login with prisma instance
     const { user, authCookie: cookie } = await createTestUserAndLogin(server, undefined, false, prisma);
