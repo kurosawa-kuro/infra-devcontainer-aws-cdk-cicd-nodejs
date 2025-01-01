@@ -91,10 +91,6 @@ describe('Authentication Integration Tests', () => {
         .expect(200);
     });
   });
-
-
-
-  // describe('Role-based Access Control', () => {
   //   let userCookie;
   //   let adminCookie;
   //   let regularUser;

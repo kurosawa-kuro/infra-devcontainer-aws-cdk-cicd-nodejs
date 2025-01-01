@@ -324,9 +324,9 @@ class ProfileController extends BaseController {
 
       if (req.params.id.match(/^[0-9]+$/)) {
         userId = parseInt(req.params.id, 10);
-        user = await this.service.getUserProfile(userId);
+        user = await this.services.profile.getUserProfile(userId);
       } else {
-        user = await this.service.getUserProfileByName(req.params.id);
+        user = await this.services.profile.getUserProfileByName(req.params.id);
         userId = user ? user.id : null;
       }
       
@@ -346,14 +346,14 @@ class ProfileController extends BaseController {
         avatarPath = path.basename(req.file.path);
       }
 
-      const updatedUser = await this.service.updateProfile(userId, {
+      const updatedUser = await this.services.profile.updateProfile(userId, {
         ...req.body,
         avatarPath
       });
       
       this.sendResponse(req, res, {
         message: 'プロフィールを更新しました',
-        redirectUrl: `/${updatedUser.name || userId}`
+        redirectUrl: `/profile/${updatedUser.name || userId}`
       });
     });
   }
