@@ -313,7 +313,7 @@ class FileUploader {
     
     return this.storageConfig.isEnabled()
       ? `${this.storageConfig.getCloudFrontUrl()}/${file.key}`
-      : `/uploads/${file.filename}`;
+      : `uploads/${file.filename}`;
   }
 }
 

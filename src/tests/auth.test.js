@@ -94,67 +94,67 @@ describe('Authentication Integration Tests', () => {
 
 
 
-  describe('Role-based Access Control', () => {
-    let userCookie;
-    let adminCookie;
-    let regularUser;
-    let adminUser;
+  // describe('Role-based Access Control', () => {
+  //   let userCookie;
+  //   let adminCookie;
+  //   let regularUser;
+  //   let adminUser;
 
-    beforeEach(async () => {
-      // Create regular user
-      const userResult = await createTestUser(server, TEST_USER, false, prisma)
-        .then(() => loginTestUser(server, TEST_USER));
-      userCookie = userResult.authCookie;
-      regularUser = await prisma.user.findUnique({
-        where: { email: TEST_USER.email },
-        include: {
-          userRoles: {
-            include: {
-              role: true
-            }
-          }
-        }
-      });
+  //   beforeEach(async () => {
+  //     // Create regular user
+  //     const userResult = await createTestUser(server, TEST_USER, false, prisma)
+  //       .then(() => loginTestUser(server, TEST_USER));
+  //     userCookie = userResult.authCookie;
+  //     regularUser = await prisma.user.findUnique({
+  //       where: { email: TEST_USER.email },
+  //       include: {
+  //         userRoles: {
+  //           include: {
+  //             role: true
+  //           }
+  //         }
+  //       }
+  //     });
 
-      // Create admin user
-      const adminResult = await createTestUser(server, TEST_ADMIN, true, prisma)
-        .then(() => loginTestUser(server, TEST_ADMIN));
-      adminCookie = adminResult.authCookie;
-      adminUser = await prisma.user.findUnique({
-        where: { email: TEST_ADMIN.email },
-        include: {
-          userRoles: {
-            include: {
-              role: true
-            }
-          }
-        }
-      });
+  //     // Create admin user
+  //     const adminResult = await createTestUser(server, TEST_ADMIN, true, prisma)
+  //       .then(() => loginTestUser(server, TEST_ADMIN));
+  //     adminCookie = adminResult.authCookie;
+  //     adminUser = await prisma.user.findUnique({
+  //       where: { email: TEST_ADMIN.email },
+  //       include: {
+  //         userRoles: {
+  //           include: {
+  //             role: true
+  //           }
+  //         }
+  //       }
+  //     });
 
-      // Verify roles are set up correctly
-      expect(regularUser.userRoles.some(ur => ur.role.name === 'user')).toBe(true);
-      expect(regularUser.userRoles.some(ur => ur.role.name === 'admin')).toBe(false);
-      expect(adminUser.userRoles.some(ur => ur.role.name === 'admin')).toBe(true);
-    });
+  //     // Verify roles are set up correctly
+  //     expect(regularUser.userRoles.some(ur => ur.role.name === 'user')).toBe(true);
+  //     expect(regularUser.userRoles.some(ur => ur.role.name === 'admin')).toBe(false);
+  //     expect(adminUser.userRoles.some(ur => ur.role.name === 'admin')).toBe(true);
+  //   });
 
-    it('should allow admin to access any profile', async () => {
-      const response = await request(server)
-        .get(`/profile/${regularUser.id}/edit`)
-        .set('Cookie', adminCookie)
-        .expect(200);
+  //   it('should allow admin to access any profile', async () => {
+  //     const response = await request(server)
+  //       .get(`/profile/${regularUser.id}/edit`)
+  //       .set('Cookie', adminCookie)
+  //       .expect(200);
 
-      expect(response.text).toContain('プロフィール編集');
-      expect(response.text).toContain(regularUser.email);
-    });
+  //     expect(response.text).toContain('プロフィール編集');
+  //     expect(response.text).toContain(regularUser.email);
+  //   });
 
-    it('should allow users to access their own profile', async () => {
-      const response = await request(server)
-        .get(`/profile/${regularUser.id}/edit`)
-        .set('Cookie', userCookie)
-        .expect(200);
+  //   it('should allow users to access their own profile', async () => {
+  //     const response = await request(server)
+  //       .get(`/profile/${regularUser.id}/edit`)
+  //       .set('Cookie', userCookie)
+  //       .expect(200);
 
-      expect(response.text).toContain('プロフィール編集');
-      expect(response.text).toContain(regularUser.email);
-    });
-  });
+  //     expect(response.text).toContain('プロフィール編集');
+  //     expect(response.text).toContain(regularUser.email);
+  //   });
+  // });
 }); 

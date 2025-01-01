@@ -123,7 +123,7 @@ class AuthController extends BaseController {
 
 class MicropostController extends BaseController {
   constructor(services, fileUploader, errorHandler, logger) {
-    super({ ...services }, errorHandler, logger);
+    super(services, errorHandler, logger);
     this.fileUploader = fileUploader;
     this.micropostService = services.micropost;
     this.likeService = services.like;
@@ -215,7 +215,7 @@ class MicropostController extends BaseController {
         imageUrl = this.fileUploader.generateFileUrl(req.file);
       }
 
-      await this.services.createMicropost({
+      await this.micropostService.createMicropost({
         title: title.trim(),
         imageUrl,
         userId: req.user.id,
