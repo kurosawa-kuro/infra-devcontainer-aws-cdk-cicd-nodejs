@@ -111,6 +111,10 @@ class AuthService extends BaseService {
 }
 
 class ProfileService extends BaseService {
+  constructor(prisma, logger) {
+    super(prisma, logger);
+  }
+
   async getUserProfile(userId) {
     return this.prisma.user.findUnique({
       where: { id: parseInt(userId, 10) },
@@ -299,16 +303,57 @@ class ProfileService extends BaseService {
   }
 
   async getFollowCounts(userId) {
-    const parsedId = parseInt(userId, 10);
-    const [followingCount, followersCount] = await Promise.all([
-      this.prisma.follow.count({
-        where: { followerId: parsedId }
-      }),
-      this.prisma.follow.count({
-        where: { followingId: parsedId }
-      })
-    ]);
-    return { followingCount, followersCount };
+    const counts = await this.prisma.follow.aggregate({
+      _count: {
+        followerId: true,
+        followingId: true,
+      },
+      where: {
+        OR: [
+          { followerId: userId },
+          { followingId: userId }
+        ]
+      }
+    });
+
+    return {
+      followingCount: counts._count.followerId,
+      followersCount: counts._count.followingId
+    };
+  }
+
+  async findUserByIdentifier(identifier) {
+    return await this.prisma.user.findFirst({
+      where: {
+        OR: [
+          { name: identifier },
+          { id: isNaN(identifier) ? undefined : parseInt(identifier) }
+        ]
+      },
+      include: {
+        profile: true,
+        userRoles: {
+          include: {
+            role: true
+          }
+        }
+      }
+    });
+  }
+
+  async getFollowing(userId) {
+    return await this.prisma.follow.findMany({
+      where: {
+        followerId: userId
+      },
+      include: {
+        following: {
+          include: {
+            profile: true
+          }
+        }
+      }
+    });
   }
 }
 

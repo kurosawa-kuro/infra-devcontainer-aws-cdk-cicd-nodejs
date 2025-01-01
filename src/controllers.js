@@ -350,6 +350,27 @@ class ProfileController extends BaseController {
       });
     });
   }
+
+  async following(req, res) {
+    return this.handleRequest(req, res, async () => {
+      const { identifier } = req.params;
+      const profileUser = await this.service.findUserByIdentifier(identifier);
+
+      if (!profileUser) {
+        return this.errorHandler.handleNotFoundError(req, res, 'ユーザーが見つかりません');
+      }
+
+      const following = await this.service.getFollowing(profileUser.id);
+      const followCounts = await this.service.getFollowCounts(profileUser.id);
+
+      this.renderWithUser(req, res, 'pages/users/following', {
+        profileUser,
+        following: following.map(f => f.following),
+        followCounts,
+        title: `${profileUser.name}のフォロー中`
+      });
+    });
+  }
 }
 
 class SystemController extends BaseController {

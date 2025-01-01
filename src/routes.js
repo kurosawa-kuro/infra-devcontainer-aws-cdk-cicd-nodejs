@@ -81,6 +81,11 @@ function setupRoutes(app, controllers, fileUploader) {
   // ===================================
   // User Profile Routes (最後に配置)
   // ===================================
+  
+  // フォロー中一覧表示 (idルートの前に配置)
+  app.get('/:identifier/following', isAuthenticated, asyncHandler((req, res) => profile.following(req, res)));
+  
+  // 既存のプロフィールルート
   app.get('/:id', asyncHandler((req, res) => profile.show(req, res)));
   app.get('/:id/edit', isAuthenticated, asyncHandler((req, res) => profile.getEditPage(req, res)));
   app.post('/:id/edit', isAuthenticated, fileUploader.createUploader().single('avatar'), asyncHandler((req, res) => profile.update(req, res)));
