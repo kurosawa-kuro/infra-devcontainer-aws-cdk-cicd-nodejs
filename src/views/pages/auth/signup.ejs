@@ -1,87 +1,94 @@
 <%- contentFor('body') %>
-<div class="max-w-md mx-auto">
-    <h1 class="text-2xl font-bold mb-6 text-gray-900 dark:text-white">ユーザー登録</h1>
+<div class="max-w-md mx-auto px-4">
+    <div class="mb-12 text-center">
+        <h1 class="text-3xl font-semibold mb-3 text-gray-900 dark:text-white">ユーザー登録</h1>
+        <p class="text-base text-gray-600 dark:text-gray-400">新規アカウントを作成してサービスを利用</p>
+    </div>
 
-    <form action="/auth/signup" method="POST" class="space-y-6">
-        <div>
-            <label for="name" class="block text-sm font-medium text-gray-900 dark:text-white mb-2">
-                お名前
-            </label>
-            <input
-                type="text"
-                id="name"
-                name="name"
-                required
-                class="block w-full rounded-md border-0 py-1.5 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:ring-2 focus:ring-inset focus:ring-indigo-600 sm:text-sm sm:leading-6"
-            >
+    <div class="bg-white dark:bg-gray-900 rounded-xl shadow-sm border border-gray-200 dark:border-gray-800 p-6">
+        <form action="/auth/signup" method="POST" class="space-y-6">
+            <div>
+                <label for="name" class="block text-sm font-medium text-gray-900 dark:text-white mb-2">
+                    お名前
+                </label>
+                <input
+                    type="text"
+                    id="name"
+                    name="name"
+                    required
+                    class="block w-full rounded-lg border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-900 dark:text-white shadow-sm focus:border-rose-500 dark:focus:border-rose-500 focus:ring-rose-500 dark:focus:ring-rose-500"
+                >
+            </div>
+
+            <div>
+                <label for="email" class="block text-sm font-medium text-gray-900 dark:text-white mb-2">
+                    メールアドレス
+                </label>
+                <input
+                    type="email"
+                    id="email"
+                    name="email"
+                    required
+                    class="block w-full rounded-lg border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-900 dark:text-white shadow-sm focus:border-rose-500 dark:focus:border-rose-500 focus:ring-rose-500 dark:focus:ring-rose-500"
+                >
+            </div>
+
+            <div>
+                <label for="password" class="block text-sm font-medium text-gray-900 dark:text-white mb-2">
+                    パスワード
+                </label>
+                <input
+                    type="password"
+                    id="password"
+                    name="password"
+                    required
+                    class="block w-full rounded-lg border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-900 dark:text-white shadow-sm focus:border-rose-500 dark:focus:border-rose-500 focus:ring-rose-500 dark:focus:ring-rose-500"
+                >
+            </div>
+
+            <div>
+                <label for="passwordConfirmation" class="block text-sm font-medium text-gray-900 dark:text-white mb-2">
+                    パスワード（確認）
+                </label>
+                <input
+                    type="password"
+                    id="passwordConfirmation"
+                    name="passwordConfirmation"
+                    required
+                    class="block w-full rounded-lg border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-900 dark:text-white shadow-sm focus:border-rose-500 dark:focus:border-rose-500 focus:ring-rose-500 dark:focus:ring-rose-500"
+                >
+            </div>
+
+            <div class="flex items-center">
+                <input
+                    type="checkbox"
+                    id="terms"
+                    name="terms"
+                    required
+                    class="h-4 w-4 rounded border-gray-300 dark:border-gray-700 text-rose-600 focus:ring-rose-500 dark:focus:ring-rose-500"
+                >
+                <label for="terms" class="ml-2 block text-sm text-gray-600 dark:text-gray-400">
+                    利用規約に同意する
+                </label>
+            </div>
+
+            <div>
+                <button
+                    type="submit"
+                    class="flex w-full justify-center rounded-lg bg-rose-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-rose-700 dark:bg-rose-500 dark:hover:bg-rose-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-rose-500 dark:focus:ring-offset-gray-900 transition-colors"
+                >
+                    登録する
+                </button>
+            </div>
+        </form>
+
+        <div class="mt-6 text-center">
+            <p class="text-sm text-gray-600 dark:text-gray-400">
+                すでにアカウントをお持ちですか？
+                <a href="/auth/login" class="text-rose-600 dark:text-rose-500 hover:text-rose-700 dark:hover:text-rose-400 font-medium">
+                    ログイン
+                </a>
+            </p>
         </div>
-
-        <div>
-            <label for="email" class="block text-sm font-medium text-gray-900 dark:text-white mb-2">
-                メールアドレス
-            </label>
-            <input
-                type="email"
-                id="email"
-                name="email"
-                required
-                class="block w-full rounded-md border-0 py-1.5 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:ring-2 focus:ring-inset focus:ring-indigo-600 sm:text-sm sm:leading-6"
-            >
-        </div>
-
-        <div>
-            <label for="password" class="block text-sm font-medium text-gray-900 dark:text-white mb-2">
-                パスワード
-            </label>
-            <input
-                type="password"
-                id="password"
-                name="password"
-                required
-                class="block w-full rounded-md border-0 py-1.5 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:ring-2 focus:ring-inset focus:ring-indigo-600 sm:text-sm sm:leading-6"
-            >
-        </div>
-
-        <div>
-            <label for="passwordConfirmation" class="block text-sm font-medium text-gray-900 dark:text-white mb-2">
-                パスワード（確認）
-            </label>
-            <input
-                type="password"
-                id="passwordConfirmation"
-                name="passwordConfirmation"
-                required
-                class="block w-full rounded-md border-0 py-1.5 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:ring-2 focus:ring-inset focus:ring-indigo-600 sm:text-sm sm:leading-6"
-            >
-        </div>
-
-        <div class="flex items-center">
-            <input
-                type="checkbox"
-                id="terms"
-                name="terms"
-                required
-                class="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-600"
-            >
-            <label for="terms" class="ml-2 block text-sm text-gray-900 dark:text-white">
-                利用規約に同意する
-            </label>
-        </div>
-
-        <div>
-            <button
-                type="submit"
-                class="flex w-full justify-center rounded-md bg-indigo-600 px-3 py-1.5 text-sm font-semibold leading-6 text-white shadow-sm hover:bg-indigo-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600"
-            >
-                登録する
-            </button>
-        </div>
-    </form>
-
-    <p class="mt-4 text-center text-sm text-gray-500">
-        すでにアカウントをお持ちですか？
-        <a href="/auth/login" class="font-semibold leading-6 text-indigo-600 hover:text-indigo-500">
-            ログイン
-        </a>
-    </p>
+    </div>
 </div> 
