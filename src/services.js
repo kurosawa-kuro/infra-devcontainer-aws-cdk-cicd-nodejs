@@ -862,6 +862,45 @@ class LikeService extends BaseService {
   }
 }
 
+class CommentService {
+  constructor(prisma, logger) {
+    this.prisma = prisma;
+    this.logger = logger;
+  }
+
+  async createComment({ content, userId, micropostId }) {
+    return this.prisma.comment.create({
+      data: {
+        content,
+        userId,
+        micropostId
+      },
+      include: {
+        user: true
+      }
+    });
+  }
+
+  async getCommentsByMicropostId(micropostId) {
+    return this.prisma.comment.findMany({
+      where: { micropostId },
+      include: {
+        user: {
+          include: {
+            profile: true,
+            userRoles: {
+              include: {
+                role: true
+              }
+            }
+          }
+        }
+      },
+      orderBy: { createdAt: 'desc' }
+    });
+  }
+}
+
 module.exports = {
   AuthService,
   ProfileService,
@@ -871,5 +910,6 @@ module.exports = {
   LogUploader,
   FollowService,
   PassportService,
-  LikeService
+  LikeService,
+  CommentService
 }; 

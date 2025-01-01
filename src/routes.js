@@ -57,6 +57,9 @@ function setupRoutes(app, controllers, fileUploader) {
   micropostRouter.delete('/:id/like', asyncHandler((req, res) => like.unlike(req, res)));
   micropostRouter.get('/:id/likes', asyncHandler((req, res) => like.getLikedUsers(req, res)));
   
+  // コメント関連のルート
+  micropostRouter.post('/:micropostId/comments', asyncHandler((req, res) => controllers.comment.create(req, res)));
+  
   app.use('/microposts', micropostRouter);
 
   // User actions

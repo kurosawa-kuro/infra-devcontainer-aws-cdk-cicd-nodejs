@@ -95,6 +95,88 @@
                     </div>
                 </div>
             </div>
+
+            <!-- Comment section -->
+            <div class="mt-8">
+                <h2 class="text-2xl font-semibold mb-6 text-gray-900 dark:text-white">コメント</h2>
+                
+                <% if (locals.user) { %>
+                    <!-- Comment form -->
+                    <div class="bg-white dark:bg-gray-900 rounded-xl shadow-sm border border-gray-200 dark:border-gray-800 mb-8">
+                        <div class="p-6">
+                            <form action="/microposts/<%= micropost.id %>/comments" method="POST">
+                                <div class="mb-4">
+                                    <label for="content" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                                        コメントを投稿
+                                    </label>
+                                    <textarea
+                                        id="content"
+                                        name="content"
+                                        rows="3"
+                                        class="block w-full rounded-lg border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-white shadow-sm focus:border-rose-500 focus:ring-rose-500"
+                                        placeholder="コメントを入力してください"
+                                        required
+                                    ></textarea>
+                                </div>
+                                <div class="flex justify-end">
+                                    <button
+                                        type="submit"
+                                        class="inline-flex items-center px-4 py-2 border border-transparent rounded-lg shadow-sm text-sm font-medium text-white bg-rose-600 hover:bg-rose-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-rose-500"
+                                    >
+                                        コメントを投稿
+                                    </button>
+                                </div>
+                            </form>
+                        </div>
+                    </div>
+                <% } else { %>
+                    <div class="bg-white dark:bg-gray-900 rounded-xl shadow-sm border border-gray-200 dark:border-gray-800 mb-8 p-6">
+                        <p class="text-gray-600 dark:text-gray-400">
+                            コメントを投稿するには<a href="/auth/login" class="text-rose-600 dark:text-rose-400 hover:underline">ログイン</a>してください。
+                        </p>
+                    </div>
+                <% } %>
+
+                <!-- Comments list -->
+                <div class="space-y-6">
+                    <% if (comments && comments.length > 0) { %>
+                        <% comments.forEach(comment => { %>
+                            <div class="bg-white dark:bg-gray-900 rounded-xl shadow-sm border border-gray-200 dark:border-gray-800">
+                                <div class="p-6">
+                                    <div class="flex items-start space-x-4">
+                                        <img src="<%= comment.user.profile?.avatarPath || '/uploads/default_avatar.png' %>" 
+                                             alt="User avatar" 
+                                             class="w-10 h-10 rounded-full">
+                                        <div class="flex-1 min-w-0">
+                                            <div class="flex items-center space-x-2">
+                                                <a href="/<%= comment.user.name || comment.user.id %>" 
+                                                   class="text-gray-900 dark:text-white font-medium hover:text-rose-600 dark:hover:text-rose-400">
+                                                    <%= comment.user.name || comment.user.email %>
+                                                </a>
+                                                <% if (comment.user?.userRoles?.some(ur => ur.role.name === 'admin')) { %>
+                                                    <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-rose-100 text-rose-800 dark:bg-rose-900 dark:text-rose-200">
+                                                        管理者
+                                                    </span>
+                                                <% } %>
+                                                <span class="text-sm text-gray-500 dark:text-gray-400">
+                                                    <%= new Date(comment.createdAt).toLocaleString('ja-JP') %>
+                                                </span>
+                                            </div>
+                                            <p class="mt-2 text-gray-700 dark:text-gray-300">
+                                                <%= comment.content %>
+                                            </p>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        <% }); %>
+                    <% } else { %>
+                        <p class="text-gray-600 dark:text-gray-400 text-center py-8">
+                            まだコメントはありません。
+                        </p>
+                    <% } %>
+                </div>
+            </div>
         </div>
     </div>
 </div> 

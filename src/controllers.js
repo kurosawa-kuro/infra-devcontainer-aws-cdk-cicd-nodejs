@@ -123,8 +123,11 @@ class AuthController extends BaseController {
 
 class MicropostController extends BaseController {
   constructor(services, fileUploader, errorHandler, logger) {
-    super(services, errorHandler, logger);
+    super({ ...services }, errorHandler, logger);
     this.fileUploader = fileUploader;
+    this.micropostService = services.micropost;
+    this.likeService = services.like;
+    this.commentService = services.comment;
   }
 
   async index(req, res) {
@@ -169,13 +172,14 @@ class MicropostController extends BaseController {
                        req.socket.remoteAddress;
 
       // Track the view
-      await this.services.micropost.trackView(micropostId, ipAddress);
+      await this.micropostService.trackView(micropostId, ipAddress);
 
       // Get micropost with updated view count and check if user has liked it
-      const [micropost, isLiked, likeCount] = await Promise.all([
-        this.services.micropost.getMicropostWithViews(micropostId),
-        req.user ? this.services.like.isLiked(req.user.id, micropostId) : false,
-        this.services.like.getLikeCount(micropostId)
+      const [micropost, isLiked, likeCount, comments] = await Promise.all([
+        this.micropostService.getMicropostWithViews(micropostId),
+        req.user ? this.likeService.isLiked(req.user.id, micropostId) : false,
+        this.likeService.getLikeCount(micropostId),
+        this.commentService.getCommentsByMicropostId(micropostId)
       ]);
 
       if (!micropost) {
@@ -186,6 +190,7 @@ class MicropostController extends BaseController {
         micropost,
         isLiked,
         likeCount,
+        comments,
         title: micropost.title,
         path: req.path,
         user: req.user
@@ -765,6 +770,39 @@ class LikeController extends BaseController {
   }
 }
 
+class CommentController extends BaseController {
+  constructor(services, errorHandler, logger) {
+    super(services, errorHandler, logger);
+  }
+
+  async create(req, res) {
+    return this.handleRequest(req, res, async () => {
+      const { content } = req.body;
+      const micropostId = parseInt(req.params.micropostId, 10);
+
+      if (!content?.trim()) {
+        throw this.errorHandler.createValidationError('コメント内容を入力してください', {
+          code: 'EMPTY_CONTENT',
+          field: 'content',
+          value: content,
+          constraint: 'required'
+        });
+      }
+
+      await this.services.comment.createComment({
+        content: content.trim(),
+        userId: req.user.id,
+        micropostId
+      });
+
+      this.sendResponse(req, res, {
+        message: 'コメントを投稿しました',
+        redirectUrl: `/microposts/${micropostId}`
+      });
+    });
+  }
+}
+
 module.exports = {
   AuthController,
   ProfileController,
@@ -773,5 +811,6 @@ module.exports = {
   DevController,
   AdminController,
   CategoryController,
-  LikeController
+  LikeController,
+  CommentController
 }; 
