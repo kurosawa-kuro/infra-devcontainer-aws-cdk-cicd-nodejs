@@ -24,7 +24,6 @@ const {
   MicropostService,
   SystemService,
   CategoryService,
-  LogUploader,
   PassportService
 } = require('./services');
 const {
@@ -226,6 +225,7 @@ class FileUploader {
   constructor(storageConfig) {
     this.storageConfig = storageConfig;
     this.s3Client = storageConfig.getS3Client();
+    this.uploader = this.createUploader();
   }
 
   createFileFilter() {
@@ -237,6 +237,10 @@ class FileUploader {
         cb(new Error(`対応していないファイル形式です。対応形式: ${allowedMimeTypes.join(', ')}`));
       }
     };
+  }
+
+  getUploader() {
+    return this.uploader;
   }
 
   createUploader() {

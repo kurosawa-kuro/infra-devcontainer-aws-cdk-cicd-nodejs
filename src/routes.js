@@ -49,7 +49,7 @@ function setupRoutes(app, controllers, fileUploader) {
   const micropostRouter = express.Router();
   micropostRouter.use(isAuthenticated);
   micropostRouter.get('/', asyncHandler((req, res) => micropost.index(req, res)));
-  micropostRouter.post('/', fileUploader.createUploader().single('image'), asyncHandler((req, res) => micropost.create(req, res)));
+  micropostRouter.post('/', fileUploader.getUploader().single('image'), asyncHandler((req, res) => micropost.create(req, res)));
   app.use('/microposts', micropostRouter);
 
   // User actions
@@ -87,7 +87,7 @@ function setupRoutes(app, controllers, fileUploader) {
   // 既存のプロフィールルート
   app.get('/:id', asyncHandler((req, res) => profile.show(req, res)));
   app.get('/:id/edit', isAuthenticated, asyncHandler((req, res) => profile.getEditPage(req, res)));
-  app.post('/:id/edit', isAuthenticated, fileUploader.createUploader().single('avatar'), asyncHandler((req, res) => profile.update(req, res)));
+  app.post('/:id/edit', isAuthenticated, fileUploader.getUploader().single('avatar'), asyncHandler((req, res) => profile.update(req, res)));
 
   // ===================================
   // Error Handlers (最後に配置)
