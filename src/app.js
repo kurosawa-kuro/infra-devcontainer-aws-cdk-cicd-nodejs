@@ -1,20 +1,24 @@
 const express = require('express');
 const winston = require('winston');
 const WinstonCloudWatch = require('winston-cloudwatch');
-const expressWinston = require('express-winston');
 const path = require('path');
 const multer = require('multer');
 const { PrismaClient } = require('@prisma/client');
 const { S3Client } = require('@aws-sdk/client-s3');
 const multerS3 = require('multer-s3');
 const fs = require('fs');
-const expressLayouts = require('express-ejs-layouts');
 require('dotenv').config();
 const passport = require('passport');
 const session = require('express-session');
-const flash = require('connect-flash');
 
 const setupRoutes = require('./routes');
+const {
+  setupBasicMiddleware,
+  setupAuthMiddleware,
+  setupRequestLogging,
+  setupErrorLogging,
+  handle500Error
+} = require('./middleware');
 const {
   AuthService,
   ProfileService,
@@ -497,153 +501,10 @@ class Application {
   }
 
   setupMiddleware() {
-    this.setupBasicMiddleware();
-    this.setupAuthMiddleware();
-    this.setupRequestLogging();
-    this.setupErrorLogging();
-  }
-
-  setupRequestLogging() {
-    this.app.use(expressWinston.logger({
-      winstonInstance: this.logger,
-      meta: true,
-      msg: this.createRequestLogMessage.bind(this),
-      expressFormat: false,
-      colorize: true,
-      ignoreRoute: (req) => req.url === '/health' || req.url === '/health-db'
-    }));
-  }
-
-  createRequestLogMessage(req, res) {
-    const responseTime = res.responseTime || 0;
-    const statusCode = res.statusCode;
-    const statusColor = this.getStatusColor(statusCode);
-    const reset = '\x1b[0m';
-    
-    const errorInfo = this.getErrorInfo(req, res);
-    const requestInfo = this.getRequestInfo(req, res);
-
-    if (statusCode >= 400) {
-      console.error('Request Details:', requestInfo);
-      this.logger.error('Request Details:', requestInfo);
-    }
-
-    return `${req.method.padEnd(6)} ${statusColor}${statusCode}${reset} ${req.url.padEnd(30)} ${responseTime}ms${errorInfo}`;
-  }
-
-  getStatusColor(statusCode) {
-    if (statusCode >= 500) return '\x1b[31m'; // red
-    if (statusCode >= 400) return '\x1b[33m'; // yellow
-    if (statusCode >= 300) return '\x1b[36m'; // cyan
-    return '\x1b[32m'; // green
-  }
-
-  getErrorInfo(req, res) {
-    let errorInfo = '';
-    if (res.locals.error) {
-      errorInfo = ` - Error: ${res.locals.error}`;
-    }
-    if (req.session && req.flash) {
-      try {
-        const flashErrors = req.flash('error');
-        if (flashErrors && flashErrors.length > 0) {
-          errorInfo += ` - Flash Errors: ${flashErrors.join(', ')}`;
-        }
-      } catch (e) {
-        // Ignore flash errors if session is not available
-      }
-    }
-    return errorInfo;
-  }
-
-  getRequestInfo(req, res) {
-    return {
-      method: req.method,
-      url: req.url,
-      params: req.params,
-      query: req.query,
-      body: req.body,
-      headers: req.headers,
-      statusCode: res.statusCode,
-      responseTime: res.responseTime
-    };
-  }
-
-  setupBasicMiddleware() {
-    this.app.use(express.json());
-    this.app.use(express.urlencoded({ extended: true }));
-    this.app.use(expressLayouts);
-    this.app.set('layout', 'layouts/public');
-    this.app.set('view engine', 'ejs');
-    this.app.set('views', path.join(__dirname, 'views'));
-    this.app.use((req, res, next) => {
-      res.locals.path = req.path;
-      next();
-    });
-  }
-
-  setupAuthMiddleware() {
-    const sessionConfig = {
-      secret: CONFIG.auth.sessionSecret,
-      resave: false,
-      saveUninitialized: true,
-      cookie: {
-        secure: CONFIG.app.isProduction,
-        maxAge: CONFIG.auth.sessionMaxAge
-      }
-    };
-
-    if (CONFIG.app.isTest) {
-      sessionConfig.cookie.secure = false;
-      sessionConfig.resave = true;
-    }
-
-    this.app.use(session(sessionConfig));
-    this.app.use(flash());
-    this.app.use(passport.initialize());
-    this.app.use(passport.session());
-
-    this.app.use(this.addLocals);
-  }
-
-  addLocals(req, res, next) {
-    res.locals.user = req.user;
-    res.locals.error = req.flash('error');
-    res.locals.success = req.flash('success');
-    next();
-  }
-
-  setupErrorLogging() {
-    this.app.use(expressWinston.errorLogger({
-      winstonInstance: this.logger,
-      meta: true,
-      msg: this.createErrorLogMessage.bind(this),
-      requestWhitelist: ['url', 'headers', 'method', 'httpVersion', 'originalUrl', 'query', 'body'],
-      blacklistedMetaFields: ['error', 'exception', 'process', 'os', 'trace', '_readableState']
-    }));
-  }
-
-  createErrorLogMessage(req, res, err) {
-    const responseTime = res.responseTime || 0;
-    const statusCode = res.statusCode;
-    
-    const errorDetails = {
-      message: err.message,
-      stack: err.stack,
-      type: err.name,
-      code: err.code,
-      status: statusCode,
-      request: this.getRequestInfo(req, res),
-      response: {
-        statusCode,
-        responseTime
-      }
-    };
-
-    console.error('Error Details:', errorDetails);
-    this.logger.error('Error Details:', errorDetails);
-
-    return `ERROR ${req.method.padEnd(6)} ${statusCode} ${req.url.padEnd(30)} ${responseTime}ms\nMessage: ${err.message}\nStack: ${err.stack}\nRequest Body: ${JSON.stringify(req.body)}`;
+    setupBasicMiddleware(this.app);
+    setupAuthMiddleware(this.app, CONFIG);
+    setupRequestLogging(this.app, this.logger);
+    setupErrorLogging(this.app, this.logger);
   }
 
   setupRoutes() {
@@ -651,7 +512,7 @@ class Application {
   }
 
   setupErrorHandler() {
-    this.app.use((err, req, res, next) => this.errorHandler.handle(err, req, res, next));
+    this.app.use(handle500Error);
   }
 
   async start() {
