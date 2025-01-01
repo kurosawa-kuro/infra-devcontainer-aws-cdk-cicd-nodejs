@@ -71,8 +71,20 @@ model Micropost {
   updatedAt  DateTime           @updatedAt
   userId     Int
   user       User               @relation(fields: [userId], references: [id])
+  likes      Like[]
   categories CategoryMicropost[]
   views      MicropostView[]
+}
+
+model Like {
+  id         Int       @id @default(autoincrement())
+  userId     Int
+  micropostId Int
+  createdAt  DateTime  @default(now())
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  micropost  Micropost @relation(fields: [micropostId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, micropostId])
 }
 
 model MicropostView {

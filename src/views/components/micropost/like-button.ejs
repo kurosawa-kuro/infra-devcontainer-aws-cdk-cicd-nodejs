@@ -1,30 +1,48 @@
 <%# いいねボタンコンポーネント %>
 <button 
-  class="btn btn-outline-primary btn-sm like-button"
+  class="flex items-center text-gray-500 dark:text-gray-400 hover:text-rose-600 dark:hover:text-rose-400 like-button <%= isLiked ? 'text-rose-600 dark:text-rose-400' : '' %>"
   data-micropost-id="<%= micropost.id %>"
   <%= !user ? 'disabled' : '' %>
 >
-  <i class="fas <%= isLiked ? 'fa-heart' : 'fa-heart-o' %>"></i>
-  <span class="like-count"><%= likeCount %></span>
+  <svg class="w-5 h-5 mr-1" fill="<%= isLiked ? 'currentColor' : 'none' %>" stroke="currentColor" viewBox="0 0 24 24">
+    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z"/>
+  </svg>
+  <span class="text-sm like-count"><%= likeCount %></span>
 </button>
 
 <script>
 document.querySelectorAll('.like-button').forEach(button => {
   button.addEventListener('click', async function() {
+    if (this.hasAttribute('disabled')) return;
+    
     const micropostId = this.dataset.micropostId;
-    const isLiked = this.querySelector('i').classList.contains('fa-heart');
+    const isLiked = this.classList.contains('text-rose-600') || this.classList.contains('dark:text-rose-400');
     
     try {
       const response = await fetch(`/microposts/${micropostId}/like`, {
         method: isLiked ? 'DELETE' : 'POST',
-        headers: { 'Content-Type': 'application/json' }
+        headers: { 
+          'Content-Type': 'application/json',
+          'X-Requested-With': 'XMLHttpRequest'
+        },
+        credentials: 'same-origin'
       });
+
+      if (!response.ok) {
+        throw new Error('Network response was not ok');
+      }
 
       const result = await response.json();
       if (result.success) {
-        const icon = this.querySelector('i');
-        icon.classList.toggle('fa-heart');
-        icon.classList.toggle('fa-heart-o');
+        // Update button state
+        this.classList.toggle('text-rose-600');
+        this.classList.toggle('dark:text-rose-400');
+        
+        // Update heart icon fill
+        const svg = this.querySelector('svg');
+        svg.setAttribute('fill', isLiked ? 'none' : 'currentColor');
+        
+        // Update count
         this.querySelector('.like-count').textContent = result.data.likeCount;
       }
     } catch (error) {
