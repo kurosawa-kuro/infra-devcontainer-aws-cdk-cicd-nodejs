@@ -26,7 +26,8 @@ const {
   CategoryService,
   PassportService,
   LikeService,
-  CommentService
+  CommentService,
+  NotificationService
 } = require('./services');
 const {
   AuthController,
@@ -37,7 +38,8 @@ const {
   AdminController,
   CategoryController,
   LikeController,
-  CommentController
+  CommentController,
+  NotificationController
 } = require('./controllers');
 
 // Constants and Configuration
@@ -493,7 +495,8 @@ class Application {
       category: new CategoryService(this.prisma, this.logger),
       passport: new PassportService(this.prisma, this.logger),
       like: new LikeService(this.prisma, this.logger),
-      comment: new CommentService(this.prisma, this.logger)
+      comment: new CommentService(this.prisma, this.logger),
+      notification: new NotificationService(this.prisma, this.logger)
     };
   }
 
@@ -531,7 +534,8 @@ class Application {
       admin: new AdminController(this.services, this.errorHandler, this.logger),
       category: new CategoryController(this.services.category, this.errorHandler, this.logger),
       like: new LikeController(this.services.like, this.errorHandler, this.logger),
-      comment: new CommentController(this.services, this.errorHandler, this.logger)
+      comment: new CommentController(this.services, this.errorHandler, this.logger),
+      notification: new NotificationController(this.services, this.errorHandler, this.logger)
     };
   }
 

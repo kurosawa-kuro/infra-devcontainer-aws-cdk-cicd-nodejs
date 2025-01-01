@@ -902,6 +902,65 @@ class CommentService {
   }
 }
 
+class NotificationService extends BaseService {
+  constructor(prisma, logger) {
+    super(prisma, logger);
+  }
+
+  async getNotifications(userId) {
+    return this.prisma.notification.findMany({
+      where: {
+        recipientId: userId
+      },
+      include: {
+        actor: {
+          include: {
+            profile: true
+          }
+        },
+        micropost: true
+      },
+      orderBy: {
+        createdAt: 'desc'
+      }
+    });
+  }
+
+  async markAsRead(notificationId, userId) {
+    return this.prisma.notification.update({
+      where: {
+        id: notificationId,
+        recipientId: userId
+      },
+      data: {
+        read: true
+      }
+    });
+  }
+
+  async getUnreadCount(userId) {
+    return this.prisma.notification.count({
+      where: {
+        recipientId: userId,
+        read: false
+      }
+    });
+  }
+
+  async createNotification({ type, recipientId, actorId, micropostId = null, commentId = null }) {
+    return this.prisma.notification.create({
+      data: {
+        type,
+        recipientId,
+        actorId,
+        micropostId,
+        commentId,
+        read: false
+      }
+    });
+  }
+}
+
 module.exports = {
   AuthService,
   ProfileService,
@@ -912,5 +971,6 @@ module.exports = {
   FollowService,
   PassportService,
   LikeService,
-  CommentService
+  CommentService,
+  NotificationService
 }; 

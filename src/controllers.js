@@ -803,6 +803,45 @@ class CommentController extends BaseController {
   }
 }
 
+class NotificationController extends BaseController {
+  constructor(services, errorHandler, logger) {
+    super(services, errorHandler, logger);
+    this.notificationService = services.notification;
+  }
+
+  async index(req, res) {
+    return this.handleRequest(req, res, async () => {
+      if (!req.user) {
+        return this.errorHandler.handlePermissionError(req, res, 'ログインが必要です');
+      }
+
+      const notifications = await this.notificationService.getNotifications(req.user.id);
+
+      res.render('pages/public/notifications/index', {
+        notifications,
+        title: '通知一覧',
+        user: req.user,
+        path: req.path
+      });
+    });
+  }
+
+  async markAsRead(req, res) {
+    return this.handleRequest(req, res, async () => {
+      if (!req.user) {
+        return this.errorHandler.handlePermissionError(req, res, 'ログインが必要です');
+      }
+
+      await this.notificationService.markAsRead(parseInt(req.params.id), req.user.id);
+      
+      this.sendResponse(req, res, {
+        status: 200,
+        success: true
+      });
+    });
+  }
+}
+
 module.exports = {
   AuthController,
   ProfileController,
@@ -812,5 +851,6 @@ module.exports = {
   AdminController,
   CategoryController,
   LikeController,
-  CommentController
+  CommentController,
+  NotificationController
 }; 

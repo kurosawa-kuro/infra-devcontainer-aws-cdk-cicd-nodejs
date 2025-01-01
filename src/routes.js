@@ -4,7 +4,7 @@ const path = require('path');
 const { isAuthenticated, forwardAuthenticated, isAdmin, handle404Error, handle500Error } = require('./middleware');
 
 function setupRoutes(app, controllers, fileUploader) {
-  const { auth, profile, micropost, system, dev, admin, category, like } = controllers;
+  const { auth, profile, micropost, system, dev, admin, category, like, notification } = controllers;
 
   // ===================================
   // Public Routes
@@ -92,22 +92,25 @@ function setupRoutes(app, controllers, fileUploader) {
   app.use('/dev', devRouter);
 
   // ===================================
-  // User Profile Routes (最後に配置)
+  // Notification Routes
   // ===================================
-  
-  // 既存のプロフィールルート
+  const notificationRouter = express.Router();
+  notificationRouter.use(isAuthenticated);
+  notificationRouter.get('/', asyncHandler((req, res) => notification.index(req, res)));
+  notificationRouter.post('/:id/read', asyncHandler((req, res) => notification.markAsRead(req, res)));
+  app.use('/notifications', notificationRouter);
+
+  // ===================================
+  // User Profile Routes
+  // ===================================
   app.get('/:id', asyncHandler((req, res) => profile.show(req, res)));
   app.get('/:id/edit', isAuthenticated, asyncHandler((req, res) => profile.getEditPage(req, res)));
   app.post('/:id/edit', isAuthenticated, fileUploader.getUploader().single('avatar'), asyncHandler((req, res) => profile.update(req, res)));
 
   // ===================================
-  // Error Handlers (最後に配置)
+  // Error Handlers
   // ===================================
-  
-  // 404 Error Handler
   app.use(handle404Error);
-
-  // 500 Error Handler
   app.use(handle500Error);
 
   return app;
