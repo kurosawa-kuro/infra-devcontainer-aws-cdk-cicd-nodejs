@@ -40,6 +40,9 @@ class BaseService {
           include: {
             role: true
           }
+        },
+        _count: {
+          select: { microposts: true }
         }
       }
     });

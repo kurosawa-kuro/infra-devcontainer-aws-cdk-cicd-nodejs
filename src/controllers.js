@@ -577,12 +577,17 @@ class AdminController extends BaseController {
 
   async showUser(req, res) {
     const { id } = req.params;
-    const user = await this.services.profile.findUserById(id);
+    const user = await this.services.profile.getUserProfile(id);
     if (!user) {
       req.flash('error', 'ユーザーが見つかりません');
       return res.redirect('/admin/users');
     }
-    res.render('pages/admin/users/show', { user });
+
+    res.render('pages/admin/users/show', { 
+      user,
+      title: 'ユーザー詳細',
+      path: req.path
+    });
   }
 
   async updateUserRoles(req, res) {
