@@ -51,7 +51,7 @@ describe('Notification Integration Tests', () => {
       await prisma.notification.create({
         data: {
           type: 'LIKE',
-          userId: testUser.id,
+          recipientId: testUser.id,
           actorId: otherUser.id,
           micropostId: testMicropost.id,
           read: false
@@ -60,8 +60,20 @@ describe('Notification Integration Tests', () => {
 
       const response = await authRequest.get('/notifications');
       expect(response.status).toBe(200);
-      expect(response.text).toContain('Test post');
-      expect(response.text).toContain(otherUser.name);
+      
+      // 通知一覧のタイトルと説明が表示されていることを確認
+      expect(response.text).toContain('通知一覧');
+      expect(response.text).toContain('あなたへの通知をチェックする');
+
+      // 通知の内容が正しく表示されていることを確認
+      expect(response.text).toContain('があなたの投稿にいいねしました');
+      expect(response.text).toContain('OtherUser');
+      expect(response.text).toContain('新着');
+      expect(response.text).toContain('投稿を見る');
+
+      // 通知のスタイリングが正しいことを確認
+      expect(response.text).toContain('border-l-rose-500');
+      expect(response.text).toContain('rounded-xl');
     });
 
     // Add more tests...
