@@ -710,6 +710,7 @@ class LikeController extends BaseController {
 
       this.sendResponse(req, res, {
         status: 200,
+        success: true,
         message: 'いいねしました',
         data: { likeCount }
       });
@@ -728,6 +729,7 @@ class LikeController extends BaseController {
 
       this.sendResponse(req, res, {
         status: 200,
+        success: true,
         message: 'いいねを取り消しました',
         data: { likeCount }
       });

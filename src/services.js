@@ -771,15 +771,41 @@ class PassportService extends BaseService {
 // いいね関連サービス
 class LikeService extends BaseService {
   async like(userId, micropostId) {
-    return this.prisma.like.create({
+    const validUserId = this.validateId(userId);
+    const validMicropostId = this.validateId(micropostId);
+
+    await this.prisma.like.createMany({
       data: {
-        userId: this.validateId(userId),
-        micropostId: this.validateId(micropostId)
+        userId: validUserId,
+        micropostId: validMicropostId
+      },
+      skipDuplicates: true
+    });
+
+    return this.prisma.like.findUnique({
+      where: {
+        userId_micropostId: {
+          userId: validUserId,
+          micropostId: validMicropostId
+        }
       }
     });
   }
 
   async unlike(userId, micropostId) {
+    const like = await this.prisma.like.findUnique({
+      where: {
+        userId_micropostId: {
+          userId: this.validateId(userId),
+          micropostId: this.validateId(micropostId)
+        }
+      }
+    });
+
+    if (!like) {
+      return null;
+    }
+
     return this.prisma.like.delete({
       where: {
         userId_micropostId: {

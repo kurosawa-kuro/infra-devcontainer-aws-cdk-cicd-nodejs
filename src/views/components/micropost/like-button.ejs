@@ -13,7 +13,10 @@
 <script>
 document.querySelectorAll('.like-button').forEach(button => {
   button.addEventListener('click', async function() {
-    if (this.hasAttribute('disabled')) return;
+    if (this.hasAttribute('disabled')) {
+      showToast('ログインが必要です', 'error');
+      return;
+    }
     
     const micropostId = this.dataset.micropostId;
     const isLiked = this.classList.contains('text-rose-600') || this.classList.contains('dark:text-rose-400');
@@ -28,11 +31,12 @@ document.querySelectorAll('.like-button').forEach(button => {
         credentials: 'same-origin'
       });
 
+      const result = await response.json();
+      
       if (!response.ok) {
-        throw new Error('Network response was not ok');
+        throw new Error(result.message || 'エラーが発生しました');
       }
 
-      const result = await response.json();
       if (result.success) {
         // Update button state
         this.classList.toggle('text-rose-600');
@@ -44,9 +48,39 @@ document.querySelectorAll('.like-button').forEach(button => {
         
         // Update count
         this.querySelector('.like-count').textContent = result.data.likeCount;
+        
+        // Show success message
+        showToast(result.message, 'success');
+      } else {
+        throw new Error(result.message || 'エラーが発生しました');
       }
     } catch (error) {
       console.error('Error:', error);
+      showToast(error.message || 'エラーが発生しました', 'error');
     }
   });
-});</script> 
+});
+
+// Simple toast notification function
+function showToast(message, type = 'success') {
+  const toast = document.createElement('div');
+  toast.className = `fixed bottom-4 right-4 px-6 py-3 rounded-lg text-white text-sm font-medium shadow-lg transform transition-all duration-300 ${
+    type === 'success' ? 'bg-green-600' : 'bg-red-600'
+  }`;
+  toast.textContent = message;
+  
+  document.body.appendChild(toast);
+  
+  // Fade in
+  setTimeout(() => {
+    toast.style.opacity = '1';
+  }, 10);
+  
+  // Fade out and remove
+  setTimeout(() => {
+    toast.style.opacity = '0';
+    setTimeout(() => {
+      document.body.removeChild(toast);
+    }, 300);
+  }, 3000);
+}</script> 
