@@ -1,6 +1,5 @@
 const request = require('supertest');
-const { getTestServer } = require('./setup');
-const { createTestUserAndLogin, createTestMicroposts, TEST_ADMIN, ensureRolesExist } = require('./utils/test-utils');
+const { getTestServer, TEST_ADMIN } = require('./test-setup');
 
 describe('Micropost Integration Tests', () => {
   const testServer = getTestServer();
@@ -12,22 +11,12 @@ describe('Micropost Integration Tests', () => {
   beforeAll(async () => {
     server = testServer.getServer();
     prisma = testServer.getPrisma();
-    await ensureRolesExist(prisma);
   });
 
   beforeEach(async () => {
-    const { response, authCookie: cookie } = await createTestUserAndLogin(server);
-    authCookie = cookie;
-    testUser = await prisma.user.findUnique({
-      where: { email: 'test@example.com' },
-      include: {
-        userRoles: {
-          include: {
-            role: true
-          }
-        }
-      }
-    });
+    const result = await testServer.createTestUserAndLogin();
+    authCookie = result.authCookie;
+    testUser = result.user;
   });
 
   describe('Create Micropost', () => {
@@ -86,15 +75,13 @@ describe('Micropost Integration Tests', () => {
 
     beforeEach(async () => {
       // Create posts for regular user
-      await createTestMicroposts(prisma, testUser.id);
+      await testServer.createTestMicroposts(testUser.id);
 
       // Create admin user and their posts
-      const { response, authCookie: cookie } = await createTestUserAndLogin(server, TEST_ADMIN, true);
-      adminCookie = cookie;
-      adminUser = await prisma.user.findUnique({
-        where: { email: TEST_ADMIN.email }
-      });
-      await createTestMicroposts(prisma, adminUser.id, [
+      const adminResult = await testServer.createTestUserAndLogin(TEST_ADMIN, true);
+      adminCookie = adminResult.authCookie;
+      adminUser = adminResult.user;
+      await testServer.createTestMicroposts(adminUser.id, [
         { title: 'Admin post 1' },
         { title: 'Admin post 2' }
       ]);

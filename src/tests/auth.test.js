@@ -1,6 +1,5 @@
 const request = require('supertest');
-const { getTestServer } = require('./setup');
-const { TEST_USER, TEST_ADMIN, createTestUser, loginTestUser , ensureRolesExist } = require('./utils/test-utils');
+const { getTestServer, TEST_USER, TEST_ADMIN } = require('./test-setup');
 
 describe('Authentication Integration Tests', () => {
   const testServer = getTestServer();
@@ -10,16 +9,11 @@ describe('Authentication Integration Tests', () => {
   beforeAll(async () => {
     server = testServer.getServer();
     prisma = testServer.getPrisma();
-    await ensureRolesExist(prisma);
-  });
-
-  beforeEach(async () => {
-    // Clean up database is now handled by setup.js
   });
 
   describe('User Registration', () => {
     it('should successfully register a new user with default role', async () => {
-      const { response, user } = await createTestUser(server, TEST_USER, false, prisma);
+      const { response, user } = await testServer.createTestUser(TEST_USER, false);
       expect(response.status).toBe(302);
       expect(response.header.location).toBe('/');
       expect(response.headers['set-cookie']).toBeTruthy();
@@ -38,7 +32,7 @@ describe('Authentication Integration Tests', () => {
     });
 
     it('should successfully create an admin user', async () => {
-      const { response, user } = await createTestUser(server, TEST_ADMIN, true, prisma);
+      const { response, user } = await testServer.createTestUser(TEST_ADMIN, true);
       expect(response.status).toBe(302);
       expect(response.header.location).toBe('/');
       expect(response.headers['set-cookie']).toBeTruthy();
@@ -56,19 +50,19 @@ describe('Authentication Integration Tests', () => {
     let testUser;
 
     beforeEach(async () => {
-      const { user } = await createTestUser(server, TEST_USER, false, prisma);
+      const { user } = await testServer.createTestUser(TEST_USER, false);
       testUser = user;
     });
 
     it('should successfully login with correct credentials', async () => {
-      const { response } = await loginTestUser(server);
+      const { response } = await testServer.loginTestUser();
       expect(response.status).toBe(302);
       expect(response.header.location).toBe('/');
       expect(response.headers['set-cookie']).toBeTruthy();
     });
 
     it('should include role information in session', async () => {
-      const { authCookie } = await loginTestUser(server);
+      const { authCookie } = await testServer.loginTestUser();
       
       // First verify we can access the profile page
       const response = await request(server)
@@ -88,66 +82,4 @@ describe('Authentication Integration Tests', () => {
         .expect(200);
     });
   });
-  //   let userCookie;
-  //   let adminCookie;
-  //   let regularUser;
-  //   let adminUser;
-
-  //   beforeEach(async () => {
-  //     // Create regular user
-  //     const userResult = await createTestUser(server, TEST_USER, false, prisma)
-  //       .then(() => loginTestUser(server, TEST_USER));
-  //     userCookie = userResult.authCookie;
-  //     regularUser = await prisma.user.findUnique({
-  //       where: { email: TEST_USER.email },
-  //       include: {
-  //         userRoles: {
-  //           include: {
-  //             role: true
-  //           }
-  //         }
-  //       }
-  //     });
-
-  //     // Create admin user
-  //     const adminResult = await createTestUser(server, TEST_ADMIN, true, prisma)
-  //       .then(() => loginTestUser(server, TEST_ADMIN));
-  //     adminCookie = adminResult.authCookie;
-  //     adminUser = await prisma.user.findUnique({
-  //       where: { email: TEST_ADMIN.email },
-  //       include: {
-  //         userRoles: {
-  //           include: {
-  //             role: true
-  //           }
-  //         }
-  //       }
-  //     });
-
-  //     // Verify roles are set up correctly
-  //     expect(regularUser.userRoles.some(ur => ur.role.name === 'user')).toBe(true);
-  //     expect(regularUser.userRoles.some(ur => ur.role.name === 'admin')).toBe(false);
-  //     expect(adminUser.userRoles.some(ur => ur.role.name === 'admin')).toBe(true);
-  //   });
-
-  //   it('should allow admin to access any profile', async () => {
-  //     const response = await request(server)
-  //       .get(`/profile/${regularUser.id}/edit`)
-  //       .set('Cookie', adminCookie)
-  //       .expect(200);
-
-  //     expect(response.text).toContain('プロフィール編集');
-  //     expect(response.text).toContain(regularUser.email);
-  //   });
-
-  //   it('should allow users to access their own profile', async () => {
-  //     const response = await request(server)
-  //       .get(`/profile/${regularUser.id}/edit`)
-  //       .set('Cookie', userCookie)
-  //       .expect(200);
-
-  //     expect(response.text).toContain('プロフィール編集');
-  //     expect(response.text).toContain(regularUser.email);
-  //   });
-  // });
 }); 

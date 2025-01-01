@@ -1,6 +1,5 @@
 const request = require('supertest');
-const { getTestServer } = require('./setup');
-const { createTestUserAndLogin,  ensureRolesExist } = require('./utils/test-utils');
+const { getTestServer } = require('./test-setup');
 const path = require('path');
 
 describe('UserProfile Integration Tests', () => {
@@ -13,49 +12,12 @@ describe('UserProfile Integration Tests', () => {
   beforeAll(async () => {
     server = testServer.getServer();
     prisma = testServer.getPrisma();
-    await ensureRolesExist(prisma);
   });
 
   beforeEach(async () => {
-    const { response, authCookie: cookie } = await createTestUserAndLogin(server);
-    authCookie = cookie;
-    
-    // Get the user and ensure profile exists
-    testUser = await prisma.user.findUnique({
-      where: { email: 'test@example.com' },
-      include: { 
-        profile: true,
-        userRoles: {
-          include: {
-            role: true
-          }
-        }
-      }
-    });
-
-    if (!testUser.profile) {
-      await prisma.userProfile.create({
-        data: {
-          userId: testUser.id,
-          bio: 'Test bio',
-          location: 'Test location',
-          website: 'https://test.com',
-          avatarPath: 'default_avatar.png'
-        }
-      });
-
-      testUser = await prisma.user.findUnique({
-        where: { email: 'test@example.com' },
-        include: { 
-          profile: true,
-          userRoles: {
-            include: {
-              role: true
-            }
-          }
-        }
-      });
-    }
+    const result = await testServer.createTestUserAndLogin();
+    authCookie = result.authCookie;
+    testUser = result.user;
   });
 
   describe('View Profile', () => {
@@ -103,6 +65,5 @@ describe('UserProfile Integration Tests', () => {
       expect(updatedUser.profile.location).toBe(updatedProfile.location);
       expect(updatedUser.profile.website).toBe(updatedProfile.website);
     });
-
   });
 }); 

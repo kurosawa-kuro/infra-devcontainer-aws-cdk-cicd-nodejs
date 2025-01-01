@@ -62,7 +62,7 @@
       "**/tests/**/*.test.js"
     ],
     "setupFilesAfterEnv": [
-      "./src/tests/setup.js"
+      "./src/tests/test-setup.js"
     ],
     "testTimeout": 10000
   },

@@ -1,12 +1,5 @@
 const request = require('supertest');
-const { getTestServer } = require('./setup');
-const { 
-  createTestUserAndLogin,
-  ensureRolesExist,
-  setupTestEnvironment,
-  createOtherTestUser,
-  authenticatedRequest
-} = require('./utils/test-utils');
+const { getTestServer } = require('./test-setup');
 
 describe('Like Integration Tests', () => {
   const testServer = getTestServer();
@@ -20,17 +13,14 @@ describe('Like Integration Tests', () => {
   beforeAll(async () => {
     server = testServer.getServer();
     prisma = testServer.getPrisma();
-    await ensureRolesExist(prisma);
   });
 
   beforeEach(async () => {
-    // Clean up database is now handled by setup.js
-
     // Setup test environment with user
-    const result = await setupTestEnvironment(server, prisma, { createUser: true });
+    const result = await testServer.setupTestEnvironment({ createUser: true });
     testUser = result.testUser;
     authCookie = result.authCookie;
-    authRequest = await authenticatedRequest(server, authCookie);
+    authRequest = testServer.authenticatedRequest(authCookie);
 
     // Create a test micropost
     testMicropost = await prisma.micropost.create({
@@ -92,7 +82,7 @@ describe('Like Integration Tests', () => {
 
     it('should show correct like count on micropost page', async () => {
       // Create another user and their like
-      const otherUser = await createOtherTestUser(prisma);
+      const otherUser = await testServer.createOtherTestUser();
 
       // Create multiple likes
       await prisma.like.createMany({

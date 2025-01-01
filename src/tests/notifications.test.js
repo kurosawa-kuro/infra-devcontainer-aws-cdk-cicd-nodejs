@@ -1,12 +1,5 @@
 const request = require('supertest');
-const { getTestServer } = require('./setup');
-const { 
-  createTestUserAndLogin, 
-  ensureRolesExist, 
-  setupTestEnvironment,
-  createOtherTestUser,
-  authenticatedRequest 
-} = require('./utils/test-utils');
+const { getTestServer } = require('./test-setup');
 
 describe('Notification Integration Tests', () => {
   const testServer = getTestServer();
@@ -21,20 +14,17 @@ describe('Notification Integration Tests', () => {
   beforeAll(async () => {
     server = testServer.getServer();
     prisma = testServer.getPrisma();
-    await ensureRolesExist(prisma);
   });
 
   beforeEach(async () => {
-    // Clean up database is now handled by setup.js
-    
     // Setup test environment with user
-    const result = await setupTestEnvironment(server, prisma, { createUser: true });
+    const result = await testServer.setupTestEnvironment({ createUser: true });
     testUser = result.testUser;
     authCookie = result.authCookie;
-    authRequest = await authenticatedRequest(server, authCookie);
+    authRequest = testServer.authenticatedRequest(authCookie);
 
     // Create another user for interaction
-    otherUser = await createOtherTestUser(prisma);
+    otherUser = await testServer.createOtherTestUser();
 
     // Create a test micropost
     testMicropost = await prisma.micropost.create({
@@ -75,7 +65,5 @@ describe('Notification Integration Tests', () => {
       expect(response.text).toContain('border-l-rose-500');
       expect(response.text).toContain('rounded-xl');
     });
-
-    // Add more tests...
   });
 }); 

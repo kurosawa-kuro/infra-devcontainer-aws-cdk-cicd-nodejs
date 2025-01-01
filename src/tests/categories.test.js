@@ -1,11 +1,5 @@
 const request = require('supertest');
-const { getTestServer } = require('./setup');
-const { 
-  createTestUserAndLogin,
-  ensureRolesExist,
-  setupTestEnvironment,
-  authenticatedRequest
-} = require('./utils/test-utils');
+const { getTestServer } = require('./test-setup');
 
 describe('Category Integration Tests', () => {
   const testServer = getTestServer();
@@ -18,20 +12,17 @@ describe('Category Integration Tests', () => {
   beforeAll(async () => {
     server = testServer.getServer();
     prisma = testServer.getPrisma();
-    await ensureRolesExist(prisma);
   });
 
   beforeEach(async () => {
-    // Clean up database is now handled by setup.js
-
     // Setup test environment with user and categories
-    const result = await setupTestEnvironment(server, prisma, { 
+    const result = await testServer.setupTestEnvironment({ 
       createUser: true,
       createCategories: true 
     });
     testUser = result.testUser;
     authCookie = result.authCookie;
-    authRequest = await authenticatedRequest(server, authCookie);
+    authRequest = testServer.authenticatedRequest(authCookie);
   });
 
   describe('Category Display', () => {
