@@ -4,6 +4,89 @@ const axios = require('axios');
 const passport = require('passport');
 const prisma = new PrismaClient();
 
+// Constants for common values
+const CONSTANTS = {
+  DEFAULT_PAGE_SIZE: 10,
+  RESPONSE_TYPES: {
+    JSON: 'application/json',
+    HTML: 'text/html'
+  },
+  FLASH_TYPES: {
+    SUCCESS: 'success',
+    ERROR: 'error',
+    INFO: 'info'
+  },
+  USER_TYPES: {
+    ADMIN: 'admin',
+    USER: 'user'
+  }
+};
+
+// Common response utilities
+const ResponseUtils = {
+  isApiRequest(req) {
+    return req.xhr || req.headers.accept?.includes(CONSTANTS.RESPONSE_TYPES.JSON);
+  },
+
+  sendSuccessResponse(req, res, { status = 200, message, data, redirectUrl }) {
+    if (this.isApiRequest(req)) {
+      return res.status(status).json({
+        success: true,
+        message,
+        data
+      });
+    }
+    if (message) {
+      req.flash(CONSTANTS.FLASH_TYPES.SUCCESS, message);
+    }
+    return res.redirect(redirectUrl);
+  },
+
+  sendErrorResponse(req, res, { status = 400, message, error }) {
+    if (this.isApiRequest(req)) {
+      return res.status(status).json({
+        success: false,
+        message,
+        error
+      });
+    }
+    if (message) {
+      req.flash(CONSTANTS.FLASH_TYPES.ERROR, message);
+    }
+    return res.redirect('back');
+  }
+};
+
+// Common validation utilities
+const ValidationUtils = {
+  validateRequired(value, fieldName) {
+    if (!value?.trim()) {
+      throw new ValidationError(`${fieldName}を入力してください`, {
+        code: 'EMPTY_FIELD',
+        field: fieldName,
+        value,
+        constraint: 'required'
+      });
+    }
+    return value.trim();
+  },
+
+  validateUserAccess(currentUser, targetUserId, isAdminRequired = false) {
+    const isOwnResource = currentUser.id === parseInt(targetUserId, 10);
+    const isAdmin = currentUser.userRoles.some(ur => ur.role.name === CONSTANTS.USER_TYPES.ADMIN);
+    
+    if (isAdminRequired && !isAdmin) {
+      throw new PermissionError('管理者権限が必要です');
+    }
+    
+    if (!isOwnResource && !isAdmin) {
+      throw new PermissionError('アクセス権限がありません');
+    }
+    
+    return true;
+  }
+};
+
 class BaseController {
   constructor(service, errorHandler, logger) {
     this.service = service;
@@ -15,6 +98,11 @@ class BaseController {
     try {
       await handler();
     } catch (error) {
+      this.logger.error('Request handling error:', {
+        error: error.message,
+        stack: error.stack,
+        path: req.path
+      });
       this.errorHandler.handle(error, req, res);
     }
   }
@@ -22,26 +110,27 @@ class BaseController {
   renderWithUser(req, res, view, options = {}) {
     const defaultOptions = {
       user: req.user,
-      path: req.path
+      path: req.path,
+      flash: {
+        success: req.flash(CONSTANTS.FLASH_TYPES.SUCCESS),
+        error: req.flash(CONSTANTS.FLASH_TYPES.ERROR),
+        info: req.flash(CONSTANTS.FLASH_TYPES.INFO)
+      }
     };
     res.render(view, { ...defaultOptions, ...options });
   }
 
-  sendResponse(req, res, { status = 200, message, data, redirectUrl }) {
-    const isApiRequest = req.xhr || req.headers.accept?.includes('application/json');
-    
-    if (isApiRequest) {
-      return res.status(status).json({
-        success: status < 400,
-        message,
-        data
-      });
+  async ensureAuthenticated(req) {
+    if (!req.user) {
+      throw new AuthenticationError('ログインが必要です');
     }
+    return req.user;
+  }
 
-    if (message) {
-      req.flash('success', message);
-    }
-    return res.redirect(redirectUrl);
+  async loginUser(req, user) {
+    return new Promise((resolve, reject) => {
+      req.logIn(user, (err) => err ? reject(err) : resolve());
+    });
   }
 }
 
@@ -69,10 +158,8 @@ class AuthController extends BaseController {
   async signup(req, res) {
     return this.handleRequest(req, res, async () => {
       const user = await this.service.signup(req.body);
-      await new Promise((resolve, reject) => {
-        req.logIn(user, (err) => err ? reject(err) : resolve());
-      });
-      this.sendResponse(req, res, {
+      await this.loginUser(req, user);
+      ResponseUtils.sendSuccessResponse(req, res, {
         message: 'ユーザー登録が完了しました',
         redirectUrl: '/'
       });
@@ -82,7 +169,7 @@ class AuthController extends BaseController {
   async login(req, res) {
     return this.handleRequest(req, res, async () => {
       await this.service.login(req, res);
-      this.sendResponse(req, res, {
+      ResponseUtils.sendSuccessResponse(req, res, {
         message: 'ログインしました',
         redirectUrl: '/'
       });
@@ -94,8 +181,7 @@ class AuthController extends BaseController {
       try {
         await this.service.logout(req);
       } catch (error) {
-        // Continue with logout even if session destruction fails
-        console.error('Session destruction error:', error);
+        this.logger.error('Session destruction error:', error);
       }
 
       res.clearCookie('connect.sid', {
@@ -105,8 +191,7 @@ class AuthController extends BaseController {
         sameSite: 'strict'
       });
       
-      const isApiRequest = req.xhr || req.headers.accept?.includes('application/json');
-      if (isApiRequest) {
+      if (ResponseUtils.isApiRequest(req)) {
         return res.status(200).json({
           success: true,
           message: 'ログアウトしました'
@@ -132,11 +217,10 @@ class MicropostController extends BaseController {
           orderBy: { name: 'asc' }
         })
       ]);
-      res.render('pages/public/microposts/index', { 
+      this.renderWithUser(req, res, 'pages/public/microposts/index', { 
         microposts,
         categories,
-        title: '投稿一覧',
-        path: req.path
+        title: '投稿一覧'
       });
     });
   }
@@ -145,11 +229,15 @@ class MicropostController extends BaseController {
     return this.handleRequest(req, res, async () => {
       const { title, categories } = req.body;
       if (!title?.trim()) {
-        throw this.errorHandler.createValidationError('投稿内容を入力してください', {
-          code: 'EMPTY_CONTENT',
-          field: 'title',
-          value: title,
-          constraint: 'required'
+        return ResponseUtils.sendErrorResponse(req, res, {
+          status: 400,
+          message: '投稿内容を入力してください',
+          error: {
+            code: 'EMPTY_CONTENT',
+            field: 'title',
+            value: title,
+            constraint: 'required'
+          }
         });
       }
 
@@ -165,7 +253,7 @@ class MicropostController extends BaseController {
         categories: Array.isArray(categories) ? categories : categories ? [categories] : []
       });
       
-      this.sendResponse(req, res, {
+      ResponseUtils.sendSuccessResponse(req, res, {
         message: '投稿が完了しました',
         redirectUrl: '/microposts'
       });
@@ -533,17 +621,18 @@ class DevController extends BaseController {
       });
 
       if (!user) {
-        return this.errorHandler.handleNotFoundError(req, res, 'ユーザーが見つかりません');
+        return ResponseUtils.sendErrorResponse(req, res, {
+          status: 404,
+          message: 'ユーザーが見つかりません'
+        });
       }
 
-      await new Promise((resolve, reject) => {
-        req.logIn(user, (err) => err ? reject(err) : resolve());
-      });
+      await this.loginUser(req, user);
 
-      const isAdmin = user.userRoles.some(ur => ur.role.name === 'admin');
+      const isAdmin = user.userRoles.some(ur => ur.role.name === CONSTANTS.USER_TYPES.ADMIN);
       const userType = isAdmin ? '管理者' : '一般ユーザー';
 
-      this.sendResponse(req, res, {
+      ResponseUtils.sendSuccessResponse(req, res, {
         message: `${userType}としてログインしました`,
         redirectUrl: '/dev'
       });
@@ -558,50 +647,63 @@ class AdminController extends BaseController {
   }
 
   async dashboard(req, res) {
-    const stats = await this.services.system.getStats();
-    res.render('pages/admin/dashboard', {
-      title: '管理者ダッシュボード',
-      path: req.path,
-      stats
+    return this.handleRequest(req, res, async () => {
+      const stats = await this.services.system.getStats();
+      this.renderWithUser(req, res, 'pages/admin/dashboard', {
+        title: '管理者ダッシュボード',
+        stats
+      });
     });
   }
 
   async manageUsers(req, res) {
-    const users = await this.services.profile.getAllUsers();
-    res.render('pages/admin/users/index', {
-      title: 'ユーザー管理',
-      path: req.path,
-      users
+    return this.handleRequest(req, res, async () => {
+      const users = await this.services.profile.getAllUsers();
+      this.renderWithUser(req, res, 'pages/admin/users/index', {
+        title: 'ユーザー管理',
+        users
+      });
     });
   }
 
   async showUser(req, res) {
-    const { id } = req.params;
-    const user = await this.services.profile.getUserProfile(id);
-    if (!user) {
-      req.flash('error', 'ユーザーが見つかりません');
-      return res.redirect('/admin/users');
-    }
+    return this.handleRequest(req, res, async () => {
+      const { id } = req.params;
+      const user = await this.services.profile.getUserProfile(id);
+      
+      if (!user) {
+        return ResponseUtils.sendErrorResponse(req, res, {
+          status: 404,
+          message: 'ユーザーが見つかりません',
+          redirectUrl: '/admin/users'
+        });
+      }
 
-    res.render('pages/admin/users/show', { 
-      user,
-      title: 'ユーザー詳細',
-      path: req.path
+      this.renderWithUser(req, res, 'pages/admin/users/show', { 
+        user,
+        title: 'ユーザー詳細'
+      });
     });
   }
 
   async updateUserRoles(req, res) {
-    const { id: userId } = req.params;
-    const { roles } = req.body;
+    return this.handleRequest(req, res, async () => {
+      const { id: userId } = req.params;
+      const { roles } = req.body;
 
-    try {
-      await this.services.profile.updateUserRoles(userId, roles || []);
-      req.flash('success', 'ユーザーロールを更新しました');
-    } catch (error) {
-      req.flash('error', error.message);
-    }
-
-    res.redirect(`/admin/users/${userId}`);
+      try {
+        await this.services.profile.updateUserRoles(userId, roles || []);
+        ResponseUtils.sendSuccessResponse(req, res, {
+          message: 'ユーザーロールを更新しました',
+          redirectUrl: `/admin/users/${userId}`
+        });
+      } catch (error) {
+        ResponseUtils.sendErrorResponse(req, res, {
+          message: error.message,
+          redirectUrl: `/admin/users/${userId}`
+        });
+      }
+    });
   }
 }
 
@@ -614,10 +716,9 @@ class CategoryController extends BaseController {
   async index(req, res) {
     return this.handleRequest(req, res, async () => {
       const categories = await this.categoryService.getAllCategories();
-      res.render('pages/public/categories/index', {
+      this.renderWithUser(req, res, 'pages/public/categories/index', {
         categories,
-        title: 'カテゴリー一覧',
-        path: req.path
+        title: 'カテゴリー一覧'
       });
     });
   }
@@ -626,14 +727,41 @@ class CategoryController extends BaseController {
     return this.handleRequest(req, res, async () => {
       const category = await this.categoryService.getCategoryById(req.params.id);
       if (!category) {
-        return this.errorHandler.handleNotFoundError(req, res, 'カテゴリーが見つかりません');
+        return ResponseUtils.sendErrorResponse(req, res, {
+          status: 404,
+          message: 'カテゴリーが見つかりません',
+          redirectUrl: '/categories'
+        });
       }
-      res.render('pages/public/categories/show', {
+
+      this.renderWithUser(req, res, 'pages/public/categories/show', {
         category,
-        title: `カテゴリー: ${category.name}`,
-        path: req.path
+        title: `カテゴリー: ${category.name}`
       });
     });
+  }
+}
+
+// Custom Error Classes
+class ValidationError extends Error {
+  constructor(message, details) {
+    super(message);
+    this.name = 'ValidationError';
+    this.details = details;
+  }
+}
+
+class PermissionError extends Error {
+  constructor(message) {
+    super(message);
+    this.name = 'PermissionError';
+  }
+}
+
+class AuthenticationError extends Error {
+  constructor(message) {
+    super(message);
+    this.name = 'AuthenticationError';
   }
 }
 
@@ -644,5 +772,8 @@ module.exports = {
   SystemController,
   DevController,
   AdminController,
-  CategoryController
+  CategoryController,
+  CONSTANTS,
+  ResponseUtils,
+  ValidationUtils
 }; 
