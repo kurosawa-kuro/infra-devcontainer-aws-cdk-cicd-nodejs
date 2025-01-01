@@ -285,6 +285,22 @@ class ProfileService extends BaseService {
   async isFollowing(followerId, followingId) {
     return this.followService.isFollowing(followerId, followingId);
   }
+
+  async getFollowing(userId) {
+    return this.followService.getFollowing(userId);
+  }
+
+  async getFollowers(userId) {
+    return this.followService.getFollowers(userId);
+  }
+
+  async findUserByIdentifier(identifier) {
+    if (identifier.match(/^[0-9]+$/)) {
+      return this.getUserProfile(parseInt(identifier, 10));
+    } else {
+      return this.getUserProfileByName(identifier);
+    }
+  }
 }
 
 // フォロー関連サービス

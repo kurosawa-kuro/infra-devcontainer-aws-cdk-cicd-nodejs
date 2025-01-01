@@ -583,8 +583,11 @@ class AdminController extends BaseController {
       return res.redirect('/admin/users');
     }
 
+    const microposts = await this.services.micropost.getMicropostsByUser(id);
+
     res.render('pages/admin/users/show', { 
       user,
+      microposts,
       title: 'ユーザー詳細',
       path: req.path
     });
