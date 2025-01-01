@@ -1,9 +1,3 @@
-const { PrismaClient } = require('@prisma/client');
-const bcrypt = require('bcrypt');
-const axios = require('axios');
-const passport = require('passport');
-const prisma = new PrismaClient();
-
 class BaseController {
   constructor(service, errorHandler, logger) {
     this.service = service;
