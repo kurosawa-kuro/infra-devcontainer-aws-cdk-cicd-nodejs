@@ -1,7 +1,7 @@
 const express = require('express');
 const asyncHandler = require('express-async-handler');
 const path = require('path');
-const { isAuthenticated, forwardAuthenticated, isAdmin } = require('./middleware/auth');
+const { isAuthenticated, forwardAuthenticated, isAdmin } = require('./middleware');
 
 function setupRoutes(app, controllers, fileUploader) {
   const { auth, profile, micropost, system, dev, admin, category } = controllers;
