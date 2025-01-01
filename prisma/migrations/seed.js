@@ -45,6 +45,32 @@ async function main() {
   const userRole = await prisma.role.findUnique({ where: { name: 'user' } });
   const adminRole = await prisma.role.findUnique({ where: { name: 'admin' } });
 
+  if (!userRole || !adminRole) {
+    throw new Error('Failed to retrieve roles. Please check if roles were created properly.');
+  }
+
+  console.log('Retrieved roles:', { userRole: userRole.name, adminRole: adminRole.name });
+
+  // Create categories first
+  const categories = [
+    { name: '技術' },
+    { name: '日常' },
+    { name: '趣味' },
+    { name: '仕事' },
+    { name: '学習' },
+    { name: 'イベント' }
+  ];
+
+  for (const category of categories) {
+    await prisma.category.upsert({
+      where: { name: category.name },
+      update: {},
+      create: category
+    });
+  }
+
+  console.log('Categories have been created');
+
   // Create default user
   const defaultUser = await prisma.user.upsert({
     where: { email: 'user@example.com' },
@@ -67,6 +93,42 @@ async function main() {
       }
     }
   });
+
+  // Create default microposts for DefaultUser
+  const defaultUserMicroposts = [
+    { 
+      title: '初めての投稿です！よろしくお願いします。',
+      categories: ['日常']
+    },
+    { 
+      title: '今日からブログを始めました',
+      categories: ['技術', '趣味']
+    }
+  ];
+
+  for (const postData of defaultUserMicroposts) {
+    const micropost = await prisma.micropost.create({
+      data: {
+        title: postData.title,
+        userId: defaultUser.id
+      }
+    });
+
+    for (const categoryName of postData.categories) {
+      const category = await prisma.category.findUnique({
+        where: { name: categoryName }
+      });
+      
+      await prisma.categoryMicropost.create({
+        data: {
+          micropostId: micropost.id,
+          categoryId: category.id
+        }
+      });
+    }
+  }
+
+  console.log('Default user microposts have been created');
 
   // Create default admin
   const defaultAdmin = await prisma.user.upsert({
@@ -157,26 +219,6 @@ async function main() {
     }
   ];
 
-  // Create categories first
-  const categories = [
-    { name: '技術' },
-    { name: '日常' },
-    { name: '趣味' },
-    { name: '仕事' },
-    { name: '学習' },
-    { name: 'イベント' }
-  ];
-
-  for (const category of categories) {
-    await prisma.category.upsert({
-      where: { name: category.name },
-      update: {},
-      create: category
-    });
-  }
-
-  console.log('Categories have been created');
-
   // Create users and their microposts with categories
   for (const userData of sampleUsers) {
     const user = await prisma.user.upsert({
@@ -237,7 +279,10 @@ async function main() {
     { follower: 'suzuki@example.com', following: 'tanaka@example.com' },
     { follower: 'suzuki@example.com', following: 'yamada@example.com' },
     { follower: 'user@example.com', following: 'tanaka@example.com' },
-    { follower: 'user@example.com', following: 'yamada@example.com' }
+    { follower: 'user@example.com', following: 'yamada@example.com' },
+    { follower: 'tanaka@example.com', following: 'user@example.com' },
+    { follower: 'suzuki@example.com', following: 'user@example.com' },
+    { follower: 'yamada@example.com', following: 'user@example.com' }
   ];
 
   for (const relationship of followRelationships) {
@@ -261,7 +306,10 @@ async function main() {
   const comments = [
     { content: 'とても興味深い投稿ですね！', authorEmail: 'yamada@example.com', targetEmail: 'tanaka@example.com' },
     { content: '私も同じように感じています', authorEmail: 'suzuki@example.com', targetEmail: 'yamada@example.com' },
-    { content: 'とても参考になりました！', authorEmail: 'tanaka@example.com', targetEmail: 'suzuki@example.com' }
+    { content: 'とても参考になりました！', authorEmail: 'tanaka@example.com', targetEmail: 'suzuki@example.com' },
+    { content: 'はじめまして！これからよろしくお願いします！', authorEmail: 'tanaka@example.com', targetEmail: 'user@example.com' },
+    { content: '私も最近ブログを始めました！', authorEmail: 'yamada@example.com', targetEmail: 'user@example.com' },
+    { content: 'お互い頑張りましょう！', authorEmail: 'suzuki@example.com', targetEmail: 'user@example.com' }
   ];
 
   for (const comment of comments) {
@@ -312,7 +360,10 @@ async function main() {
   const likes = [
     { likerEmail: 'yamada@example.com', targetEmail: 'tanaka@example.com' },
     { likerEmail: 'suzuki@example.com', targetEmail: 'yamada@example.com' },
-    { likerEmail: 'tanaka@example.com', targetEmail: 'suzuki@example.com' }
+    { likerEmail: 'tanaka@example.com', targetEmail: 'suzuki@example.com' },
+    { likerEmail: 'tanaka@example.com', targetEmail: 'user@example.com' },
+    { likerEmail: 'yamada@example.com', targetEmail: 'user@example.com' },
+    { likerEmail: 'suzuki@example.com', targetEmail: 'user@example.com' }
   ];
 
   for (const like of likes) {

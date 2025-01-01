@@ -1,1 +1,61 @@
-通知一覧ページ 
+<%- contentFor('body') %>
+<div class="max-w-7xl mx-auto px-4">
+  <div class="flex gap-8">
+    <!-- Main content -->
+    <div class="flex-1">
+      <div class="mb-12">
+        <h1 class="text-3xl font-semibold mb-3 text-gray-900 dark:text-white">通知一覧</h1>
+        <p class="text-base text-gray-600 dark:text-gray-400">あなたへの通知をチェックする</p>
+      </div>
+
+      <div class="space-y-4">
+        <% if (notifications && notifications.length > 0) { %>
+          <% notifications.forEach(notification => { %>
+            <div class="bg-white dark:bg-gray-900 rounded-xl shadow-sm border border-gray-200 dark:border-gray-800 <%= notification.read ? '' : 'border-l-4 border-l-rose-500' %>">
+              <div class="p-6">
+                <div class="flex items-start space-x-4">
+                  <div class="flex-shrink-0">
+                    <img class="h-10 w-10 rounded-full" src="<%= notification.actor.profile.avatarPath %>" alt="">
+                  </div>
+                  <div class="flex-1 min-w-0">
+                    <p class="text-sm text-gray-900 dark:text-white">
+                      <% if (notification.type === 'LIKE') { %>
+                        <span class="font-medium text-rose-600 dark:text-rose-400"><%= notification.actor.name %></span> があなたの投稿にいいねしました
+                      <% } else if (notification.type === 'COMMENT') { %>
+                        <span class="font-medium text-rose-600 dark:text-rose-400"><%= notification.actor.name %></span> があなたの投稿にコメントしました
+                      <% } else if (notification.type === 'FOLLOW') { %>
+                        <span class="font-medium text-rose-600 dark:text-rose-400"><%= notification.actor.name %></span> があなたをフォローしました
+                      <% } %>
+                    </p>
+                    <div class="mt-1 flex items-center space-x-2">
+                      <span class="text-sm text-gray-500 dark:text-gray-400">
+                        <%= new Date(notification.createdAt).toLocaleString('ja-JP') %>
+                      </span>
+                      <% if (!notification.read) { %>
+                        <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-rose-100 text-rose-800 dark:bg-rose-900 dark:text-rose-200">
+                          新着
+                        </span>
+                      <% } %>
+                    </div>
+                  </div>
+                  <% if (notification.micropost) { %>
+                    <a href="/microposts/<%= notification.micropost.id %>" 
+                       class="flex-shrink-0 px-4 py-2 text-sm text-gray-600 dark:text-gray-400 hover:text-rose-600 dark:hover:text-rose-400 hover:bg-gray-50 dark:hover:bg-gray-800 rounded-lg transition-colors">
+                      投稿を見る
+                    </a>
+                  <% } %>
+                </div>
+              </div>
+            </div>
+          <% }); %>
+        <% } else { %>
+          <div class="bg-white dark:bg-gray-900 rounded-xl shadow-sm border border-gray-200 dark:border-gray-800 p-6">
+            <div class="text-center text-gray-500 dark:text-gray-400">
+              通知はありません
+            </div>
+          </div>
+        <% } %>
+      </div>
+    </div>
+  </div>
+</div> 
