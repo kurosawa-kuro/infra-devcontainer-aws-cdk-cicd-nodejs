@@ -100,6 +100,12 @@ const addLocals = (req, res, next) => {
   res.locals.error = req.flash('error');
   res.locals.success = req.flash('success');
   res.locals.path = req.path;
+
+  // 管理者ログイン時にレイアウトを切り替え
+  if (req.isAuthenticated() && req.user.userRoles?.some(ur => ur.role.name === 'admin')) {
+    res.locals.layout = 'layouts/admin';
+  }
+
   next();
 };
 

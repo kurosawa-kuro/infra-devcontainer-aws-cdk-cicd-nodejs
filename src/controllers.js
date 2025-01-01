@@ -507,7 +507,8 @@ class DevController extends BaseController {
         health,
         dbHealth,
         recentUsers,
-        recentMicroposts
+        recentMicroposts,
+        layout: 'layouts/dev'
       });
     });
   }
