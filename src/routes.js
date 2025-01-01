@@ -1,7 +1,7 @@
 const express = require('express');
 const asyncHandler = require('express-async-handler');
 const path = require('path');
-const { isAuthenticated, forwardAuthenticated, isAdmin } = require('./middleware');
+const { isAuthenticated, forwardAuthenticated, isAdmin, handle404Error, handle500Error } = require('./middleware');
 
 function setupRoutes(app, controllers, fileUploader) {
   const { auth, profile, micropost, system, dev, admin, category } = controllers;
@@ -94,40 +94,10 @@ function setupRoutes(app, controllers, fileUploader) {
   // ===================================
   
   // 404 Error Handler
-  app.use((req, res, next) => {
-    const isApiRequest = req.xhr || req.headers.accept?.includes('application/json');
-    if (isApiRequest) {
-      return res.status(404).json({
-        error: 'Not Found',
-        message: 'リクエストされたページは存在しません'
-      });
-    }
-    res.status(404).render('pages/errors/404', {
-      title: 'ページが見つかりません',
-      path: req.path
-    });
-  });
+  app.use(handle404Error);
 
   // 500 Error Handler
-  app.use((err, req, res, next) => {
-    console.error('Server Error:', err);
-
-    const isApiRequest = req.xhr || req.headers.accept?.includes('application/json');
-    if (isApiRequest) {
-      return res.status(500).json({
-        error: 'Internal Server Error',
-        message: process.env.NODE_ENV === 'production' 
-          ? 'サーバーエラーが発生しました'
-          : err.message
-      });
-    }
-
-    res.status(500).render('pages/errors/500', {
-      title: 'サーバーエラー',
-      path: req.path,
-      error: process.env.NODE_ENV === 'production' ? null : err
-    });
-  });
+  app.use(handle500Error);
 
   return app;
 }

@@ -53,9 +53,45 @@ const canManageUser = (req, res, next) => {
   res.redirect('/');
 };
 
+const handle404Error = (req, res, next) => {
+  const isApiRequest = req.xhr || req.headers.accept?.includes('application/json');
+  if (isApiRequest) {
+    return res.status(404).json({
+      error: 'Not Found',
+      message: 'リクエストされたページは存在しません'
+    });
+  }
+  res.status(404).render('pages/errors/404', {
+    title: 'ページが見つかりません',
+    path: req.path
+  });
+};
+
+const handle500Error = (err, req, res, next) => {
+  console.error('Server Error:', err);
+
+  const isApiRequest = req.xhr || req.headers.accept?.includes('application/json');
+  if (isApiRequest) {
+    return res.status(500).json({
+      error: 'Internal Server Error',
+      message: process.env.NODE_ENV === 'production' 
+        ? 'サーバーエラーが発生しました'
+        : err.message
+    });
+  }
+
+  res.status(500).render('pages/errors/500', {
+    title: 'サーバーエラー',
+    path: req.path,
+    error: process.env.NODE_ENV === 'production' ? null : err
+  });
+};
+
 module.exports = {
   isAuthenticated,
   forwardAuthenticated,
   isAdmin,
-  canManageUser
+  canManageUser,
+  handle404Error,
+  handle500Error
 }; 
