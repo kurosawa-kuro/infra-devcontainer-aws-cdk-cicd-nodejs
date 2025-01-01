@@ -764,6 +764,74 @@ class PassportService extends BaseService {
   }
 }
 
+// いいね関連サービス
+class LikeService extends BaseService {
+  async like(userId, micropostId) {
+    return this.prisma.like.create({
+      data: {
+        userId: this.validateId(userId),
+        micropostId: this.validateId(micropostId)
+      }
+    });
+  }
+
+  async unlike(userId, micropostId) {
+    return this.prisma.like.delete({
+      where: {
+        userId_micropostId: {
+          userId: this.validateId(userId),
+          micropostId: this.validateId(micropostId)
+        }
+      }
+    });
+  }
+
+  async isLiked(userId, micropostId) {
+    const like = await this.prisma.like.findUnique({
+      where: {
+        userId_micropostId: {
+          userId: this.validateId(userId),
+          micropostId: this.validateId(micropostId)
+        }
+      }
+    });
+    return !!like;
+  }
+
+  async getLikeCount(micropostId) {
+    return this.prisma.like.count({
+      where: { micropostId: this.validateId(micropostId) }
+    });
+  }
+
+  async getLikedUsers(micropostId) {
+    return this.prisma.like.findMany({
+      where: { micropostId: this.validateId(micropostId) },
+      include: {
+        user: {
+          include: { profile: true }
+        }
+      }
+    });
+  }
+
+  async getUserLikes(userId) {
+    return this.prisma.like.findMany({
+      where: { userId: this.validateId(userId) },
+      include: {
+        micropost: {
+          include: {
+            user: true,
+            _count: {
+              select: { likes: true }
+            }
+          }
+        }
+      }
+    });
+  }
+}
+
 module.exports = {
   AuthService,
   ProfileService,
@@ -772,5 +840,6 @@ module.exports = {
   CategoryService,
   LogUploader,
   FollowService,
-  PassportService
+  PassportService,
+  LikeService
 }; 

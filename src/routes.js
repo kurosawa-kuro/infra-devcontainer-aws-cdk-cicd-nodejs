@@ -4,7 +4,7 @@ const path = require('path');
 const { isAuthenticated, forwardAuthenticated, isAdmin, handle404Error, handle500Error } = require('./middleware');
 
 function setupRoutes(app, controllers, fileUploader) {
-  const { auth, profile, micropost, system, dev, admin, category } = controllers;
+  const { auth, profile, micropost, system, dev, admin, category, like } = controllers;
 
   // ===================================
   // Public Routes
@@ -51,6 +51,12 @@ function setupRoutes(app, controllers, fileUploader) {
   micropostRouter.get('/', asyncHandler((req, res) => micropost.index(req, res)));
   micropostRouter.get('/:id', asyncHandler((req, res) => micropost.show(req, res)));
   micropostRouter.post('/', fileUploader.getUploader().single('image'), asyncHandler((req, res) => micropost.create(req, res)));
+  
+  // いいね関連のルート
+  micropostRouter.post('/:id/like', asyncHandler((req, res) => like.like(req, res)));
+  micropostRouter.delete('/:id/like', asyncHandler((req, res) => like.unlike(req, res)));
+  micropostRouter.get('/:id/likes', asyncHandler((req, res) => like.getLikedUsers(req, res)));
+  
   app.use('/microposts', micropostRouter);
 
   // User actions
@@ -60,6 +66,7 @@ function setupRoutes(app, controllers, fileUploader) {
   userRouter.get('/:id/followers', asyncHandler((req, res) => profile.followers(req, res)));
   userRouter.post('/:id/follow', asyncHandler((req, res) => profile.follow(req, res)));
   userRouter.post('/:id/unfollow', asyncHandler((req, res) => profile.unfollow(req, res)));
+  userRouter.get('/:id/likes', asyncHandler((req, res) => like.getUserLikes(req, res)));
   app.use('/users', userRouter);
 
   // ===================================

@@ -664,6 +664,76 @@ class CategoryController extends BaseController {
   }
 }
 
+class LikeController extends BaseController {
+  constructor(service, errorHandler, logger) {
+    super(service, errorHandler, logger);
+  }
+
+  async like(req, res) {
+    return this.handleRequest(req, res, async () => {
+      if (!req.user) {
+        return this.errorHandler.handlePermissionError(req, res, 'ログインが必要です');
+      }
+
+      const micropostId = req.params.id;
+      await this.service.like(req.user.id, micropostId);
+      const likeCount = await this.service.getLikeCount(micropostId);
+
+      this.sendResponse(req, res, {
+        status: 200,
+        message: 'いいねしました',
+        data: { likeCount }
+      });
+    });
+  }
+
+  async unlike(req, res) {
+    return this.handleRequest(req, res, async () => {
+      if (!req.user) {
+        return this.errorHandler.handlePermissionError(req, res, 'ログインが必要です');
+      }
+
+      const micropostId = req.params.id;
+      await this.service.unlike(req.user.id, micropostId);
+      const likeCount = await this.service.getLikeCount(micropostId);
+
+      this.sendResponse(req, res, {
+        status: 200,
+        message: 'いいねを取り消しました',
+        data: { likeCount }
+      });
+    });
+  }
+
+  async getLikedUsers(req, res) {
+    return this.handleRequest(req, res, async () => {
+      const micropostId = req.params.id;
+      const likedUsers = await this.service.getLikedUsers(micropostId);
+      
+      this.sendResponse(req, res, {
+        status: 200,
+        data: { likedUsers }
+      });
+    });
+  }
+
+  async getUserLikes(req, res) {
+    return this.handleRequest(req, res, async () => {
+      if (!req.user) {
+        return this.errorHandler.handlePermissionError(req, res, 'ログインが必要です');
+      }
+
+      const userId = req.params.id;
+      const likes = await this.service.getUserLikes(userId);
+      
+      this.sendResponse(req, res, {
+        status: 200,
+        data: { likes }
+      });
+    });
+  }
+}
+
 module.exports = {
   AuthController,
   ProfileController,
@@ -671,5 +741,6 @@ module.exports = {
   SystemController,
   DevController,
   AdminController,
-  CategoryController
+  CategoryController,
+  LikeController
 }; 

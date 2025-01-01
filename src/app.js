@@ -24,7 +24,8 @@ const {
   MicropostService,
   SystemService,
   CategoryService,
-  PassportService
+  PassportService,
+  LikeService
 } = require('./services');
 const {
   AuthController,
@@ -33,7 +34,8 @@ const {
   SystemController,
   DevController,
   AdminController,
-  CategoryController
+  CategoryController,
+  LikeController
 } = require('./controllers');
 
 // Constants and Configuration
@@ -487,7 +489,8 @@ class Application {
       micropost: new MicropostService(this.prisma, this.logger),
       system: new SystemService(this.prisma, this.logger),
       category: new CategoryService(this.prisma, this.logger),
-      passport: new PassportService(this.prisma, this.logger)
+      passport: new PassportService(this.prisma, this.logger),
+      like: new LikeService(this.prisma, this.logger)
     };
   }
 
@@ -499,7 +502,8 @@ class Application {
       system: new SystemController(this.services.system, this.errorHandler, this.logger),
       dev: new DevController(this.services.system, this.errorHandler, this.logger),
       admin: new AdminController(this.services, this.errorHandler, this.logger),
-      category: new CategoryController(this.services, this.errorHandler, this.logger)
+      category: new CategoryController(this.services, this.errorHandler, this.logger),
+      like: new LikeController(this.services.like, this.errorHandler, this.logger)
     };
   }
 
