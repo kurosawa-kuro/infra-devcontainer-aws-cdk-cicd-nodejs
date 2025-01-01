@@ -9,7 +9,6 @@ const multerS3 = require('multer-s3');
 const fs = require('fs');
 require('dotenv').config();
 const passport = require('passport');
-const session = require('express-session');
 
 const setupRoutes = require('./routes');
 const {
