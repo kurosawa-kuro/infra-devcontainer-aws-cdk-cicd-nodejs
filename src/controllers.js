@@ -135,6 +135,35 @@ class MicropostController extends BaseController {
     });
   }
 
+  async show(req, res) {
+    return this.handleRequest(req, res, async () => {
+      const micropostId = parseInt(req.params.id, 10);
+      if (isNaN(micropostId)) {
+        return this.errorHandler.handleNotFoundError(req, res, '投稿が見つかりません');
+      }
+
+      // Get client's IP address
+      const ipAddress = req.headers['x-forwarded-for']?.split(',')[0].trim() || 
+                       req.socket.remoteAddress;
+
+      // Track the view
+      await this.service.trackView(micropostId, ipAddress);
+
+      // Get micropost with updated view count
+      const micropost = await this.service.getMicropostWithViews(micropostId);
+      if (!micropost) {
+        return this.errorHandler.handleNotFoundError(req, res, '投稿が見つかりません');
+      }
+
+      res.render('pages/public/microposts/show', {
+        micropost,
+        title: micropost.title,
+        path: req.path,
+        user: req.user
+      });
+    });
+  }
+
   async create(req, res) {
     return this.handleRequest(req, res, async () => {
       const { title, categories } = req.body;

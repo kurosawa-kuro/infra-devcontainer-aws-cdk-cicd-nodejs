@@ -49,6 +49,7 @@ function setupRoutes(app, controllers, fileUploader) {
   const micropostRouter = express.Router();
   micropostRouter.use(isAuthenticated);
   micropostRouter.get('/', asyncHandler((req, res) => micropost.index(req, res)));
+  micropostRouter.get('/:id', asyncHandler((req, res) => micropost.show(req, res)));
   micropostRouter.post('/', fileUploader.getUploader().single('image'), asyncHandler((req, res) => micropost.create(req, res)));
   app.use('/microposts', micropostRouter);
 

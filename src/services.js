@@ -391,6 +391,9 @@ class MicropostService extends BaseService {
         },
         categories: {
           include: { category: true }
+        },
+        _count: {
+          select: { views: true }
         }
       }
     });
@@ -435,6 +438,61 @@ class MicropostService extends BaseService {
               include: { role: true }
             }
           }
+        }
+      }
+    });
+  }
+
+  async trackView(micropostId, ipAddress) {
+    try {
+      await this.prisma.micropostView.upsert({
+        where: {
+          micropostId_ipAddress: {
+            micropostId: this.validateId(micropostId),
+            ipAddress
+          }
+        },
+        create: {
+          micropostId: this.validateId(micropostId),
+          ipAddress,
+          viewedAt: new Date()
+        },
+        update: {
+          viewedAt: new Date()
+        }
+      });
+    } catch (error) {
+      this.logger.error('Error tracking view:', {
+        micropostId,
+        ipAddress,
+        error: error.message
+      });
+      throw error;
+    }
+  }
+
+  async getViewCount(micropostId) {
+    return this.prisma.micropostView.count({
+      where: { micropostId: this.validateId(micropostId) }
+    });
+  }
+
+  async getMicropostWithViews(micropostId) {
+    return this.prisma.micropost.findUnique({
+      where: { id: this.validateId(micropostId) },
+      include: {
+        user: {
+          select: {
+            id: true,
+            email: true,
+            name: true
+          }
+        },
+        categories: {
+          include: { category: true }
+        },
+        _count: {
+          select: { views: true }
         }
       }
     });
