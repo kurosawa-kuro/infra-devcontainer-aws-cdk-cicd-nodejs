@@ -396,7 +396,8 @@ class MicropostService extends BaseService {
         _count: {
           select: { 
             views: true,
-            likes: true
+            likes: true,
+            comments: true
           }
         }
       }

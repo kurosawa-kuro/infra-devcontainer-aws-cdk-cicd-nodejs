@@ -133,8 +133,8 @@ class MicropostController extends BaseController {
   async index(req, res) {
     return this.handleRequest(req, res, async () => {
       const [microposts, categories] = await Promise.all([
-        this.services.micropost.getAllMicroposts(),
-        this.services.micropost.prisma.category.findMany({
+        this.micropostService.getAllMicroposts(),
+        this.micropostService.prisma.category.findMany({
           orderBy: { name: 'asc' }
         })
       ]);
@@ -143,8 +143,8 @@ class MicropostController extends BaseController {
       const micropostsWithLikes = await Promise.all(
         microposts.map(async (micropost) => {
           const [isLiked, likeCount] = await Promise.all([
-            req.user ? this.services.like.isLiked(req.user.id, micropost.id) : false,
-            this.services.like.getLikeCount(micropost.id)
+            req.user ? this.likeService.isLiked(req.user.id, micropost.id) : false,
+            this.likeService.getLikeCount(micropost.id)
           ]);
           return { ...micropost, isLiked, likeCount };
         })
