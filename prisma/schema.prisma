@@ -72,6 +72,18 @@ model Micropost {
   userId     Int
   user       User               @relation(fields: [userId], references: [id])
   categories CategoryMicropost[]
+  views      MicropostView[]
+}
+
+model MicropostView {
+  id          Int      @id @default(autoincrement())
+  micropostId Int
+  ipAddress   String
+  viewedAt    DateTime @default(now())
+  micropost   Micropost @relation(fields: [micropostId], references: [id], onDelete: Cascade)
+
+  @@unique([micropostId, ipAddress])
+  @@index([micropostId])
 }
 
 model Category {
@@ -105,3 +117,4 @@ model Follow {
   @@index([followerId])
   @@index([followingId])
 }
+
