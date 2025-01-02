@@ -1,0 +1,63 @@
+{
+    "javascript": {
+        "formatter": "prettier",
+        "formatterOptions": {
+            "singleQuote": true,
+            "trailingComma": "es5",
+            "printWidth": 100,
+            "semi": true,
+            "tabWidth": 2
+        },
+        "linter": "eslint"
+    },
+    "typescript": {
+        "formatter": "prettier",
+        "formatterOptions": {
+            "singleQuote": true,
+            "trailingComma": "es5",
+            "printWidth": 100,
+            "semi": true,
+            "tabWidth": 2
+        },
+        "linter": "eslint"
+    },
+    "go": {
+        "formatter": "gofmt",
+        "linter": "golangci-lint"
+    },
+    "sql": {
+        "formatter": "pg_format",
+        "formatterOptions": {
+            "keywordCase": "upper",
+            "identifierCase": "lower"
+        }
+    },
+    "prisma": {
+        "formatter": "prisma-fmt"
+    },
+    "ignorePaths": [
+        "node_modules",
+        "dist",
+        "build",
+        "coverage",
+        ".git",
+        "*.log",
+        "*.lock",
+        "tmp"
+    ],
+    "autoformat": true,
+    "formatOnSave": true,
+    "snippets": {
+        "javascript": {
+            "log": "console.log($1);",
+            "fn": "function $1($2) {\n  $3\n}",
+            "afn": "async function $1($2) {\n  $3\n}",
+            "desc": "describe('$1', () => {\n  $2\n});"
+        },
+        "typescript": {
+            "int": "interface $1 {\n  $2\n}",
+            "type": "type $1 = {\n  $2\n}",
+            "enum": "enum $1 {\n  $2\n}"
+        }
+    }
+}
