@@ -1,63 +1,164 @@
-{
-    "javascript": {
-        "formatter": "prettier",
-        "formatterOptions": {
-            "singleQuote": true,
-            "trailingComma": "es5",
-            "printWidth": 100,
-            "semi": true,
-            "tabWidth": 2
-        },
-        "linter": "eslint"
-    },
-    "typescript": {
-        "formatter": "prettier",
-        "formatterOptions": {
-            "singleQuote": true,
-            "trailingComma": "es5",
-            "printWidth": 100,
-            "semi": true,
-            "tabWidth": 2
-        },
-        "linter": "eslint"
-    },
-    "go": {
-        "formatter": "gofmt",
-        "linter": "golangci-lint"
-    },
-    "sql": {
-        "formatter": "pg_format",
-        "formatterOptions": {
-            "keywordCase": "upper",
-            "identifierCase": "lower"
-        }
-    },
-    "prisma": {
-        "formatter": "prisma-fmt"
-    },
-    "ignorePaths": [
-        "node_modules",
-        "dist",
-        "build",
-        "coverage",
-        ".git",
-        "*.log",
-        "*.lock",
-        "tmp"
-    ],
-    "autoformat": true,
-    "formatOnSave": true,
-    "snippets": {
-        "javascript": {
-            "log": "console.log($1);",
-            "fn": "function $1($2) {\n  $3\n}",
-            "afn": "async function $1($2) {\n  $3\n}",
-            "desc": "describe('$1', () => {\n  $2\n});"
-        },
-        "typescript": {
-            "int": "interface $1 {\n  $2\n}",
-            "type": "type $1 = {\n  $2\n}",
-            "enum": "enum $1 {\n  $2\n}"
-        }
-    }
+# AI Coding Guidelines
+
+```markdown
+# Communication Protocol
+ALWAYS RESPOND IN JAPANESE
+- Context: Japanese-native development team
+- Format: Explanations in Japanese, code/comments in English
+- Purpose: Ensure clear understanding while maintaining code internationalization
+
+# Technical Stack Definition
+Core: JavaScript/TypeScript Ecosystem
+Architecture Components:
+- Frontend: Next.js, Tailwind CSS
+- Backend: Express, Go (Gin)
+- Data Layer: PostgreSQL, Prisma ORM
+- Infrastructure: AWS CDK, GitHub Actions CI/CD
+
+# Project Structure
+```
+[Standard Project Layout]
+.
+├── Makefile                  # Build automation
+├── docker/                   # Container configurations
+├── infrastructure/          # AWS CDK configurations
+├── prisma/                  # Database schema and migrations
+├── src/                     # Application source code
+│   ├── app.js              # Application entry point
+│   ├── controllers.js      # Request handlers
+│   ├── middleware.js       # Custom middleware
+│   ├── routes.js          # Route definitions
+│   ├── services.js        # Business logic
+│   ├── public/            # Static assets
+│   └── views/             # Template files
+└── tests/                  # Test suites
+```
+
+# Code Organization Principles
+- Monolithic File Structure
+- Limited File Splitting Policy
+- Exceptions:
+  - Environment Configuration (.env)
+  - View Templates (./src/views)
+  - Test Files (./src/tests)
+
+# Core Application Files
+- app.js: Application Bootstrap
+- controllers.js: Request Processing
+- middleware.js: Request Pipeline
+- routes.js: URL Mapping
+- services.js: Business Logic
+- test-setup.js: Test Configuration
+
+# API Endpoint Naming Convention
+GET Operations:
+- list{Resource}: Collection retrieval
+- get{Resource}: Single item retrieval
+- show{Resource}: View rendering
+- check{Resource}: Status verification
+- count{Resource}: Quantity calculation
+
+POST Operations:
+- add{Resource}: Single item creation
+- create{Resource}: Complex creation
+- publish{Resource}: Public release
+- send{Resource}: Transmission
+- assign{Resource}: Association
+
+PUT/PATCH Operations:
+- update{Resource}: Full update
+- modify{Resource}: Partial update
+
+DELETE Operations:
+- remove{Resource}: Deletion
+- clear{Resource}: Bulk removal
+
+# Architectural Pattern
+Controller-Service Architecture:
+1. Method Name Symmetry:
+   - Controller methods mirror service methods
+   - Exception: View methods (show*)
+2. Data Flow:
+   - Controllers handle requests/responses
+   - Services contain business logic
+   - Views consume get* service methods
+
+# Default Data Structures
+
+
+・user
+email: 'user@example.com',
+password: 'password',
+name: 'DefaultUser'
+
+・admin
+email: 'admin@example.com',
+password: 'password'
+name: 'SystemAdmin'
+
+## User Schema
+```typescript
+interface DefaultUser {
+  email: string;
+  password: string;
+  name: string;
 }
+```
+
+## Role Type
+```typescript
+    { name: 'user', description: 'Regular user role' },
+    { name: 'admin', description: 'Administrator role' },
+    { name: 'read-only-admin', description: 'Read-only administrator role' }
+```
+
+# Code Generation Requirements
+1. Consistent Patterns:
+   - Follow established naming conventions
+   - Implement RESTful principles
+   - Use TypeScript types/interfaces
+
+2. Quality Assurance:
+   - Comprehensive error handling
+   - Input validation
+   - Meaningful comments
+   - Unit test coverage
+
+3. Security Measures:
+   - Data sanitization
+   - Authentication checks
+   - Authorization controls
+   - XSS prevention
+```
+
+# Implementation Guidelines
+1. Type Safety:
+   - Strict TypeScript usage
+   - Explicit interface definitions
+   - Proper type guards
+
+2. Error Handling:
+   - Custom error classes
+   - Structured error responses
+   - Logging strategy
+
+3. Performance:
+   - Query optimization
+   - Caching strategy
+   - Resource pooling
+
+4. Security:
+   - Input validation
+   - Output sanitization
+   - Authentication/Authorization
+   - Rate limiting
+
+5. Testing:
+   - Unit tests
+   - Integration tests
+   - E2E tests where applicable
+
+6. Documentation:
+   - API documentation
+   - Code comments
+   - Change logs
