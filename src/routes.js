@@ -2,6 +2,7 @@ const express = require('express');
 const asyncHandler = require('express-async-handler');
 const path = require('path');
 const { isAuthenticated, forwardAuthenticated, isAdmin, handle404Error, handle500Error } = require('./middleware');
+const fs = require('fs');
 
 function setupRoutes(app, controllers, fileUploader) {
   const { auth, profile, micropost, system, dev, admin, category, like, notification } = controllers;
@@ -26,9 +27,27 @@ function setupRoutes(app, controllers, fileUploader) {
 
   // Static Assets
   if (!process.env.STORAGE_S3_BUCKET) {
-    app.use('/uploads', express.static(path.join(__dirname, '..', 'uploads')));
+    const uploadsPath = path.join(__dirname, 'public', 'uploads');
+    console.log('Full uploads path:', uploadsPath);
+    console.log('Directory exists:', fs.existsSync(uploadsPath));
+    console.log('Directory contents:', fs.readdirSync(uploadsPath));
+
+    app.use('/uploads', express.static(uploadsPath, {
+      setHeaders: (res, path, stat) => {
+        res.set('Access-Control-Allow-Origin', '*');
+        res.set('Cache-Control', 'public, max-age=31557600');
+      },
+      fallthrough: false // 404エラーをキャッチ
+    }));
   }
-  app.use('/css', express.static(path.join(__dirname, 'public/css')));
+  
+  // CSSファイルのパスも修正
+  app.use('/css', express.static(path.join(__dirname, 'public', 'css'), {
+    setHeaders: (res, path, stat) => {
+      res.set('Access-Control-Allow-Origin', '*');
+      res.set('Cache-Control', 'public, max-age=31557600');
+    }
+  }));
 
   // ===================================
   // Authentication Routes

@@ -114,17 +114,24 @@ class LoggingSystem {
   }
 
   createLogger() {
+    const transports = [
+      this.createConsoleTransport(),
+      this.createErrorFileTransport(),
+      this.createCombinedFileTransport()
+    ];
+
+    // CloudWatchトランスポートを条件付きで追加
+    const cloudWatchTransport = this.createCloudWatchTransport();
+    if (cloudWatchTransport) {
+      transports.push(cloudWatchTransport);
+    }
+
     return winston.createLogger({
       format: winston.format.combine(
         winston.format.timestamp(),
         winston.format.json()
       ),
-      transports: [
-        this.createConsoleTransport(),
-        this.createErrorFileTransport(),
-        this.createCombinedFileTransport(),
-        this.createCloudWatchTransport()
-      ]
+      transports: transports
     });
   }
 
@@ -162,6 +169,11 @@ class LoggingSystem {
   }
 
   createCloudWatchTransport() {
+    // 開発環境ではCloudWatchを無効化
+    if (process.env.NODE_ENV !== 'production') {
+      return null;
+    }
+
     return new WinstonCloudWatch({
       logGroupName: '/aws/express/myapp',
       logStreamName: `express-${new Date().toISOString().slice(0, 10)}`,
@@ -275,14 +287,29 @@ class FileUploader {
   createLocalUploader() {
     console.log('Using local storage for uploads');
     const uploadDir = path.join(__dirname, 'public', 'uploads');
+    console.log('Upload directory (absolute):', path.resolve(uploadDir));
+
     if (!fs.existsSync(uploadDir)) {
       fs.mkdirSync(uploadDir, { recursive: true });
+      console.log('Created upload directory');
     }
+
+    // ディレクトリの内容を表示
+    console.log('Current upload directory contents:', fs.readdirSync(uploadDir));
     
     return multer({
       storage: multer.diskStorage({
-        destination: (req, file, cb) => cb(null, uploadDir),
-        filename: this.createKeyGenerator()
+        destination: (req, file, cb) => {
+          console.log('Saving file to:', uploadDir);
+          cb(null, uploadDir);
+        },
+        filename: (req, file, cb) => {
+          const uniqueSuffix = `${Date.now()}-${Math.round(Math.random() * 1E9)}`;
+          const fileExtension = path.extname(file.originalname);
+          const filename = `${uniqueSuffix}${fileExtension}`;
+          console.log('Generated filename:', filename);
+          cb(null, filename);
+        }
       }),
       limits: this.storageConfig.getUploadLimits(),
       fileFilter: this.createFileFilter()
@@ -311,9 +338,12 @@ class FileUploader {
   generateFileUrl(file) {
     if (!file) return null;
     
-    return this.storageConfig.isEnabled()
-      ? `${this.storageConfig.getCloudFrontUrl()}/${file.key}`
-      : `uploads/${file.filename}`;
+    if (this.storageConfig.isEnabled()) {
+      return `${this.storageConfig.getCloudFrontUrl()}/${file.key}`;
+    } else {
+      // ローカルファイルのURLを生成
+      return `/uploads/${file.filename}`;
+    }
   }
 }
 
@@ -469,9 +499,39 @@ class Application {
     this.prisma = new PrismaClient();
     this.port = CONFIG.app.port;
     
+    // setupDirectoriesを先に実行
+    this.setupDirectories();
+    
+    // 静的ファイルの提供設定を追加（デバッグログ付き）
+    const publicPath = path.join(__dirname, 'public');
+    console.log('Setting up static files from:', publicPath);
+    this.app.use(express.static(publicPath));
+    
     this.initializeCore();
     this.services = this.initializeServices();
     this.controllers = this.initializeControllers();
+  }
+
+  setupDirectories() {
+    const dirs = [
+      path.join(__dirname, 'public'),
+      path.join(__dirname, 'public', 'uploads'),
+      path.join(__dirname, 'public', 'css')
+    ];
+
+    dirs.forEach(dir => {
+      if (!fs.existsSync(dir)) {
+        fs.mkdirSync(dir, { recursive: true });
+        console.log(`Created directory: ${dir}`);
+      }
+      // ディレクトリのパーミッションを設定
+      fs.chmodSync(dir, '755');
+      console.log(`Set permissions for: ${dir}`);
+    });
+
+    // 現在のディレクトリ構造をログ出力
+    console.log('Current directory structure:');
+    console.log(require('child_process').execSync(`tree ${path.join(__dirname, 'public')}`).toString());
   }
 
   initializeCore() {
@@ -556,6 +616,11 @@ class Application {
 
   async start() {
     try {
+      const uploadDir = path.join(__dirname, 'public', 'uploads');
+      if (!fs.existsSync(uploadDir)) {
+        fs.mkdirSync(uploadDir, { recursive: true });
+      }
+
       this.setupMiddleware();
       this.setupRoutes();
       this.setupErrorHandler();
