@@ -13,7 +13,7 @@ DESTROY_FLAGS = --force --debug
 # ===========================================
 # Stack and Resource Names
 # ===========================================
-PREFIX = CdkExpress02
+PREFIX = CdkExpress04
 MAIN_STACK = AwsCdkWebBasicStack
 DESTROY_STACK = DestroyStack
 WAF_STACK = $(PREFIX)-WebAclStack
@@ -23,7 +23,8 @@ WAF_STACK = $(PREFIX)-WebAclStack
 # ===========================================
 define bootstrap_regions
 	@printf "\033[32m=== Bootstrapping CDK in both regions ===\033[0m\n"
-	$(CDK) bootstrap aws://$(AWS_ACCOUNT_ID)/$(REGION_TOKYO) aws://$(AWS_ACCOUNT_ID)/$(REGION_VIRGINIA)
+	$(CDK) bootstrap aws://$(AWS_ACCOUNT_ID)/$(REGION_VIRGINIA) --cloudformation-execution-policies arn:aws:iam::aws:policy/AdministratorAccess --trust $(AWS_ACCOUNT_ID) --force --verbose
+	$(CDK) bootstrap aws://$(AWS_ACCOUNT_ID)/$(REGION_TOKYO) --cloudformation-execution-policies arn:aws:iam::aws:policy/AdministratorAccess --trust $(AWS_ACCOUNT_ID) --force --verbose
 	@printf "\033[32m=============================================\033[0m\n"
 endef
 
