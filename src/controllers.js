@@ -504,21 +504,22 @@ class ProfileController extends BaseController {
 }
 
 class SystemController extends BaseController {
-  constructor(service, errorHandler, logger) {
-    super(service, errorHandler, logger);
+  constructor(systemService, errorHandler, logger) {
+    super({ system: systemService }, errorHandler, logger);
+    this.systemService = systemService;
   }
 
-  async getHealth(req, res) {
+  getHealth = async (req, res) => {
     return this.handleRequest(req, res, async () => {
-      const health = await this.service.getHealth();
-      res.json(health);
+      const healthStatus = await this.systemService.getHealth();
+      return res.status(200).json(healthStatus);
     });
-  }
+  };
 
   async getDbHealth(req, res) {
     return this.handleRequest(req, res, async () => {
       try {
-        const health = await this.service.getDbHealth();
+        const health = await this.systemService.getDbHealth();
         res.json(health);
       } catch (err) {
         res.status(500).json({ status: 'unhealthy', error: err.message });
