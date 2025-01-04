@@ -535,7 +535,6 @@ class DevController extends BaseController {
 
   async index(req, res) {
     return this.handleRequest(req, res, async () => {
-      const metadata = await this.services.system.getInstanceMetadata();
       const health = await this.services.system.getHealth();
       const dbHealth = await this.services.system.getDbHealth();
 
@@ -567,7 +566,6 @@ class DevController extends BaseController {
       res.render('pages/dev/index', {
         title: '開発支援機能',
         path: req.path,
-        metadata,
         health,
         dbHealth,
         recentUsers,

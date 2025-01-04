@@ -565,33 +565,6 @@ class CategoryService extends BaseService {
 
 // システム関連サービス
 class SystemService extends BaseService {
-  async getInstanceMetadata() {
-    if (process.env.APP_ENV === 'development') {
-      return {
-        publicIp: 'localhost',
-        privateIp: 'localhost'
-      };
-    }
-
-    try {
-      const [publicIpResponse, privateIpResponse] = await Promise.all([
-        axios.get('http://169.254.169.254/latest/meta-data/public-ipv4', { timeout: 2000 }),
-        axios.get('http://169.254.169.254/latest/meta-data/local-ipv4', { timeout: 2000 })
-      ]);
-      
-      return {
-        publicIp: publicIpResponse.data,
-        privateIp: privateIpResponse.data
-      };
-    } catch (error) {
-      this.logError(error, { context: 'EC2 metadata fetch' });
-      return {
-        publicIp: 'localhost',
-        privateIp: 'localhost'
-      };
-    }
-  }
-
   async getHealth() {
     return { status: 'healthy' };
   }

@@ -52,7 +52,7 @@ const CONFIG = {
     isTest: process.env.APP_ENV === 'test'
   },
   storage: {
-    useS3: true,
+    useS3: process.env.STORAGE_S3_BUCKET ? true : false,
     s3: {
       region: process.env.STORAGE_S3_REGION,
       accessKey: process.env.STORAGE_S3_ACCESS_KEY,
@@ -69,9 +69,12 @@ const CONFIG = {
     }
   },
   logging: {
+    useCloudWatch: process.env.CLOUDWATCH_LOG_GROUP ? true : false,
     cloudwatch: {
-      logGroupName: '/aws/express/myapp',
-      region: 'ap-northeast-1'
+      logGroupName: process.env.CLOUDWATCH_LOG_GROUP || '/aws/express/myapp',
+      region: process.env.CLOUDWATCH_REGION || 'ap-northeast-1',
+      accessKeyId: process.env.STORAGE_S3_ACCESS_KEY,
+      secretAccessKey: process.env.STORAGE_S3_SECRET_KEY
     }
   },
   auth: {
@@ -80,30 +83,15 @@ const CONFIG = {
   }
 };
 
-// Utility Functions
-const utils = {
-  generateUniqueFileName(originalName) {
-    const uniqueSuffix = `${Date.now()}-${Math.round(Math.random() * 1E9)}`;
-    const fileExtension = path.extname(originalName);
-    return `uploads/${uniqueSuffix}${fileExtension}`;
-  },
-
-  isApiRequest(req) {
-    return req.xhr || req.headers.accept?.includes('application/json');
-  },
-
-  createResponse(isApi, { status = 200, message, data, redirectUrl }) {
-    return isApi
-      ? { status, json: { success: status < 400, message, data } }
-      : { status, redirect: redirectUrl, flash: message };
-  }
-};
-
 // ロギングシステムの設定と管理
 class LoggingSystem {
   constructor() {
     this.setupLogDirectory();
     this.logger = this.createLogger();
+  }
+
+  isEnabled() {
+    return CONFIG.logging.useCloudWatch;
   }
 
   setupLogDirectory() {
@@ -120,10 +108,11 @@ class LoggingSystem {
       this.createCombinedFileTransport()
     ];
 
-    // CloudWatchトランスポートを条件付きで追加
-    const cloudWatchTransport = this.createCloudWatchTransport();
-    if (cloudWatchTransport) {
-      transports.push(cloudWatchTransport);
+    if (CONFIG.logging.useCloudWatch) {
+      const cloudWatchTransport = this.createCloudWatchTransport();
+      if (cloudWatchTransport) {
+        transports.push(cloudWatchTransport);
+      }
     }
 
     return winston.createLogger({
@@ -169,19 +158,18 @@ class LoggingSystem {
   }
 
   createCloudWatchTransport() {
-    // 開発環境ではCloudWatchを無効化
-    if (process.env.NODE_ENV !== 'production') {
+    if (!CONFIG.logging.useCloudWatch) {
       return null;
     }
 
     return new WinstonCloudWatch({
-      logGroupName: '/aws/express/myapp',
+      logGroupName: CONFIG.logging.cloudwatch.logGroupName,
       logStreamName: `express-${new Date().toISOString().slice(0, 10)}`,
-      awsRegion: 'ap-northeast-1',
+      awsRegion: CONFIG.logging.cloudwatch.region,
       awsOptions: {
         credentials: {
-          accessKeyId: process.env.STORAGE_S3_ACCESS_KEY,
-          secretAccessKey: process.env.STORAGE_S3_SECRET_KEY
+          accessKeyId: CONFIG.logging.cloudwatch.accessKeyId,
+          secretAccessKey: CONFIG.logging.cloudwatch.secretAccessKey
         }
       }
     });
@@ -196,16 +184,17 @@ class LoggingSystem {
 class StorageConfig {
   constructor() {
     this.config = {
-      region: process.env.STORAGE_S3_REGION,
-      bucket: process.env.STORAGE_S3_BUCKET,
-      cloudfront: {
-        url: process.env.STORAGE_CDN_URL,
-        distributionId: process.env.STORAGE_CDN_DISTRIBUTION_ID
+      region: CONFIG.storage.s3.region,
+      bucket: CONFIG.storage.s3.bucket,
+      credentials: {
+        accessKeyId: CONFIG.storage.s3.accessKey,
+        secretAccessKey: CONFIG.storage.s3.secretKey
       },
-      uploadLimits: {
-        fileSize: 5 * 1024 * 1024,
-        allowedMimeTypes: ['image/jpeg', 'image/png', 'image/gif']
-      }
+      cloudfront: {
+        url: CONFIG.storage.cloudfront.url,
+        distributionId: CONFIG.storage.cloudfront.distributionId
+      },
+      uploadLimits: CONFIG.storage.limits
     };
   }
 
@@ -218,10 +207,7 @@ class StorageConfig {
     
     return new S3Client({
       region: this.config.region,
-      credentials: {
-        accessKeyId: process.env.STORAGE_S3_ACCESS_KEY,
-        secretAccessKey: process.env.STORAGE_S3_SECRET_KEY
-      }
+      credentials: this.config.credentials
     });
   }
 
@@ -514,6 +500,7 @@ class Application {
   initializeCore() {
     const loggingSystem = new LoggingSystem();
     this.logger = loggingSystem.getLogger();
+    this.loggingSystem = loggingSystem;
     
     this.storageConfig = new StorageConfig();
     this.fileUploader = new FileUploader(this.storageConfig);
@@ -593,21 +580,13 @@ class Application {
 
   async start() {
     try {
-      const uploadDir = path.join(__dirname, 'public', 'uploads');
-      if (!fs.existsSync(uploadDir)) {
-        fs.mkdirSync(uploadDir, { recursive: true });
-      }
-
       this.setupMiddleware();
       this.setupRoutes();
       this.setupErrorHandler();
 
       if (!CONFIG.app.isTest) {
-        const host = CONFIG.app.host;
-        const { publicIp, privateIp } = await this.services.system.getInstanceMetadata();
-        
-        this.app.listen(this.port, host, () => {
-          this.logServerStartup(publicIp, privateIp);
+        this.app.listen(this.port, CONFIG.app.host, () => {
+          this.logServerStartup();
         });
       }
     } catch (err) {
@@ -616,14 +595,12 @@ class Application {
     }
   }
 
-  logServerStartup(publicIp, privateIp) {
+  logServerStartup() {
     console.log('\n=== Server Information ===');
     console.log(`Environment: ${CONFIG.app.env}`);
     console.log(`Storage:     ${this.storageConfig.isEnabled() ? 'S3' : 'Local'}`);
-    console.log('\n=== Access URLs ===');
-    console.log(`Local:       http://localhost:${this.port}`);
-    console.log(`Public:      http://${publicIp}:${this.port}`);
-    console.log(`Private:     http://${privateIp}:${this.port}`);
+    console.log(`CloudWatch:  ${this.loggingSystem.isEnabled() ? 'Enabled' : 'Disabled'}`);
+    console.log(`Server:      http://${CONFIG.app.host}:${this.port}`);
     console.log('\n=== Server is ready ===\n');
   }
 
@@ -632,17 +609,22 @@ class Application {
   }
 }
 
-if (require.main === module) {
-  const app = new Application();
-  app.start();
+const app = new Application();
+app.start().catch(err => {
+  console.error('Failed to start application:', err);
+  process.exit(1);
+});
 
-  ['SIGINT', 'SIGTERM'].forEach(signal => {
-    process.on(signal, async () => {
-      console.log(`\nReceived ${signal}, cleaning up...`);
-      await app.cleanup();
-      process.exit(0);
-    });
-  });
-}
+process.on('SIGINT', async () => {
+  console.log('\nReceived SIGINT, cleaning up...');
+  await app.cleanup();
+  process.exit(0);
+});
+
+process.on('SIGTERM', async () => {
+  console.log('\nReceived SIGTERM, cleaning up...');
+  await app.cleanup();
+  process.exit(0);
+});
 
 module.exports = { Application };
