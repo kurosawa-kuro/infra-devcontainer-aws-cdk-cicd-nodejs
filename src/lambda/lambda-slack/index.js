@@ -4,16 +4,28 @@
 // 依存関係のインポート
 const axios = require('axios');
 
-// Webhook URLの設定
-const WEBHOOK_URL = 'https://hooks.slack.com/services/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';
-
 // Lambda handler関数
 async function slackNotification(event, context) {
     console.log('Lambda function started');
+    console.log('Event:', JSON.stringify(event));
+
+    // イベントからWebhook URLを取得
+    const webhookUrl = event.webhookUrl;
+    const message = event.message || 'テスト通知です！';
+    const channelMention = '<!channel> ';  // @channelメンション用のプレフィックス
+
+    if (!webhookUrl) {
+        return {
+            statusCode: 400,
+            body: JSON.stringify({
+                message: 'Webhook URLが指定されていません',
+            })
+        };
+    }
     
     try {
-        const response = await axios.post(WEBHOOK_URL, {
-            text: 'テスト通知です！'
+        const response = await axios.post(webhookUrl, {
+            text: channelMention + message  // メッセージの前に@channelメンションを追加
         }, {
             headers: {
                 'Content-Type': 'application/json'

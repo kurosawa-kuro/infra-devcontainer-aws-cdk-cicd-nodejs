@@ -38,10 +38,7 @@ endef
 
 define send_notification
 	@printf "\033[32m=== Sending deployment notification ===\033[0m\n"
-	@aws lambda invoke \
-		--function-name arn:aws:lambda:ap-northeast-1:476114153361:function:slackNotification \
-		--payload '{}' \
-		/dev/null
+	@node script/invoke-lambda/send_notification.js "$(MESSAGE)"
 	@printf "\033[32m=============================================\033[0m\n"
 endef
 
@@ -52,6 +49,7 @@ endef
 
 # Test notification
 notify-test:
+	$(eval MESSAGE := "Test notification sent")
 	$(call send_notification)
 
 # Bootstrap both regions and deploy main stack with notification
@@ -59,6 +57,7 @@ first-deploy:
 	$(call bootstrap_regions)
 	@printf "\033[32m=== Deploying main stacks ===\033[0m\n"
 	$(CDK) deploy $(MAIN_STACK) $(WAF_STACK) $(DEPLOY_FLAGS)
+	$(eval MESSAGE := "First deployment completed successfully")
 	$(call send_notification)
 	@printf "\033[32m=== Deployment completed successfully ===\033[0m\n"
 	@printf "\033[32m=============================================\033[0m\n"
@@ -70,6 +69,7 @@ reset-deploy:
 	@printf "\033[32m=============================================\033[0m\n"
 	@printf "\033[32m=== Starting fresh deployment ===\033[0m\n"
 	$(MAKE) first-deploy
+	$(eval MESSAGE := "Reset and redeploy completed successfully")
 	$(call send_notification)
 	@printf "\033[32m=== Reset and redeploy completed successfully ===\033[0m\n"
 	@printf "\033[32m=============================================\033[0m\n"
@@ -81,6 +81,7 @@ destroy:
 	@printf "\033[32m=== Destroying stacks ===\033[0m\n"
 	-$(CDK) destroy $(MAIN_STACK) $(DESTROY_FLAGS)
 	-$(CDK) destroy $(WAF_STACK) $(DESTROY_FLAGS)
+	$(eval MESSAGE := "Stack destruction completed")
 	$(call send_notification)
 	@printf "\033[32m=== Destroy process completed ===\033[0m\n"
 	@printf "\033[32m=============================================\033[0m\n"
