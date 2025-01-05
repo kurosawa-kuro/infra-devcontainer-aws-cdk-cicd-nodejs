@@ -5,6 +5,39 @@ const path = require('path');
 // 環境変数の読み込み
 dotenv.config({ path: path.resolve(__dirname, '../../.env') });
 
+// エラーメッセージを整形するヘルパー関数
+function formatErrorMessage(error) {
+    return {
+        text: "CDK Deployment Error",
+        blocks: [
+            {
+                type: "header",
+                text: {
+                    type: "plain_text",
+                    text: "🚨 CDK Deployment Failed",
+                    emoji: true
+                }
+            },
+            {
+                type: "section",
+                text: {
+                    type: "mrkdwn",
+                    text: `*Error Details:*\n\`\`\`${error}\`\`\``
+                }
+            },
+            {
+                type: "context",
+                elements: [
+                    {
+                        type: "mrkdwn",
+                        text: `*Time:* ${new Date().toISOString()}`
+                    }
+                ]
+            }
+        ]
+    };
+}
+
 // AWS設定
 const client = new LambdaClient({
     region: process.env.AWS_REGION || 'ap-northeast-1',
@@ -20,13 +53,23 @@ async function invokeLambda(message) {
         throw new Error('SLACK_WEBHOOK_URL environment variable is not set');
     }
 
+    let payload;
+    if (typeof message === 'string') {
+        payload = {
+            webhookUrl: webhookUrl,
+            message: message
+        };
+    } else {
+        payload = {
+            webhookUrl: webhookUrl,
+            ...message
+        };
+    }
+
     const command = new InvokeCommand({
         FunctionName: process.env.LAMBDA_FUNCTION_NAME || 'slackNotification',
         InvocationType: 'RequestResponse',
-        Payload: Buffer.from(JSON.stringify({
-            webhookUrl: webhookUrl,
-            message: message
-        }))
+        Payload: Buffer.from(JSON.stringify(payload))
     });
 
     try {
@@ -41,14 +84,17 @@ async function invokeLambda(message) {
 
 // コマンドライン引数からメッセージを取得
 const message = process.argv[2];
+const isError = process.argv[3] === '--error';
 
 if (!message) {
-    console.error('使用方法: node send_notification.js <MESSAGE>');
+    console.error('使用方法: node send_notification.js <MESSAGE> [--error]');
     process.exit(1);
 }
 
 // Lambda関数の呼び出し
-invokeLambda(message)
+const payload = isError ? formatErrorMessage(message) : message;
+
+invokeLambda(payload)
     .then(() => console.log('通知処理が完了しました'))
     .catch(error => {
         console.error('エラーが発生しました:', error);

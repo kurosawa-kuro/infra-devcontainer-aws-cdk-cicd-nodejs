@@ -85,7 +85,7 @@ const CONFIG: StackConfig = {
   app: {
     port: 8080,
     healthCheckPath: '/health',
-    ami: 'ami-036972e0d767ef695',
+    ami: 'ami-09b54153a0553b958',
     instanceType: ec2.InstanceType.of(ec2.InstanceClass.T2, ec2.InstanceSize.MICRO),
     keyName: 'training',
     volumeSize: 10,

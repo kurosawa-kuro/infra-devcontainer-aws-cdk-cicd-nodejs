@@ -98,3 +98,7 @@ mark-success:
 	@git push origin $(SUCCESS_TAG)
 	@printf "\033[32m=== Success marker added ===\033[0m\n"
 	@printf "\033[32m=============================================\033[0m\n"
+
+deploy:
+	@echo "Deploying CDK stack..."
+	@npx cdk deploy --require-approval never || (node ../../script/invoke-lambda/send_notification.js "$$?" --error && exit 1)
