@@ -37,9 +37,8 @@ define check_failed_stacks
 endef
 
 define send_notification
-	@printf "\033[32m=== Sending deployment notification ===\033[0m\n"
-	@node script/invoke-lambda/send_notification.js "$(MESSAGE)"
-	@printf "\033[32m=============================================\033[0m\n"
+	@echo "=== Sending notification ==="
+	@node ../../script/invoke-lambda/send_notification.js "$(MESSAGE)"
 endef
 
 # ===========================================
