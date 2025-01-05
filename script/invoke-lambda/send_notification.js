@@ -1,8 +1,9 @@
 const { LambdaClient, InvokeCommand } = require('@aws-sdk/client-lambda');
 const dotenv = require('dotenv');
+const path = require('path');
 
 // 環境変数の読み込み
-dotenv.config();
+dotenv.config({ path: path.resolve(__dirname, '../../.env') });
 
 // AWS設定
 const client = new LambdaClient({
