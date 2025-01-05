@@ -11,7 +11,7 @@ cdk list
 2. スタックの削除順序を考慮して実行
 
 ```bash
-cdk bootstrap aws://476114153361/ap-northeast-1 aws://476114153361/us-east-1
+cdk bootstrap aws://448049833348/ap-northeast-1 aws://448049833348/us-east-1
 
 # まずメインのスタックを削除
 cdk destroy AwsCdkWebBasicStack --debug --force

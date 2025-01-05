@@ -1,7 +1,7 @@
 # ===========================================
 # AWS and CDK Configuration
 # ===========================================
-AWS_ACCOUNT_ID = 476114153361
+AWS_ACCOUNT_ID = 448049833348
 REGION_TOKYO = ap-northeast-1
 REGION_VIRGINIA = us-east-1
 

@@ -63,7 +63,7 @@ interface CloudFrontConfig {
 }
 
 // Stack configuration
-const LOGICAL_PREFIX = 'CdkExpress04';
+const LOGICAL_PREFIX = 'CdkJavascript01';
 const CONFIG: StackConfig = {
   prefix: LOGICAL_PREFIX.toLowerCase(),
   region: 'ap-northeast-1',
@@ -85,9 +85,9 @@ const CONFIG: StackConfig = {
   app: {
     port: 8080,
     healthCheckPath: '/health',
-    ami: 'ami-0d6308af452376e20',
+    ami: 'ami-036972e0d767ef695',
     instanceType: ec2.InstanceType.of(ec2.InstanceClass.T2, ec2.InstanceSize.MICRO),
-    keyName: 'training-ec2',
+    keyName: 'training',
     volumeSize: 10,
   },
   healthCheck: {
@@ -566,7 +566,7 @@ export class AwsCdkWebBasicStack extends cdk.Stack {
 
   private addNotificationCommandOutput(): void {
     new cdk.CfnOutput(this, 'NotificationCommand', {
-      value: 'aws lambda invoke --function-name arn:aws:lambda:ap-northeast-1:476114153361:function:slackNotification --payload \'{}\' response.json',
+      value: 'aws lambda invoke --function-name arn:aws:lambda:ap-northeast-1:448049833348:function:slackNotification --payload \'{}\' response.json',
       description: 'Command to invoke Slack notification Lambda',
     });
   }

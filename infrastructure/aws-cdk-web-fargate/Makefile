@@ -1,7 +1,7 @@
 # ===========================================
 # AWS and CDK Configuration
 # ===========================================
-AWS_ACCOUNT_ID = 476114153361
+AWS_ACCOUNT_ID = 448049833348
 REGION_TOKYO = ap-northeast-1
 REGION_VIRGINIA = us-east-1
 
@@ -38,7 +38,7 @@ endef
 define send_notification
 	@printf "\033[32m=== Sending deployment notification ===\033[0m\n"
 	@aws lambda invoke \
-		--function-name arn:aws:lambda:ap-northeast-1:476114153361:function:slackNotification \
+		--function-name arn:aws:lambda:ap-northeast-1:448049833348:function:slackNotification \
 		--payload '{}' \
 		/dev/null
 	@printf "\033[32m=============================================\033[0m\n"

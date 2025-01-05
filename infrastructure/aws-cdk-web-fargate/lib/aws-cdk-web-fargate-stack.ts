@@ -25,7 +25,7 @@ import * as logs from 'aws-cdk-lib/aws-logs';
 import * as ssm from 'aws-cdk-lib/aws-ssm';
 
 // #region Configuration Types
-const ECR_REPOSITORY = '476114153361.dkr.ecr.ap-northeast-1.amazonaws.com/aws-fargate-express-01-repository';
+const ECR_REPOSITORY = '448049833348.dkr.ecr.ap-northeast-1.amazonaws.com/aws-fargate-express-01-repository';
 
 namespace Config {
   export interface Stack {
@@ -98,7 +98,7 @@ const LOGICAL_PREFIX = 'fargateexpress02';
 const CONFIG: Config.Stack = {
   prefix: LOGICAL_PREFIX,
   region: 'ap-northeast-1',
-  accountId: '476114153361',
+  accountId: '448049833348',
   resourceNames: {
     vpc: `${LOGICAL_PREFIX}vpc`,
     igw: `${LOGICAL_PREFIX}igw`,
