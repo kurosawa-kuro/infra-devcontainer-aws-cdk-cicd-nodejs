@@ -69,8 +69,10 @@ echo -e "\n=== Setting up Prisma ==="
 # Prismaクライアントの生成
 npx prisma generate
 
-# 開発環境の場合のみマイグレーションを実行
+# 開発環境の場合のみマイグレーションとseederを実行
 if [ "$NODE_ENV" != "production" ]; then
   echo "Running database migrations..."
   npx prisma migrate dev
+  echo "Running database seeder..."
+  npx prisma db seed
 fi
