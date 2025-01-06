@@ -603,7 +603,15 @@ class DevController extends BaseController {
       });
 
       if (!user) {
-        return this.errorHandler.handleNotFoundError(req, res, 'ユーザーが見つかりません');
+        const defaultUsers = {
+          'user@example.com': '一般ユーザー',
+          'admin@example.com': '管理者'
+        };
+        const userType = defaultUsers[email] || 'ユーザー';
+        return this.sendResponse(req, res, {
+          message: `${userType}アカウント（${email}）が存在しません。\nデータベースのセットアップを実行してください。`,
+          redirectUrl: '/dev'
+        });
       }
 
       await new Promise((resolve, reject) => {
