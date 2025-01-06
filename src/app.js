@@ -73,7 +73,7 @@ const CONFIG = {
   logging: {
     useCloudWatch: process.env.USE_CLOUDWATCH === 'true',
     cloudwatch: {
-      logGroupName: process.env.CLOUDWATCH_LOG_GROUP,
+      logGroupName: '/aws/CdkJavascript01/myapp',
       region: process.env.AWS_REGION,
       accessKeyId: process.env.AWS_ACCESS_KEY_ID,
       secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY
@@ -109,228 +109,43 @@ class LoggingSystem {
   }
 
   createLogger() {
-    // ANSIエスケープコードを除去する関数
-    const stripAnsi = (str) => {
-      return str.replace(/\u001b\[\d+m/g, '');
-    };
-
-    // CloudWatch用のシンプルなフォーマット
-    const cloudWatchFormat = winston.format.printf(({ timestamp, level, message, ...metadata }) => {
-      // Expressのログメッセージをパースする
-      const parseExpressLog = (msg) => {
-        const regex = /^([A-Z]+)\s+(?:\x1b\[\d+m)*(\d+)(?:\x1b\[0m)*\s+([^\s]+)\s+(\d+)ms/;
-        const match = msg.match(regex);
-        if (match) {
-          return {
-            method: match[1],
-            statusCode: match[2],
-            path: match[3],
-            responseTime: match[4]
-          };
-        }
-        return null;
-      };
-
-      let method, path, statusCode, responseTime;
-
-      // メッセージがExpressのログフォーマットの場合はパースする
-      const parsedLog = parseExpressLog(stripAnsi(message));
-      if (parsedLog) {
-        method = parsedLog.method;
-        path = parsedLog.path;
-        statusCode = parsedLog.statusCode;
-        responseTime = parsedLog.responseTime;
-      } else {
-        // メタデータから取得（既存のフォールバック）
-        method = metadata.requestInfo?.method || '';
-        path = metadata.requestInfo?.path || '';
-        statusCode = metadata.statusCode || '';
-        responseTime = metadata.responseTime || '';
-      }
-
-      // CloudWatch用のJSON形式
-      const logData = {
-        timestamp: new Date().toISOString(),
-        Category: metadata.category || 'System',
-        Action: `${method} ${statusCode} ${path} ${responseTime}ms`,
-        Value: metadata.value || 0,
-        Quantity: metadata.quantity || 1,
-        Environment: process.env.NODE_ENV,
-        ErrorMessage: metadata.errorMessage || ''
-      };
-
-      // null/undefined値を除去
-      Object.keys(logData).forEach(key => {
-        if (logData[key] === null || logData[key] === undefined || logData[key] === '') {
-          delete logData[key];
-        }
-      });
-
-      return JSON.stringify(logData);
-    });
-
-    // JSON形式の詳細ログフォーマット
-    const jsonLogFormat = winston.format.printf(({ timestamp, level, message, ...metadata }) => {
-      const category = metadata.category || 'System';
-      const action = stripAnsi(metadata.action || message);
-      const value = metadata.value || 0;
-      const quantity = metadata.quantity || 1;
-      
-      // Athena用の構造化ログフォーマット
-      const logData = {
-        // 基本情報
-        timestamp: new Date().toISOString(),
-        Category: category,
-        Action: action,
-        Value: value,
-        Quantity: quantity,
-
-        // ユーザー関連情報
-        UserId: metadata.userId,
-        UserEmail: metadata.userEmail,
-        UserName: metadata.userName,
-        UserRole: metadata.userRole,
-
-        // コンテンツ関連情報
-        ContentId: metadata.contentId,
-        ContentType: metadata.contentType,
-        ContentTitle: metadata.contentTitle,
-        CategoryId: metadata.categoryId,
-        CategoryName: metadata.categoryName,
-
-        // インタラクション情報
-        InteractionType: metadata.interactionType,
-        TargetUserId: metadata.targetUserId,
-        TargetContentId: metadata.targetContentId,
-
-        // 通知関連情報
-        NotificationType: metadata.notificationType,
-        NotificationStatus: metadata.notificationStatus,
-
-        // システム情報
-        Environment: process.env.NODE_ENV,
-        IPAddress: metadata.ipAddress,
-        UserAgent: metadata.userAgent,
-        
-        // エラー情報（存在する場合）
-        ErrorCode: metadata.errorCode,
-        ErrorMessage: stripAnsi(metadata.errorMessage || ''),
-        ErrorStack: metadata.errorStack,
-
-        // リクエスト情報
-        RequestInfo: metadata.requestInfo,
-
-        // 追加のメタデータ
-        ...metadata.additionalData
-      };
-
-      // null/undefined値を除去
-      Object.keys(logData).forEach(key => {
-        if (logData[key] === null || logData[key] === undefined) {
-          delete logData[key];
-        }
-      });
-
-      return JSON.stringify(logData);
-    });
-
     const transports = [
       new winston.transports.Console({
         format: winston.format.combine(
-          winston.format.colorize(),
           winston.format.timestamp(),
-          winston.format.printf(({ timestamp, level, message, metadata }) => {
-            let output = `${timestamp} ${level}: ${message}`;
-            if (metadata && Object.keys(metadata).length > 0) {
-              output += `\n${JSON.stringify(metadata, null, 2)}`;
-            }
-            return output;
+          winston.format.printf(({ timestamp, level, message }) => {
+            return `${timestamp} ${level}: ${message}`;
           })
-        )
-      }),
-      new winston.transports.File({
-        filename: 'logs/error.log',
-        level: 'error',
-        format: winston.format.combine(
-          winston.format.timestamp(),
-          jsonLogFormat
-        )
-      }),
-      new winston.transports.File({
-        filename: 'logs/combined.log',
-        format: winston.format.combine(
-          winston.format.timestamp(),
-          jsonLogFormat
         )
       })
     ];
 
     if (CONFIG.logging.useCloudWatch) {
+      console.log('Setting up CloudWatch logging...');
+      // 日付ベースのログストリーム名を生成
+      const date = new Date();
+      const year = date.getFullYear();
+      const month = String(date.getMonth() + 1).padStart(2, '0');
+      const day = String(date.getDate()).padStart(2, '0');
+      const logStreamName = `express-${year}-${month}-${day}`;
+
+      console.log('Using log stream:', logStreamName);
+      
       const cloudWatchTransport = new WinstonCloudWatch({
-        logGroupName: CONFIG.logging.cloudwatch.logGroupName,
-        logStreamName: `express-${new Date().toISOString().replace(/[:\-]/g, '_')}`,
-        awsRegion: CONFIG.logging.cloudwatch.region,
-        awsOptions: {
-          credentials: {
-            accessKeyId: CONFIG.logging.cloudwatch.accessKeyId,
-            secretAccessKey: CONFIG.logging.cloudwatch.secretAccessKey
-          }
-        },
-        messageFormatter: (log) => {
-          const formattedData = {
-            timestamp: new Date().toISOString().replace(/[:\-]/g, '_'),
-            level: log.level,
-            message: log.message
-          };
-
-          // メタデータがある場合は展開
-          if (log.metadata) {
-            // メタデータ内のタイムスタンプも変換
-            if (log.metadata.timestamp) {
-              log.metadata.timestamp = log.metadata.timestamp.replace(/[:\-]/g, '_');
-            }
-            Object.assign(formattedData, log.metadata);
-          }
-
-          // メタデータがない場合はメッセージをパースしてみる
-          else if (typeof log.message === 'string') {
-            try {
-              const parsedMessage = JSON.parse(log.message);
-              // パースしたメッセージ内のタイムスタンプも変換
-              if (parsedMessage.timestamp) {
-                parsedMessage.timestamp = parsedMessage.timestamp.replace(/[:\-]/g, '_');
-              }
-              Object.assign(formattedData, parsedMessage);
-            } catch (e) {
-              // パースに失敗した場合は元のメッセージをそのまま使用
-            }
-          }
-
-          // null/undefined値を除去
-          Object.keys(formattedData).forEach(key => {
-            if (formattedData[key] === null || formattedData[key] === undefined) {
-              delete formattedData[key];
-            }
-          });
-
-          return JSON.stringify(formattedData);
-        },
-        jsonMessage: true,
-        format: winston.format.combine(
-          winston.format.timestamp(),
-          winston.format.metadata(),
-          cloudWatchFormat
-        )
+        logGroupName: '/aws/CdkJavascript01/myapp',
+        logStreamName: logStreamName,
+        awsRegion: 'ap-northeast-1'
       });
+
+      cloudWatchTransport.on('error', (err) => {
+        console.error('CloudWatch logging error:', err);
+      });
+
       transports.push(cloudWatchTransport);
     }
 
     return winston.createLogger({
-      format: winston.format.combine(
-        winston.format.timestamp(),
-        winston.format.metadata(),
-        jsonLogFormat
-      ),
+      format: winston.format.simple(),
       transports: transports
     });
   }
