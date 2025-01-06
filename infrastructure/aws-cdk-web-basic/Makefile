@@ -3,7 +3,6 @@
 # ===========================================
 AWS_ACCOUNT_ID = 448049833348
 REGION_TOKYO = ap-northeast-1
-REGION_VIRGINIA = us-east-1
 
 # CDK Command Settings
 CDK = cdk
@@ -15,15 +14,20 @@ DESTROY_FLAGS = --force --debug
 # ===========================================
 PREFIX = CdkJavascript01
 MAIN_STACK = AwsCdkWebBasicStack
-DESTROY_STACK = DestroyStack
-WAF_STACK = $(PREFIX)-WebAclStack
+
+# ===========================================
+# Notification Messages
+# ===========================================
+NOTIFY_TEST_MSG = "[TEST]_Notification_system_check"
+NOTIFY_FIRST_DEPLOY_MSG = "[INFO]_First_deployment_completed"
+NOTIFY_RESET_DEPLOY_MSG = "[INFO]_Reset_and_redeploy_completed"
+NOTIFY_DESTROY_MSG = "[INFO]_Stack_destruction_completed"
 
 # ===========================================
 # Helper Functions
 # ===========================================
 define bootstrap_regions
-	@printf "\033[32m=== Bootstrapping CDK in both regions ===\033[0m\n"
-	$(CDK) bootstrap aws://$(AWS_ACCOUNT_ID)/$(REGION_VIRGINIA) --cloudformation-execution-policies arn:aws:iam::aws:policy/AdministratorAccess --trust $(AWS_ACCOUNT_ID) --force --verbose
+	@printf "\033[32m=== Bootstrapping CDK in Tokyo region ===\033[0m\n"
 	$(CDK) bootstrap aws://$(AWS_ACCOUNT_ID)/$(REGION_TOKYO) --cloudformation-execution-policies arn:aws:iam::aws:policy/AdministratorAccess --trust $(AWS_ACCOUNT_ID) --force --verbose
 	@printf "\033[32m=============================================\033[0m\n"
 endef
@@ -48,15 +52,15 @@ endef
 
 # Test notification
 notify-test:
-	$(eval MESSAGE := "Test notification sent")
+	$(eval MESSAGE := $(NOTIFY_TEST_MSG))
 	$(call send_notification)
 
 # Bootstrap both regions and deploy main stack with notification
 first-deploy:
 	$(call bootstrap_regions)
 	@printf "\033[32m=== Deploying main stacks ===\033[0m\n"
-	$(CDK) deploy $(MAIN_STACK) $(WAF_STACK) $(DEPLOY_FLAGS)
-	$(eval MESSAGE := "First deployment completed successfully")
+	$(CDK) deploy $(MAIN_STACK) $(DEPLOY_FLAGS)
+	$(eval MESSAGE := $(NOTIFY_FIRST_DEPLOY_MSG))
 	$(call send_notification)
 	@printf "\033[32m=== Deployment completed successfully ===\033[0m\n"
 	@printf "\033[32m=============================================\033[0m\n"
@@ -68,7 +72,7 @@ reset-deploy:
 	@printf "\033[32m=============================================\033[0m\n"
 	@printf "\033[32m=== Starting fresh deployment ===\033[0m\n"
 	$(MAKE) first-deploy
-	$(eval MESSAGE := "Reset and redeploy completed successfully")
+	$(eval MESSAGE := $(NOTIFY_RESET_DEPLOY_MSG))
 	$(call send_notification)
 	@printf "\033[32m=== Reset and redeploy completed successfully ===\033[0m\n"
 	@printf "\033[32m=============================================\033[0m\n"
@@ -79,8 +83,7 @@ destroy:
 	$(call check_failed_stacks)
 	@printf "\033[32m=== Destroying stacks ===\033[0m\n"
 	-$(CDK) destroy $(MAIN_STACK) $(DESTROY_FLAGS)
-	-$(CDK) destroy $(WAF_STACK) $(DESTROY_FLAGS)
-	$(eval MESSAGE := "Stack destruction completed")
+	$(eval MESSAGE := $(NOTIFY_DESTROY_MSG))
 	$(call send_notification)
 	@printf "\033[32m=== Destroy process completed ===\033[0m\n"
 	@printf "\033[32m=============================================\033[0m\n"
