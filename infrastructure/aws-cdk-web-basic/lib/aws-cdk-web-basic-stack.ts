@@ -256,6 +256,8 @@ export class AwsCdkWebBasicStack extends cdk.Stack {
       allowAllOutbound: true,
     });
 
+    cdk.Tags.of(albSg).add('Name', `${CONFIG.prefix}-alb-sg`);
+
     albSg.addIngressRule(
       ec2.Peer.anyIpv4(),
       ec2.Port.tcp(80),
@@ -268,6 +270,8 @@ export class AwsCdkWebBasicStack extends cdk.Stack {
       description: 'Security group for App',
       allowAllOutbound: true,
     });
+
+    cdk.Tags.of(appSg).add('Name', `${CONFIG.prefix}-app-sg`);
 
     appSg.addIngressRule(
       ec2.Peer.securityGroupId(albSg.securityGroupId),

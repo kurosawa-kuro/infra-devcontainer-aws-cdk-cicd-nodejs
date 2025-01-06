@@ -43,8 +43,7 @@ define bootstrap_regions
 	$(CDK) bootstrap aws://$(AWS_ACCOUNT_ID)/$(REGION_TOKYO) \
 		--cloudformation-execution-policies arn:aws:iam::aws:policy/AdministratorAccess \
 		--trust $(AWS_ACCOUNT_ID) \
-		--force \
-		--verbose
+		--force
 	$(call log_end_section)
 endef
 

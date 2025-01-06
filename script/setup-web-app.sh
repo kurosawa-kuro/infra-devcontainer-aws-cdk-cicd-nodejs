@@ -7,6 +7,29 @@ ENV_FILE="$(cd "$SCRIPT_DIR/.." && pwd)/.env"
 TIMESTAMP=$(date +%Y%m%d_%H%M%S)
 BACKUP_DIR="$SCRIPT_DIR/config"
 
+# コマンドラインオプションの処理
+ONLY_UPDATE_CREDENTIALS=false
+
+while getopts "u" opt; do
+    case $opt in
+        u)
+            ONLY_UPDATE_CREDENTIALS=true
+            ;;
+        \?)
+            echo "Invalid option: -$OPTARG" >&2
+            exit 1
+            ;;
+    esac
+done
+
+# ヘルプメッセージの表示
+show_usage() {
+    echo "Usage: $0 [-u]"
+    echo "Options:"
+    echo "  -u    Only update credentials"
+    exit 1
+}
+
 # ログ関数
 log_info() {
     echo -e "\n=== $1 ==="
@@ -60,33 +83,55 @@ setup_env_file() {
     echo ".env file created/updated successfully."
 }
 
-# AWS認証情報の更新
-update_aws_credentials() {
-    log_info "Updating AWS credentials"
-    local access_key=$(aws configure get aws_access_key_id)
-    local secret_key=$(aws configure get aws_secret_access_key)
-
-    if [ -z "$access_key" ] || [ -z "$secret_key" ]; then
-        log_error "AWS credentials not found in ~/.aws/config"
+# 環境変数情報の更新
+update_credentials() {
+    local source_file="/home/ec2-user/secret/from"
+    local env_file="$(cd "$SCRIPT_DIR/.." && pwd)/.env"
+    
+    log_info "Updating credentials from $source_file"
+    
+    if [ ! -f "$source_file" ]; then
+        log_error "Source file $source_file not found"
     fi
-
-    local backup_file="$ENV_FILE.backup_$TIMESTAMP"
-    cp "$ENV_FILE" "$backup_file"
-
-    local tmp_file=$(mktemp)
-    while IFS= read -r line; do
-        if [[ $line == AWS_ACCESS_KEY_ID=* ]]; then
-            echo "AWS_ACCESS_KEY_ID=$access_key"
-        elif [[ $line == AWS_SECRET_ACCESS_KEY=* ]]; then
-            echo "AWS_SECRET_ACCESS_KEY=$secret_key"
-        else
-            echo "$line"
-        fi
-    done < "$ENV_FILE" > "$tmp_file"
-
-    mv "$tmp_file" "$ENV_FILE"
-    echo "AWS credentials have been updated in $ENV_FILE"
-    echo "Backup created at $backup_file"
+    
+    # Create backup of current .env file
+    if [ -f "$env_file" ]; then
+        cp "$env_file" "${env_file}.backup_$(date +%Y%m%d_%H%M%S)"
+    fi
+    
+    # Update AWS credentials
+    if grep -q "AWS_ACCESS_KEY_ID=" "$source_file"; then
+        sed -i "s|^AWS_ACCESS_KEY_ID=.*|$(grep "^AWS_ACCESS_KEY_ID=" "$source_file")|" "$env_file"
+    fi
+    
+    if grep -q "AWS_SECRET_ACCESS_KEY=" "$source_file"; then
+        sed -i "s|^AWS_SECRET_ACCESS_KEY=.*|$(grep "^AWS_SECRET_ACCESS_KEY=" "$source_file")|" "$env_file"
+    fi
+    
+    # Update Storage CDN URL
+    if grep -q "STORAGE_CDN_URL=" "$source_file"; then
+        sed -i "s|^STORAGE_CDN_URL=.*|$(grep "EnvVarCdnUrl" "$source_file" | cut -d'=' -f2-)|" "$env_file"
+    fi
+    
+    # Update CloudFront Distribution ID
+    if grep -q "STORAGE_CDN_DISTRIBUTION_ID=" "$source_file"; then
+        sed -i "s|^STORAGE_CDN_DISTRIBUTION_ID=.*|$(grep "EnvVarCdnDistributionId" "$source_file" | cut -d'=' -f2-)|" "$env_file"
+    fi
+    
+    # Update S3 Bucket
+    if grep -q "STORAGE_S3_BUCKET=" "$source_file"; then
+        sed -i "s|^STORAGE_S3_BUCKET=.*|$(grep "EnvVarS3Bucket" "$source_file" | cut -d'=' -f2-)|" "$env_file"
+    fi
+    
+    # Update Slack Webhook URL
+    if grep -q "SLACK_WEBHOOK_URL=" "$source_file"; then
+        sed -i "s|^SLACK_WEBHOOK_URL=.*|$(grep "^SLACK_WEBHOOK_URL=" "$source_file")|" "$env_file"
+    fi
+    
+    log_info "Credentials updated successfully"
+    
+    # Secure the .env file
+    chmod 600 "$env_file"
 }
 
 # Prismaのセットアップ
@@ -104,6 +149,12 @@ setup_prisma() {
 
 # メイン実行フロー
 main() {
+    if [ "$ONLY_UPDATE_CREDENTIALS" = true ]; then
+        log_info "Running only credentials update"
+        update_credentials
+        exit 0
+    fi
+
     log_info "Starting Web App Setup"
     
     # NPMグローバル設定
@@ -125,7 +176,7 @@ main() {
     setup_prisma
     
     # AWS認証情報の更新
-    update_aws_credentials
+    update_credentials
     
     log_info "Setup completed successfully"
 }
