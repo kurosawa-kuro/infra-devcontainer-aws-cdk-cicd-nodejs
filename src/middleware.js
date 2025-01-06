@@ -124,16 +124,16 @@ const setupBasicMiddleware = (app) => {
 
 const setupAuthMiddleware = (app, config) => {
   const sessionConfig = {
-    secret: config.auth.sessionSecret,
+    secret: process.env.SESSION_SECRET || 'your-session-secret',
     resave: false,
     saveUninitialized: true,
     cookie: {
-      secure: config.app.isProduction,
-      maxAge: config.auth.sessionMaxAge
+      secure: process.env.NODE_ENV === 'production',
+      maxAge: parseInt(process.env.SESSION_MAX_AGE, 10) || 24 * 60 * 60 * 1000
     }
   };
 
-  if (config.app.isTest) {
+  if (process.env.APP_ENV === 'test') {
     sessionConfig.cookie.secure = false;
     sessionConfig.resave = true;
   }

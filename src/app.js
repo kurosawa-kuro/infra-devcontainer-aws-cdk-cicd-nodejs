@@ -52,11 +52,11 @@ const CONFIG = {
     isTest: process.env.APP_ENV === 'test'
   },
   storage: {
-    useS3: process.env.STORAGE_S3_BUCKET ? true : false,
+    useS3: process.env.STORAGE_PROVIDER === 's3',
     s3: {
-      region: process.env.STORAGE_S3_REGION,
-      accessKey: process.env.STORAGE_S3_ACCESS_KEY,
-      secretKey: process.env.STORAGE_S3_SECRET_KEY,
+      region: process.env.AWS_REGION,
+      accessKey: process.env.AWS_ACCESS_KEY_ID,
+      secretKey: process.env.AWS_SECRET_ACCESS_KEY,
       bucket: process.env.STORAGE_S3_BUCKET
     },
     cloudfront: {
@@ -69,17 +69,17 @@ const CONFIG = {
     }
   },
   logging: {
-    useCloudWatch: process.env.CLOUDWATCH_LOG_GROUP ? true : false,
+    useCloudWatch: process.env.USE_CLOUDWATCH === 'true',
     cloudwatch: {
-      logGroupName: process.env.CLOUDWATCH_LOG_GROUP || '/aws/express/myapp',
-      region: process.env.CLOUDWATCH_REGION || 'ap-northeast-1',
-      accessKeyId: process.env.STORAGE_S3_ACCESS_KEY,
-      secretAccessKey: process.env.STORAGE_S3_SECRET_KEY
+      logGroupName: process.env.CLOUDWATCH_LOG_GROUP,
+      region: process.env.AWS_REGION,
+      accessKeyId: process.env.AWS_ACCESS_KEY_ID,
+      secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY
     }
   },
   auth: {
     sessionSecret: process.env.SESSION_SECRET || 'your-session-secret',
-    sessionMaxAge: 24 * 60 * 60 * 1000 // 24 hours
+    sessionMaxAge: parseInt(process.env.SESSION_MAX_AGE, 10) || 24 * 60 * 60 * 1000
   }
 };
 

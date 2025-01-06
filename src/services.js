@@ -598,10 +598,10 @@ class LogUploader extends BaseService {
   constructor(prisma, logger) {
     super(prisma, logger);
     this.s3Client = new S3Client({
-      region: process.env.STORAGE_S3_REGION || 'ap-northeast-1',
+      region: process.env.AWS_REGION,
       credentials: {
-        accessKeyId: process.env.STORAGE_S3_ACCESS_KEY,
-        secretAccessKey: process.env.STORAGE_S3_SECRET_KEY
+        accessKeyId: process.env.AWS_ACCESS_KEY_ID,
+        secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY
       }
     });
     this.bucketName = process.env.STORAGE_S3_BUCKET;

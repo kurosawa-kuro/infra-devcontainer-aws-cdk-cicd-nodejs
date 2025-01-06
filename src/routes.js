@@ -26,7 +26,7 @@ function setupRoutes(app, controllers, fileUploader) {
   app.use('/categories', categoryRouter);
 
   // Static Assets
-  if (!process.env.STORAGE_S3_BUCKET) {
+  if (process.env.STORAGE_PROVIDER !== 's3') {
     const uploadsPath = path.join(__dirname, 'public', 'uploads');
     app.use('/uploads', express.static(uploadsPath, {
       setHeaders: (res, path, stat) => {
