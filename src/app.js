@@ -131,7 +131,6 @@ class LoggingSystem {
         return null;
       };
 
-      const logDate = new Date(timestamp).toISOString().split('T')[0];
       let method, path, statusCode, responseTime;
 
       // メッセージがExpressのログフォーマットの場合はパースする
@@ -172,7 +171,6 @@ class LoggingSystem {
 
     // JSON形式の詳細ログフォーマット
     const jsonLogFormat = winston.format.printf(({ timestamp, level, message, ...metadata }) => {
-      const logDate = new Date(timestamp).toISOString().split('T')[0];
       const category = metadata.category || 'System';
       const action = stripAnsi(metadata.action || message);
       const value = metadata.value || 0;
@@ -239,8 +237,15 @@ class LoggingSystem {
     const transports = [
       new winston.transports.Console({
         format: winston.format.combine(
+          winston.format.colorize(),
           winston.format.timestamp(),
-          jsonLogFormat
+          winston.format.printf(({ timestamp, level, message, metadata }) => {
+            let output = `${timestamp} ${level}: ${message}`;
+            if (metadata && Object.keys(metadata).length > 0) {
+              output += `\n${JSON.stringify(metadata, null, 2)}`;
+            }
+            return output;
+          })
         )
       }),
       new winston.transports.File({
@@ -263,7 +268,7 @@ class LoggingSystem {
     if (CONFIG.logging.useCloudWatch) {
       const cloudWatchTransport = new WinstonCloudWatch({
         logGroupName: CONFIG.logging.cloudwatch.logGroupName,
-        logStreamName: `express-${new Date().toISOString().split('T')[0]}`,
+        logStreamName: `express-${new Date().toISOString().replace(/[:\-]/g, '_')}`,
         awsRegion: CONFIG.logging.cloudwatch.region,
         awsOptions: {
           credentials: {
@@ -271,41 +276,59 @@ class LoggingSystem {
             secretAccessKey: CONFIG.logging.cloudwatch.secretAccessKey
           }
         },
-        messageFormatter: ({ level, message, ...meta }) => {
-          return meta.metadata ? message : JSON.stringify(meta);
+        messageFormatter: (log) => {
+          const formattedData = {
+            timestamp: new Date().toISOString().replace(/[:\-]/g, '_'),
+            level: log.level,
+            message: log.message
+          };
+
+          // メタデータがある場合は展開
+          if (log.metadata) {
+            // メタデータ内のタイムスタンプも変換
+            if (log.metadata.timestamp) {
+              log.metadata.timestamp = log.metadata.timestamp.replace(/[:\-]/g, '_');
+            }
+            Object.assign(formattedData, log.metadata);
+          }
+
+          // メタデータがない場合はメッセージをパースしてみる
+          else if (typeof log.message === 'string') {
+            try {
+              const parsedMessage = JSON.parse(log.message);
+              // パースしたメッセージ内のタイムスタンプも変換
+              if (parsedMessage.timestamp) {
+                parsedMessage.timestamp = parsedMessage.timestamp.replace(/[:\-]/g, '_');
+              }
+              Object.assign(formattedData, parsedMessage);
+            } catch (e) {
+              // パースに失敗した場合は元のメッセージをそのまま使用
+            }
+          }
+
+          // null/undefined値を除去
+          Object.keys(formattedData).forEach(key => {
+            if (formattedData[key] === null || formattedData[key] === undefined) {
+              delete formattedData[key];
+            }
+          });
+
+          return JSON.stringify(formattedData);
         },
+        jsonMessage: true,
         format: winston.format.combine(
           winston.format.timestamp(),
-          winston.format.metadata({ 
-            fillWith: [
-              'category', 'action', 'value', 'quantity',
-              'requestInfo', 'statusCode', 'responseTime',
-              'errorMessage'
-            ] 
-          }),
+          winston.format.metadata(),
           cloudWatchFormat
         )
       });
-        transports.push(cloudWatchTransport);
+      transports.push(cloudWatchTransport);
     }
 
     return winston.createLogger({
       format: winston.format.combine(
         winston.format.timestamp(),
-        winston.format.metadata({ 
-          fillWith: [
-            'category', 'action', 'value', 'quantity',
-            'userId', 'userEmail', 'userName', 'userRole',
-            'contentId', 'contentType', 'contentTitle',
-            'categoryId', 'categoryName',
-            'interactionType', 'targetUserId', 'targetContentId',
-            'notificationType', 'notificationStatus',
-            'ipAddress', 'userAgent',
-            'errorCode', 'errorMessage', 'errorStack',
-            'requestInfo', 'statusCode', 'responseTime',
-            'additionalData'
-          ] 
-        }),
+        winston.format.metadata(),
         jsonLogFormat
       ),
       transports: transports
@@ -315,147 +338,143 @@ class LoggingSystem {
   // ユーザーアクションのログ
   logUserAction(action, user, value = 0, additionalData = {}) {
     this.logger.info(action, {
-      category: 'User',
-      action,
-      value,
-      quantity: 1,
-      userId: user.id,
-      userEmail: user.email,
-      userName: user.name,
-      userRole: user.userRoles?.[0]?.role?.name,
-      additionalData
+      metadata: {
+        category: 'User',
+        action,
+        value,
+        quantity: 1,
+        userId: user.id,
+        userEmail: user.email,
+        userName: user.name,
+        userRole: user.userRoles?.[0]?.role?.name,
+        additionalData
+      }
     });
   }
 
   // コンテンツ関連アクションのログ
   logContentAction(action, content, user, value = 0, additionalData = {}) {
     this.logger.info(action, {
-      category: 'Content',
-      action,
-      value,
-      quantity: 1,
-      contentId: content.id,
-      contentType: 'Micropost',
-      contentTitle: content.title,
-      userId: user?.id,
-      userName: user?.name,
-      categoryName: content.categories?.[0]?.category?.name,
-      additionalData
+      metadata: {
+        category: 'Content',
+        action,
+        value,
+        quantity: 1,
+        contentId: content.id,
+        contentType: 'Micropost',
+        contentTitle: content.title,
+        userId: user?.id,
+        userName: user?.name,
+        categoryName: content.categories?.[0]?.category?.name,
+        additionalData
+      }
     });
   }
 
   // インタラクションのログ
   logInteraction(action, type, user, target, value = 0, additionalData = {}) {
     this.logger.info(action, {
-      category: 'Interaction',
-      action,
-      value,
-      quantity: 1,
-      interactionType: type,
-      userId: user.id,
-      userName: user.name,
-      targetUserId: target.userId,
-      targetContentId: target.contentId,
-      additionalData
+      metadata: {
+        category: 'Interaction',
+        action,
+        value,
+        quantity: 1,
+        interactionType: type,
+        userId: user.id,
+        userName: user.name,
+        targetUserId: target.userId,
+        targetContentId: target.contentId,
+        additionalData
+      }
     });
   }
 
   // 通知のログ
   logNotification(action, notification, additionalData = {}) {
     this.logger.info(action, {
-      category: 'Notification',
-      action,
-      value: 1,
-      quantity: 1,
-      notificationType: notification.type,
-      notificationStatus: notification.read ? 'READ' : 'UNREAD',
-      userId: notification.recipientId,
-      targetUserId: notification.actorId,
-      contentId: notification.micropostId,
-      additionalData
+      metadata: {
+        category: 'Notification',
+        action,
+        value: 1,
+        quantity: 1,
+        notificationType: notification.type,
+        notificationStatus: notification.read ? 'READ' : 'UNREAD',
+        userId: notification.recipientId,
+        targetUserId: notification.actorId,
+        contentId: notification.micropostId,
+        additionalData
+      }
     });
   }
 
   // エラーログ
   logError(category, action, error, metadata = {}) {
     this.logger.error(action, {
-      category,
-      action,
-      value: error.code || 500,
-      quantity: 1,
-      errorCode: error.code,
-      errorMessage: error.message,
-      errorStack: error.stack,
-      ...metadata
+      metadata: {
+        category,
+        action,
+        value: error.code || 500,
+        quantity: 1,
+        errorCode: error.code,
+        errorMessage: error.message,
+        errorStack: error.stack,
+        ...metadata
+      }
     });
   }
 
   // ビジネスアクションのログ
   logBusinessAction(action, data) {
-    const logData = {
-      timestamp: new Date().toISOString(),
-      Category: data.category || 'Business',
-      Action: action,
-      Value: data.value || 0,
-      Quantity: data.quantity || 1,
-      Environment: process.env.NODE_ENV || 'development',
-      ErrorMessage: '',
-      Details: {
-        actionType: data.actionType,
-        targetType: data.targetType,
-        targetId: data.targetId,
-        result: data.result
-      },
-      Actor: data.actor ? {
-        id: data.actor.id,
-        name: data.actor.name
-      } : null,
-      Target: data.target ? {
-        id: data.target.id,
-        name: data.target.name
-      } : null
-    };
-
-    // null値の削除
-    Object.keys(logData).forEach(key => {
-      if (logData[key] === null || logData[key] === undefined) {
-        delete logData[key];
+    this.logger.info(action, {
+      metadata: {
+        timestamp: new Date().toISOString(),
+        Category: data.category || 'Business',
+        Action: action,
+        Value: data.value || 0,
+        Quantity: data.quantity || 1,
+        Environment: process.env.NODE_ENV || 'development',
+        ErrorMessage: '',
+        Details: {
+          actionType: data.actionType,
+          targetType: data.targetType,
+          targetId: data.targetId,
+          result: data.result
+        },
+        Actor: data.actor ? {
+          id: data.actor.id,
+          name: data.actor.name
+        } : null,
+        Target: data.target ? {
+          id: data.target.id,
+          name: data.target.name
+        } : null
       }
     });
-
-    this.logger.info(JSON.stringify(logData));
   }
 
   // HTTPリクエストのログ
   logHttpRequest(req, res, responseTime) {
-    const logData = {
-      timestamp: new Date().toISOString(),
-      Category: 'Http',
-      Action: `${req.method} ${res.statusCode} ${req.originalUrl}`,
-      Value: responseTime,
-      Quantity: 1,
-      Environment: process.env.NODE_ENV || 'development',
-      ErrorMessage: '',
-      RequestInfo: {
-        method: req.method,
-        path: req.originalUrl,
-        statusCode: res.statusCode,
-        responseTime: responseTime
-      },
-      User: req.user ? {
-        id: req.user.id,
-        name: req.user.name
-      } : null
-    };
-
-    // null値の削除
-    Object.keys(logData).forEach(key => {
-      if (logData[key] === null || logData[key] === undefined) {
-        delete logData[key];
+    this.logger.info(`${req.method} ${res.statusCode} ${req.originalUrl}`, {
+      metadata: {
+        timestamp: new Date().toISOString(),
+        Category: 'Http',
+        Action: `${req.method} ${res.statusCode} ${req.originalUrl}`,
+        Value: responseTime,
+        Quantity: 1,
+        Environment: process.env.NODE_ENV || 'development',
+        ErrorMessage: '',
+        RequestInfo: {
+          method: req.method,
+          path: req.originalUrl,
+          statusCode: res.statusCode,
+          responseTime: responseTime
+        },
+        User: req.user ? {
+          id: req.user.id,
+          name: req.user.name
+        } : null
       }
     });
-
-    this.logger.info(JSON.stringify(logData));
   }
 }
 
