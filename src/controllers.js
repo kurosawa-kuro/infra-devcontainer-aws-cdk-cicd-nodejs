@@ -251,10 +251,6 @@ class MicropostController extends BaseController {
 
   async index(req, res) {
     return this.handleRequest(req, res, async () => {
-      console.log('=== Starting micropost index request ===');
-      console.log('Path:', req.path);
-      console.log('Query:', req.query);
-      console.log('User:', req.user ? { id: req.user.id, email: req.user.email } : 'Not logged in');
 
       try {
         console.log('Fetching microposts and categories...');
@@ -643,21 +639,7 @@ class ProfileController extends BaseController {
 
   async follow(req, res) {
     return this.handleRequest(req, res, async () => {
-      console.log('\n=== Follow Request Start ===');
-      console.log('Request:', {
-        method: req.method,
-        path: req.path,
-        params: req.params,
-        body: req.body,
-        headers: {
-          'content-type': req.headers['content-type'],
-          'x-csrf-token': req.headers['x-csrf-token']
-        },
-        user: req.user ? { id: req.user.id, email: req.user.email } : null
-      });
-
       if (!req.user) {
-        console.log('Authentication check failed: No user in request');
         this.logger.warn('Follow attempt without authentication');
         return res.status(403).json({
           success: false,
@@ -666,10 +648,8 @@ class ProfileController extends BaseController {
       }
 
       const targetUserId = parseInt(req.params.id, 10);
-      console.log('Target user ID:', targetUserId);
       
       if (isNaN(targetUserId)) {
-        console.log('Invalid target user ID:', req.params.id);
         this.logger.warn('Invalid target user ID:', req.params.id);
         return res.status(400).json({
           success: false,
@@ -684,15 +664,9 @@ class ProfileController extends BaseController {
       });
 
       try {
-        console.log('Checking target user existence...');
         const targetUser = await this.profileService.getUserProfile(targetUserId);
-        console.log('Target user:', targetUser ? { 
-          id: targetUser.id, 
-          name: targetUser.name 
-        } : 'Not found');
 
         if (!targetUser) {
-          console.log('Target user not found');
           this.logger.warn('Target user not found:', targetUserId);
           return res.status(404).json({
             success: false,
@@ -701,7 +675,6 @@ class ProfileController extends BaseController {
         }
 
         if (req.user.id === targetUserId) {
-          console.log('Self-follow attempt detected');
           this.logger.warn('User attempted to follow themselves:', req.user.id);
           return res.status(400).json({
             success: false,
@@ -709,37 +682,15 @@ class ProfileController extends BaseController {
           });
         }
 
-        console.log('Creating follow relationship...');
         await this.followService.follow(req.user.id, targetUserId);
-        
-        console.log('Getting updated follow counts...');
         const followCounts = await this.followService.getFollowCounts(targetUserId);
-        console.log('Updated follow counts:', followCounts);
 
-        this.logger.info('Follow successful:', {
-          followerId: req.user.id,
-          targetUserId,
-          followCounts
-        });
-
-        console.log('=== Follow Request End ===\n');
         return res.status(200).json({
           success: true,
           message: 'フォローしました',
           data: { followCounts }
         });
       } catch (error) {
-        console.error('Follow operation failed:', {
-          error: {
-            name: error.name,
-            message: error.message,
-            code: error.code,
-            stack: error.stack
-          },
-          followerId: req.user.id,
-          targetUserId
-        });
-
         this.logger.error('Follow failed:', {
           error: error.message,
           stack: error.stack,
@@ -748,14 +699,12 @@ class ProfileController extends BaseController {
         });
 
         if (error.code === 'P2002') {
-          console.log('Already following user');
           return res.status(400).json({
             success: false,
             message: 'すでにフォローしています'
           });
         }
 
-        console.log('=== Follow Request End (with error) ===\n');
         return res.status(500).json({
           success: false,
           message: 'フォロー操作に失敗しました'
@@ -766,21 +715,7 @@ class ProfileController extends BaseController {
 
   async unfollow(req, res) {
     return this.handleRequest(req, res, async () => {
-      console.log('\n=== Unfollow Request Start ===');
-      console.log('Request:', {
-        method: req.method,
-        path: req.path,
-        params: req.params,
-        body: req.body,
-        headers: {
-          'content-type': req.headers['content-type'],
-          'x-csrf-token': req.headers['x-csrf-token']
-        },
-        user: req.user ? { id: req.user.id, email: req.user.email } : null
-      });
-
       if (!req.user) {
-        console.log('Authentication check failed: No user in request');
         this.logger.warn('Unfollow attempt without authentication');
         return res.status(403).json({
           success: false,
@@ -789,10 +724,8 @@ class ProfileController extends BaseController {
       }
 
       const targetUserId = parseInt(req.params.id, 10);
-      console.log('Target user ID:', targetUserId);
-
+      
       if (isNaN(targetUserId)) {
-        console.log('Invalid target user ID:', req.params.id);
         this.logger.warn('Invalid target user ID:', req.params.id);
         return res.status(400).json({
           success: false,
@@ -807,7 +740,6 @@ class ProfileController extends BaseController {
       });
 
       try {
-
         const targetUser = await this.profileService.getUserProfile(targetUserId);
 
         if (!targetUser) {
@@ -827,7 +759,6 @@ class ProfileController extends BaseController {
         }
 
         await this.followService.unfollow(req.user.id, targetUserId);
-        
         const followCounts = await this.followService.getFollowCounts(targetUserId);
 
         this.logger.info('Unfollow successful:', {
@@ -842,17 +773,6 @@ class ProfileController extends BaseController {
           data: { followCounts }
         });
       } catch (error) {
-        console.error('Unfollow operation failed:', {
-          error: {
-            name: error.name,
-            message: error.message,
-            code: error.code,
-            stack: error.stack
-          },
-          followerId: req.user.id,
-          targetUserId
-        });
-
         this.logger.error('Unfollow failed:', {
           error: error.message,
           stack: error.stack,
@@ -861,14 +781,12 @@ class ProfileController extends BaseController {
         });
 
         if (error.code === 'P2025') {
-          console.log('Not following user');
           return res.status(400).json({
             success: false,
             message: 'フォローしていません'
           });
         }
 
-        console.log('=== Unfollow Request End (with error) ===\n');
         return res.status(500).json({
           success: false,
           message: 'フォロー解除に失敗しました'

@@ -103,82 +103,359 @@ class LoggingSystem {
     }
   }
 
+  // ロガーインスタンスを取得するメソッド
+  getLogger() {
+    return this.logger;
+  }
+
   createLogger() {
+    // ANSIエスケープコードを除去する関数
+    const stripAnsi = (str) => {
+      return str.replace(/\u001b\[\d+m/g, '');
+    };
+
+    // CloudWatch用のシンプルなフォーマット
+    const cloudWatchFormat = winston.format.printf(({ timestamp, level, message, ...metadata }) => {
+      // Expressのログメッセージをパースする
+      const parseExpressLog = (msg) => {
+        const regex = /^([A-Z]+)\s+(?:\x1b\[\d+m)*(\d+)(?:\x1b\[0m)*\s+([^\s]+)\s+(\d+)ms/;
+        const match = msg.match(regex);
+        if (match) {
+          return {
+            method: match[1],
+            statusCode: match[2],
+            path: match[3],
+            responseTime: match[4]
+          };
+        }
+        return null;
+      };
+
+      const logDate = new Date(timestamp).toISOString().split('T')[0];
+      let method, path, statusCode, responseTime;
+
+      // メッセージがExpressのログフォーマットの場合はパースする
+      const parsedLog = parseExpressLog(stripAnsi(message));
+      if (parsedLog) {
+        method = parsedLog.method;
+        path = parsedLog.path;
+        statusCode = parsedLog.statusCode;
+        responseTime = parsedLog.responseTime;
+      } else {
+        // メタデータから取得（既存のフォールバック）
+        method = metadata.requestInfo?.method || '';
+        path = metadata.requestInfo?.path || '';
+        statusCode = metadata.statusCode || '';
+        responseTime = metadata.responseTime || '';
+      }
+
+      // CloudWatch用のJSON形式
+      const logData = {
+        timestamp: new Date().toISOString(),
+        Category: metadata.category || 'System',
+        Action: `${method} ${statusCode} ${path} ${responseTime}ms`,
+        Value: metadata.value || 0,
+        Quantity: metadata.quantity || 1,
+        Environment: process.env.NODE_ENV,
+        ErrorMessage: metadata.errorMessage || ''
+      };
+
+      // null/undefined値を除去
+      Object.keys(logData).forEach(key => {
+        if (logData[key] === null || logData[key] === undefined || logData[key] === '') {
+          delete logData[key];
+        }
+      });
+
+      return JSON.stringify(logData);
+    });
+
+    // JSON形式の詳細ログフォーマット
+    const jsonLogFormat = winston.format.printf(({ timestamp, level, message, ...metadata }) => {
+      const logDate = new Date(timestamp).toISOString().split('T')[0];
+      const category = metadata.category || 'System';
+      const action = stripAnsi(metadata.action || message);
+      const value = metadata.value || 0;
+      const quantity = metadata.quantity || 1;
+      
+      // Athena用の構造化ログフォーマット
+      const logData = {
+        // 基本情報
+        timestamp: new Date().toISOString(),
+        Category: category,
+        Action: action,
+        Value: value,
+        Quantity: quantity,
+
+        // ユーザー関連情報
+        UserId: metadata.userId,
+        UserEmail: metadata.userEmail,
+        UserName: metadata.userName,
+        UserRole: metadata.userRole,
+
+        // コンテンツ関連情報
+        ContentId: metadata.contentId,
+        ContentType: metadata.contentType,
+        ContentTitle: metadata.contentTitle,
+        CategoryId: metadata.categoryId,
+        CategoryName: metadata.categoryName,
+
+        // インタラクション情報
+        InteractionType: metadata.interactionType,
+        TargetUserId: metadata.targetUserId,
+        TargetContentId: metadata.targetContentId,
+
+        // 通知関連情報
+        NotificationType: metadata.notificationType,
+        NotificationStatus: metadata.notificationStatus,
+
+        // システム情報
+        Environment: process.env.NODE_ENV,
+        IPAddress: metadata.ipAddress,
+        UserAgent: metadata.userAgent,
+        
+        // エラー情報（存在する場合）
+        ErrorCode: metadata.errorCode,
+        ErrorMessage: stripAnsi(metadata.errorMessage || ''),
+        ErrorStack: metadata.errorStack,
+
+        // リクエスト情報
+        RequestInfo: metadata.requestInfo,
+
+        // 追加のメタデータ
+        ...metadata.additionalData
+      };
+
+      // null/undefined値を除去
+      Object.keys(logData).forEach(key => {
+        if (logData[key] === null || logData[key] === undefined) {
+          delete logData[key];
+        }
+      });
+
+      return JSON.stringify(logData);
+    });
+
     const transports = [
-      this.createConsoleTransport(),
-      this.createErrorFileTransport(),
-      this.createCombinedFileTransport()
+      new winston.transports.Console({
+        format: winston.format.combine(
+          winston.format.timestamp(),
+          jsonLogFormat
+        )
+      }),
+      new winston.transports.File({
+        filename: 'logs/error.log',
+        level: 'error',
+        format: winston.format.combine(
+          winston.format.timestamp(),
+          jsonLogFormat
+        )
+      }),
+      new winston.transports.File({
+        filename: 'logs/combined.log',
+        format: winston.format.combine(
+          winston.format.timestamp(),
+          jsonLogFormat
+        )
+      })
     ];
 
     if (CONFIG.logging.useCloudWatch) {
-      const cloudWatchTransport = this.createCloudWatchTransport();
-      if (cloudWatchTransport) {
+      const cloudWatchTransport = new WinstonCloudWatch({
+        logGroupName: CONFIG.logging.cloudwatch.logGroupName,
+        logStreamName: `express-${new Date().toISOString().split('T')[0]}`,
+        awsRegion: CONFIG.logging.cloudwatch.region,
+        awsOptions: {
+          credentials: {
+            accessKeyId: CONFIG.logging.cloudwatch.accessKeyId,
+            secretAccessKey: CONFIG.logging.cloudwatch.secretAccessKey
+          }
+        },
+        messageFormatter: ({ level, message, ...meta }) => {
+          return meta.metadata ? message : JSON.stringify(meta);
+        },
+        format: winston.format.combine(
+          winston.format.timestamp(),
+          winston.format.metadata({ 
+            fillWith: [
+              'category', 'action', 'value', 'quantity',
+              'requestInfo', 'statusCode', 'responseTime',
+              'errorMessage'
+            ] 
+          }),
+          cloudWatchFormat
+        )
+      });
         transports.push(cloudWatchTransport);
-      }
     }
 
     return winston.createLogger({
       format: winston.format.combine(
         winston.format.timestamp(),
-        winston.format.json()
+        winston.format.metadata({ 
+          fillWith: [
+            'category', 'action', 'value', 'quantity',
+            'userId', 'userEmail', 'userName', 'userRole',
+            'contentId', 'contentType', 'contentTitle',
+            'categoryId', 'categoryName',
+            'interactionType', 'targetUserId', 'targetContentId',
+            'notificationType', 'notificationStatus',
+            'ipAddress', 'userAgent',
+            'errorCode', 'errorMessage', 'errorStack',
+            'requestInfo', 'statusCode', 'responseTime',
+            'additionalData'
+          ] 
+        }),
+        jsonLogFormat
       ),
       transports: transports
     });
   }
 
-  createConsoleTransport() {
-    return new winston.transports.Console({
-      format: winston.format.combine(
-        winston.format.colorize(),
-        winston.format.simple(),
-        winston.format.printf(({ level, message, timestamp }) => {
-          return `${timestamp} ${level}: ${message}`;
-        })
-      )
+  // ユーザーアクションのログ
+  logUserAction(action, user, value = 0, additionalData = {}) {
+    this.logger.info(action, {
+      category: 'User',
+      action,
+      value,
+      quantity: 1,
+      userId: user.id,
+      userEmail: user.email,
+      userName: user.name,
+      userRole: user.userRoles?.[0]?.role?.name,
+      additionalData
     });
   }
 
-  createErrorFileTransport() {
-    return new winston.transports.File({
-      filename: 'logs/error.log',
-      level: 'error',
-      format: winston.format.combine(
-        winston.format.timestamp(),
-        winston.format.json()
-      )
+  // コンテンツ関連アクションのログ
+  logContentAction(action, content, user, value = 0, additionalData = {}) {
+    this.logger.info(action, {
+      category: 'Content',
+      action,
+      value,
+      quantity: 1,
+      contentId: content.id,
+      contentType: 'Micropost',
+      contentTitle: content.title,
+      userId: user?.id,
+      userName: user?.name,
+      categoryName: content.categories?.[0]?.category?.name,
+      additionalData
     });
   }
 
-  createCombinedFileTransport() {
-    return new winston.transports.File({
-      filename: 'logs/combined.log',
-      format: winston.format.combine(
-        winston.format.timestamp(),
-        winston.format.json()
-      )
+  // インタラクションのログ
+  logInteraction(action, type, user, target, value = 0, additionalData = {}) {
+    this.logger.info(action, {
+      category: 'Interaction',
+      action,
+      value,
+      quantity: 1,
+      interactionType: type,
+      userId: user.id,
+      userName: user.name,
+      targetUserId: target.userId,
+      targetContentId: target.contentId,
+      additionalData
     });
   }
 
-  createCloudWatchTransport() {
-    if (!CONFIG.logging.useCloudWatch) {
-      return null;
-    }
+  // 通知のログ
+  logNotification(action, notification, additionalData = {}) {
+    this.logger.info(action, {
+      category: 'Notification',
+      action,
+      value: 1,
+      quantity: 1,
+      notificationType: notification.type,
+      notificationStatus: notification.read ? 'READ' : 'UNREAD',
+      userId: notification.recipientId,
+      targetUserId: notification.actorId,
+      contentId: notification.micropostId,
+      additionalData
+    });
+  }
 
-    return new WinstonCloudWatch({
-      logGroupName: CONFIG.logging.cloudwatch.logGroupName,
-      logStreamName: `express-${new Date().toISOString().slice(0, 10)}`,
-      awsRegion: CONFIG.logging.cloudwatch.region,
-      awsOptions: {
-        credentials: {
-          accessKeyId: CONFIG.logging.cloudwatch.accessKeyId,
-          secretAccessKey: CONFIG.logging.cloudwatch.secretAccessKey
-        }
+  // エラーログ
+  logError(category, action, error, metadata = {}) {
+    this.logger.error(action, {
+      category,
+      action,
+      value: error.code || 500,
+      quantity: 1,
+      errorCode: error.code,
+      errorMessage: error.message,
+      errorStack: error.stack,
+      ...metadata
+    });
+  }
+
+  // ビジネスアクションのログ
+  logBusinessAction(action, data) {
+    const logData = {
+      timestamp: new Date().toISOString(),
+      Category: data.category || 'Business',
+      Action: action,
+      Value: data.value || 0,
+      Quantity: data.quantity || 1,
+      Environment: process.env.NODE_ENV || 'development',
+      ErrorMessage: '',
+      Details: {
+        actionType: data.actionType,
+        targetType: data.targetType,
+        targetId: data.targetId,
+        result: data.result
+      },
+      Actor: data.actor ? {
+        id: data.actor.id,
+        name: data.actor.name
+      } : null,
+      Target: data.target ? {
+        id: data.target.id,
+        name: data.target.name
+      } : null
+    };
+
+    // null値の削除
+    Object.keys(logData).forEach(key => {
+      if (logData[key] === null || logData[key] === undefined) {
+        delete logData[key];
       }
     });
+
+    this.logger.info(JSON.stringify(logData));
   }
 
-  getLogger() {
-    return this.logger;
+  // HTTPリクエストのログ
+  logHttpRequest(req, res, responseTime) {
+    const logData = {
+      timestamp: new Date().toISOString(),
+      Category: 'Http',
+      Action: `${req.method} ${res.statusCode} ${req.originalUrl}`,
+      Value: responseTime,
+      Quantity: 1,
+      Environment: process.env.NODE_ENV || 'development',
+      ErrorMessage: '',
+      RequestInfo: {
+        method: req.method,
+        path: req.originalUrl,
+        statusCode: res.statusCode,
+        responseTime: responseTime
+      },
+      User: req.user ? {
+        id: req.user.id,
+        name: req.user.name
+      } : null
+    };
+
+    // null値の削除
+    Object.keys(logData).forEach(key => {
+      if (logData[key] === null || logData[key] === undefined) {
+        delete logData[key];
+      }
+    });
+
+    this.logger.info(JSON.stringify(logData));
   }
 }
 
@@ -333,33 +610,22 @@ class ErrorHandler {
 
   createDetailedErrorLog(error, req, additionalInfo = {}) {
     const errorDetails = {
+      category: 'Error',
+      action: error.name || 'UnknownError',
+      value: error.code || 500,
+      quantity: 1,
       error: error.message,
-      name: error.name,
-      code: error.code,
-      stack: error.stack,
       details: error.details || {},
-      timestamp: new Date().toISOString(),
       userId: req.user?.id,
       requestInfo: {
         method: req.method,
         path: req.path,
-        url: req.url,
-        params: req.params,
-        query: req.query,
-        body: req.body,
-        headers: req.headers,
-        file: req.file,
-        session: req.session ? {
-          id: req.session.id,
-          cookie: req.session.cookie
-        } : undefined
-      },
-      ...additionalInfo
+        url: req.url
+      }
     };
 
-    console.error(`${error.name || 'Error'} Details:`, errorDetails);
     if (this.logger) {
-      this.logger.error(`${error.name || 'Error'} Details:`, errorDetails);
+      this.logger.logError('Error', error.name || 'UnknownError', error, errorDetails);
     }
 
     return errorDetails;
@@ -505,7 +771,9 @@ class Application {
 
   initializeCore() {
     const loggingSystem = new LoggingSystem();
+    // Winstonロガーインスタンスを取得
     this.logger = loggingSystem.getLogger();
+    // LoggingSystemインスタンスも保持
     this.loggingSystem = loggingSystem;
     
     this.storageConfig = new StorageConfig();
@@ -574,8 +842,8 @@ class Application {
   setupMiddleware() {
     setupBasicMiddleware(this.app);
     setupAuthMiddleware(this.app, CONFIG);
-    setupRequestLogging(this.app, this.logger);
-    setupErrorLogging(this.app, this.logger);
+    setupRequestLogging(this.app, this.loggingSystem);  // LoggingSystemインスタンスを渡す
+    setupErrorLogging(this.app, this.logger);           // Winstonロガーを渡す
   }
 
   setupRoutes() {
