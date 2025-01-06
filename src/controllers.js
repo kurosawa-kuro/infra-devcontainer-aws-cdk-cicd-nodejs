@@ -807,15 +807,10 @@ class ProfileController extends BaseController {
       });
 
       try {
-        console.log('Checking target user existence...');
+
         const targetUser = await this.profileService.getUserProfile(targetUserId);
-        console.log('Target user:', targetUser ? { 
-          id: targetUser.id, 
-          name: targetUser.name 
-        } : 'Not found');
 
         if (!targetUser) {
-          console.log('Target user not found');
           this.logger.warn('Target user not found:', targetUserId);
           return res.status(404).json({
             success: false,
@@ -824,7 +819,6 @@ class ProfileController extends BaseController {
         }
 
         if (req.user.id === targetUserId) {
-          console.log('Self-unfollow attempt detected');
           this.logger.warn('User attempted to unfollow themselves:', req.user.id);
           return res.status(400).json({
             success: false,
@@ -832,12 +826,9 @@ class ProfileController extends BaseController {
           });
         }
 
-        console.log('Removing follow relationship...');
         await this.followService.unfollow(req.user.id, targetUserId);
         
-        console.log('Getting updated follow counts...');
         const followCounts = await this.followService.getFollowCounts(targetUserId);
-        console.log('Updated follow counts:', followCounts);
 
         this.logger.info('Unfollow successful:', {
           followerId: req.user.id,
@@ -845,7 +836,6 @@ class ProfileController extends BaseController {
           followCounts
         });
 
-        console.log('=== Unfollow Request End ===\n');
         return res.status(200).json({
           success: true,
           message: 'フォロー解除しました',
@@ -1250,8 +1240,6 @@ class CategoryController extends BaseController {
 
   async show(req, res) {
     return this.handleRequest(req, res, async () => {
-      console.log('=== Category Show Request Start ===');
-      console.log('Request params:', req.params);
 
       try {
         const categoryId = parseInt(req.params.id, 10);
@@ -1283,11 +1271,6 @@ class CategoryController extends BaseController {
           }))
         };
 
-        console.log('Rendering category:', {
-          id: formattedCategory.id,
-          name: formattedCategory.name,
-          postsCount: formattedCategory.microposts.length
-        });
 
         res.render('pages/public/categories/show', {
           category: formattedCategory,
