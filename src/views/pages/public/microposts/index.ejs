@@ -1,196 +1,240 @@
 <%- contentFor('body') %>
-<div class="max-w-7xl mx-auto px-4">
-    <div class="flex gap-8">
-        <!-- Main content -->
-        <div class="flex-1">
-            <div class="mb-12">
-                <h1 class="text-3xl font-semibold mb-3 text-gray-900 dark:text-white">投稿一覧</h1>
-                <p class="text-base text-gray-600 dark:text-gray-400">みんなの投稿を見る</p>
+<!-- デバッグ情報（非表示） -->
+<div id="debug-info" style="display: none;"
+     data-user="<%- encodeURIComponent(JSON.stringify(locals.user || null)) %>"
+     data-categories="<%- encodeURIComponent(JSON.stringify(categories || [])) %>"
+     data-microposts="<%- encodeURIComponent(JSON.stringify(microposts || [])) %>"
+     data-total-pages="<%- totalPages || 0 %>"
+     data-current-page="<%- currentPage || 1 %>"
+     data-csrf-token="<%- csrfToken || '' %>"
+></div>
+
+<script>
+// デバッグ情報の出力
+(function() {
+    const debugEl = document.getElementById('debug-info');
+    if (!debugEl) return;
+
+    console.group('=== Debug Info ===');
+    try {
+        console.log('User:', JSON.parse(decodeURIComponent(debugEl.dataset.user)));
+        console.log('Categories:', JSON.parse(decodeURIComponent(debugEl.dataset.categories)));
+        console.log('Microposts:', JSON.parse(decodeURIComponent(debugEl.dataset.microposts)));
+        console.log('Total Pages:', debugEl.dataset.totalPages);
+        console.log('Current Page:', debugEl.dataset.currentPage);
+        console.log('CSRF Token:', debugEl.dataset.csrfToken);
+    } catch (err) {
+        console.error('Debug info parse error:', err);
+    }
+    console.groupEnd();
+})();
+</script>
+
+<div class="max-w-4xl mx-auto px-4 py-8">
+    <!-- 新規投稿フォーム -->
+    <% if (locals.user) { %>
+        <div class="bg-white dark:bg-gray-900 rounded-xl shadow-sm border border-gray-200 dark:border-gray-800 mb-8">
+            <div class="p-6">
+                <form action="/microposts" method="POST" enctype="multipart/form-data">
+                    <input type="hidden" name="_csrf" value="<%= locals.csrfToken %>">
+                    <div class="space-y-4">
+                        <div>
+                            <label for="title" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                                投稿内容
+                            </label>
+                            <textarea
+                                id="title"
+                                name="title"
+                                rows="3"
+                                class="block w-full rounded-lg border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-white shadow-sm focus:border-rose-500 focus:ring-rose-500"
+                                placeholder="投稿内容を入力してください"
+                                required
+                            ></textarea>
+                        </div>
+
+                        <div>
+                            <label for="image" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                                画像（任意）
+                            </label>
+                            <input
+                                type="file"
+                                id="image"
+                                name="image"
+                                accept="image/*"
+                                class="block w-full text-sm text-gray-500 dark:text-gray-400
+                                       file:mr-4 file:py-2 file:px-4
+                                       file:rounded-lg file:border-0
+                                       file:text-sm file:font-medium
+                                       file:bg-rose-50 file:text-rose-700
+                                       hover:file:bg-rose-100
+                                       dark:file:bg-rose-900 dark:file:text-rose-300"
+                            >
+                        </div>
+
+                        <div>
+                            <label for="categories" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                                カテゴリー（複数選択可）
+                            </label>
+                            <select
+                                id="categories"
+                                name="categoryIds"
+                                multiple
+                                class="block w-full rounded-lg border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-white shadow-sm focus:border-rose-500 focus:ring-rose-500"
+                            >
+                                <% if (categories && categories.length > 0) { %>
+                                    <% categories.forEach(category => { %>
+                                        <option value="<%= category.id %>"><%= category.name %></option>
+                                    <% }) %>
+                                <% } %>
+                            </select>
+                        </div>
+
+                        <div class="flex justify-end">
+                            <button
+                                type="submit"
+                                class="inline-flex items-center px-4 py-2 border border-transparent rounded-lg shadow-sm text-sm font-medium text-white bg-rose-600 hover:bg-rose-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-rose-500"
+                            >
+                                投稿する
+                            </button>
+                        </div>
+                    </div>
+                </form>
             </div>
+        </div>
+    <% } %>
 
-            <style>
-                .category-btn-wrapper input:checked + .category-btn {
-                    background-color: rgb(244 63 94 / 0.1);
-                    color: rgb(244 63 94);
-                }
-                .dark .category-btn-wrapper input:checked + .category-btn {
-                    background-color: rgb(244 63 94 / 0.2);
-                    color: rgb(251 113 133);
-                }
-            </style>
-
-            <script>
-                document.addEventListener('DOMContentLoaded', function() {
-                    const categoryBtns = document.querySelectorAll('.category-btn-wrapper');
-                    categoryBtns.forEach(wrapper => {
-                        wrapper.addEventListener('click', function(e) {
-                            e.preventDefault();
-                            const checkbox = this.querySelector('input[type="checkbox"]');
-                            if (e.target.closest('.category-btn')) {
-                                checkbox.checked = !checkbox.checked;
-                                checkbox.dispatchEvent(new Event('change', { bubbles: true }));
-                            }
-                        });
-                    });
-                });
-            </script>
-
-            <div class="space-y-6">
-                <div class="flex gap-8">
-                    <!-- Post form and posts list -->
-                    <div class="flex-1">
-                        <% if (locals.user) { %>
-                            <div class="bg-white dark:bg-gray-900 rounded-xl shadow-sm border border-gray-200 dark:border-gray-800 mb-6">
-                                <div class="p-6">
-                                    <form action="/microposts" method="POST" class="space-y-6" enctype="multipart/form-data">
-                                        <input type="hidden" name="_csrf" value="<%= csrfToken %>">
-                                        
-                                        <div>
-                                            <textarea 
-                                                id="title"
-                                                name="title"
-                                                rows="3"
-                                                placeholder="いまどうしてる？"
-                                                required
-                                                class="block w-full rounded-lg border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-900 dark:text-white shadow-sm focus:border-rose-500 dark:focus:border-rose-500 focus:ring-rose-500 dark:focus:ring-rose-500 resize-none"
-                                            ></textarea>
-                                        </div>
-
-                                        <div class="flex flex-wrap gap-4">
-                                            <div class="flex-1 min-w-[200px]">
-                                                <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                                                    カテゴリー
-                                                </label>
-                                                <div class="flex flex-wrap gap-2">
-                                                    <% categories.forEach(category => { %>
-                                                        <label class="category-btn-wrapper">
-                                                            <input type="checkbox"
-                                                                   name="categories"
-                                                                   value="<%= category.id %>"
-                                                                   class="hidden category-checkbox">
-                                                            <span class="inline-flex items-center px-3 py-1.5 rounded-full text-sm font-medium bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-200 cursor-pointer hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors category-btn">
-                                                                <%= category.name %>
-                                                            </span>
-                                                        </label>
-                                                    <% }) %>
-                                                </div>
-                                            </div>
-
-                                            <div class="flex-1 min-w-[200px]">
-                                                <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                                                    画像を追加
-                                                </label>
-                                                <input type="file"
-                                                       id="image"
-                                                       name="image"
-                                                       accept="image/*"
-                                                       class="block w-full text-sm text-gray-500 dark:text-gray-400
-                                                              file:mr-4 file:py-2 file:px-4
-                                                              file:rounded-lg file:border-0
-                                                              file:text-sm file:font-medium
-                                                              file:bg-rose-50 file:text-rose-600
-                                                              dark:file:bg-rose-900 dark:file:text-rose-400
-                                                              hover:file:bg-rose-100 dark:hover:file:bg-rose-800
-                                                              cursor-pointer
-                                                              transition-colors"
-                                                >
-                                            </div>
-                                        </div>
-
-                                        <div class="flex items-center justify-between pt-2">
-                                            <p class="text-sm text-gray-500 dark:text-gray-400">
-                                                カテゴリーは複数選択可能です
-                                            </p>
-                                            <button type="submit" 
-                                                    class="inline-flex items-center px-6 py-2.5 border border-transparent rounded-lg text-sm font-medium text-white bg-rose-600 hover:bg-rose-700 dark:bg-rose-500 dark:hover:bg-rose-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-rose-500 dark:focus:ring-offset-gray-900 transition-colors">
-                                                投稿する
-                                            </button>
-                                        </div>
-                                    </form>
-                                </div>
-                            </div>
-                        <% } %>
-
+    <!-- 投稿一覧 -->
+    <div class="space-y-6">
+        <% if (microposts && microposts.length > 0) { %>
+            <% microposts.forEach((post, index) => { %>
+                <div class="bg-white dark:bg-gray-900 rounded-xl shadow-sm border border-gray-200 dark:border-gray-800">
+                    <div class="p-6">
                         <div class="space-y-4">
-                            <% microposts.forEach(post => { %>
-                                <div class="bg-white dark:bg-gray-900 rounded-xl shadow-sm border border-gray-200 dark:border-gray-800">
-                                    <div class="p-6">
-                                        <div class="space-y-3">
-                                            <div class="flex items-center justify-between">
-                                                <p class="text-gray-600 dark:text-gray-300">
-                                                    <a href="/microposts/<%= post.id %>" class="hover:text-rose-600 dark:hover:text-rose-400">
-                                                        <%= post.title %>
-                                                    </a>
-                                                </p>
-                                                <div class="flex items-center space-x-2">
-                                                    <% if (post.categories && post.categories.length > 0) { %>
-                                                        <% post.categories.forEach(relation => { %>
-                                                            <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200">
-                                                                <%= relation.category.name %>
-                                                            </span>
-                                                        <% }) %>
-                                                    <% } %>
-                                                    <% if (post.user?.userRoles?.some(ur => ur.role.name === 'admin')) { %>
-                                                        <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-rose-100 text-rose-800 dark:bg-rose-900 dark:text-rose-200">
-                                                            管理者
-                                                        </span>
-                                                    <% } %>
-                                                </div>
-                                            </div>
-                                            <% if (post.imageUrl) { %>
-                                                <div class="mt-3">
-                                                    <img src="<%= post.imageUrl %>" alt="投稿画像" class="rounded-lg max-h-96 w-auto">
-                                                </div>
-                                            <% } %>
-                                            <div class="flex items-center justify-between">
-                                                <p class="text-sm text-gray-500 dark:text-gray-400">
-                                                    <%= new Date(post.createdAt).toLocaleString('ja-JP') %>
-                                                </p>
-                                                <div class="flex items-center space-x-4">
-                                                    <%- include('../../../components/micropost/like-button', {
-                                                        micropost: post,
-                                                        user,
-                                                        isLiked: post.isLiked,
-                                                        likeCount: post.likeCount
-                                                    }) %>
-                                                    <a href="/microposts/<%= post.id %>#comments" 
-                                                       class="flex items-center text-gray-500 dark:text-gray-400 hover:text-rose-600 dark:hover:text-rose-400">
-                                                        <svg class="w-5 h-5 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"/>
-                                                        </svg>
-                                                        <span class="text-sm"><%= post._count.comments %></span>
-                                                    </a>
-                                                    <% if (locals.user && (locals.user.id === post.userId || locals.user.userRoles?.some(ur => ur.role.name === 'admin'))) { %>
-                                                        <form action="/microposts/<%= post.id %>" method="POST" class="inline">
-                                                            <input type="hidden" name="_method" value="DELETE">
-                                                            <input type="hidden" name="_csrf" value="<%= csrfToken %>">
-                                                            <button type="submit" class="flex items-center text-gray-500 dark:text-gray-400 hover:text-rose-600 dark:hover:text-rose-400">
-                                                                <svg class="w-5 h-5 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
-                                                                </svg>
-                                                                <span class="text-sm">削除</span>
-                                                            </button>
-                                                        </form>
-                                                    <% } %>
-                                                </div>
-                                            </div>
-                                            <span class="text-sm text-gray-500 dark:text-gray-400">
-                                                <%= post._count.views %> 回表示
-                                            </span>
-                                            <span class="text-sm text-gray-500 dark:text-gray-400">
-                                                <%= post._count.likes %> いいね
-                                            </span>
-                                            <span class="text-sm text-gray-500 dark:text-gray-400">
-                                                <%= post._count.comments %> コメント
-                                            </span>
-                                        </div>
+                            <div class="flex items-center justify-between">
+                                <div class="flex items-center space-x-3">
+                                    <img src="<%= post.user?.profile?.avatarPath ? `/uploads/${post.user.profile.avatarPath}` : '/uploads/default_avatar.png' %>"
+                                         alt="<%= post.user?.name || 'User' %>"
+                                         class="w-10 h-10 rounded-full object-cover">
+                                    <div>
+                                        <a href="/profile/<%= post.user?.id %>" class="text-gray-900 dark:text-white font-medium hover:text-rose-600 dark:hover:text-rose-400">
+                                            <%= post.user?.name || 'Unknown User' %>
+                                        </a>
+                                        <p class="text-sm text-gray-500 dark:text-gray-400">
+                                            <%= new Date(post.createdAt).toLocaleString('ja-JP') %>
+                                        </p>
                                     </div>
                                 </div>
-                            <% }) %>
+                                <div class="flex items-center space-x-2">
+                                    <% if (post.categories && post.categories.length > 0) { %>
+                                        <% post.categories.forEach(relation => { %>
+                                            <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200">
+                                                <%= relation.category?.name || 'Unknown Category' %>
+                                            </span>
+                                        <% }) %>
+                                    <% } %>
+                                </div>
+                            </div>
+
+                            <a href="/microposts/<%= post.id %>" class="block group">
+                                <p class="text-gray-600 dark:text-gray-300 group-hover:text-rose-600 dark:group-hover:text-rose-400">
+                                    <%= post.title %>
+                                </p>
+
+                                <% if (post.imageUrl) { %>
+                                    <div class="mt-3">
+                                        <img src="<%= post.imageUrl %>" alt="投稿画像" class="rounded-lg max-h-96 w-auto">
+                                    </div>
+                                <% } %>
+                            </a>
+
+                            <div class="flex items-center justify-between pt-4 border-t border-gray-200 dark:border-gray-700">
+                                <div class="flex items-center space-x-4">
+                                    <!-- いいねボタン -->
+                                    <form action="/microposts/<%= post.id %>/likes" method="POST" class="inline-flex">
+                                        <input type="hidden" name="_csrf" value="<%= locals.csrfToken %>">
+                                        <% if (locals.user) { %>
+                                            <% if (post.isLiked) { %>
+                                                <input type="hidden" name="_method" value="DELETE">
+                                            <% } %>
+                                            <button type="submit" class="inline-flex items-center text-gray-500 dark:text-gray-400 hover:text-rose-600 dark:hover:text-rose-400">
+                                                <svg class="w-5 h-5" fill="<%= post.isLiked ? 'currentColor' : 'none' %>" stroke="currentColor" viewBox="0 0 24 24">
+                                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z"/>
+                                                </svg>
+                                            </button>
+                                        <% } else { %>
+                                            <a href="/auth/login" class="inline-flex items-center text-gray-500 dark:text-gray-400 hover:text-rose-600 dark:hover:text-rose-400">
+                                                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z"/>
+                                                </svg>
+                                            </a>
+                                        <% } %>
+                                    </form>
+                                    <span class="text-sm text-gray-500 dark:text-gray-400">
+                                        <%= post._count?.likes || 0 %> いいね
+                                    </span>
+                                    <a href="/microposts/<%= post.id %>" class="inline-flex items-center text-gray-500 dark:text-gray-400 hover:text-rose-600 dark:hover:text-rose-400">
+                                        <svg class="w-5 h-5 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"/>
+                                        </svg>
+                                        <span class="text-sm"><%= post._count?.comments || 0 %> コメント</span>
+                                    </a>
+                                </div>
+                                <% if (locals.user && (locals.user.id === post.userId || locals.user.userRoles?.some(ur => ur.role.name === 'admin'))) { %>
+                                    <form action="/microposts/<%= post.id %>" method="POST" class="inline">
+                                        <input type="hidden" name="_method" value="DELETE">
+                                        <input type="hidden" name="_csrf" value="<%= locals.csrfToken %>">
+                                        <button type="submit" class="text-gray-500 dark:text-gray-400 hover:text-rose-600 dark:hover:text-rose-400">
+                                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
+                                            </svg>
+                                        </button>
+                                    </form>
+                                <% } %>
+                            </div>
                         </div>
                     </div>
                 </div>
+            <% }) %>
+        <% } else { %>
+            <div class="text-center py-8 text-gray-500 dark:text-gray-400">
+                投稿がありません
             </div>
-        </div>
+        <% } %>
+
+        <!-- ページネーション -->
+        <% if (totalPages > 1) { %>
+            <div class="flex justify-center space-x-2">
+                <% for (let i = 1; i <= totalPages; i++) { %>
+                    <a
+                        href="?page=<%= i %>"
+                        class="px-3 py-2 rounded-lg text-sm font-medium <%= currentPage === i ? 'bg-rose-600 text-white' : 'text-gray-500 dark:text-gray-400 hover:text-rose-600 dark:hover:text-rose-400' %>"
+                    >
+                        <%= i %>
+                    </a>
+                <% } %>
+            </div>
+        <% } %>
     </div>
 </div> 
+
+<!-- デバッグ用のスクリプトのみ残す -->
+<script>
+// デバッグ情報の出力
+(function() {
+    const debugEl = document.getElementById('debug-info');
+    if (!debugEl) return;
+
+    console.group('=== Debug Info ===');
+    try {
+        console.log('User:', JSON.parse(decodeURIComponent(debugEl.dataset.user)));
+        console.log('Categories:', JSON.parse(decodeURIComponent(debugEl.dataset.categories)));
+        console.log('Microposts:', JSON.parse(decodeURIComponent(debugEl.dataset.microposts)));
+        console.log('Total Pages:', debugEl.dataset.totalPages);
+        console.log('Current Page:', debugEl.dataset.currentPage);
+        console.log('CSRF Token:', debugEl.dataset.csrfToken);
+    } catch (err) {
+        console.error('Debug info parse error:', err);
+    }
+    console.groupEnd();
+})();
+</script> 

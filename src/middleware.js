@@ -386,6 +386,7 @@ ${logMessage.error.stack ? `Stack: ${logMessage.error.stack}` : ''}
   setupSecurity: (app) => {
     app.use(cookieParser(process.env.COOKIE_SECRET || 'your-cookie-secret'));
 
+    // セッションの設定
     const sessionConfig = {
       secret: process.env.SESSION_SECRET || 'your-session-secret',
       resave: false,
@@ -401,9 +402,13 @@ ${logMessage.error.stack ? `Stack: ${logMessage.error.stack}` : ''}
       sessionConfig.resave = true;
     }
 
+    // セッションとパスポートの初期化を先に行う
     app.use(session(sessionConfig));
     app.use(flash());
+    app.use(passport.initialize());
+    app.use(passport.session());
 
+    // セキュリティヘッダーの設定
     app.use(helmet({
       contentSecurityPolicy: {
         directives: {
@@ -424,51 +429,55 @@ ${logMessage.error.stack ? `Stack: ${logMessage.error.stack}` : ''}
 
     app.use(xss());
 
-    app.use(csrf({
+    // CSRFミドルウェアの設定を改善
+    const csrfMiddleware = csrf({
       cookie: {
         key: 'XSRF-TOKEN',
-        httpOnly: false,
         secure: process.env.NODE_ENV === 'production',
-        sameSite: 'Lax'
-      },
-      value: (req) => {
-        return (
-          req.headers['x-xsrf-token'] ||
-          req.headers['x-csrf-token'] ||
-          req.body._csrf
-        );
+        sameSite: 'Lax',
+        path: '/'
       }
-    }));
-
-    app.use((err, req, res, next) => {
-      if (err.code === 'EBADCSRFTOKEN') {
-        console.log('CSRF Error Details:', {
-          method: req.method,
-          url: req.url,
-          headers: {
-            'x-xsrf-token': req.headers['x-xsrf-token'],
-            'x-csrf-token': req.headers['x-csrf-token']
-          },
-          body: req.body
-        });
-
-        if (req.xhr || req.headers.accept?.includes('json')) {
-          return res.status(403).json({
-            error: 'Invalid CSRF token',
-            message: 'セッションが無効になりました。もう一度お試しください。'
-          });
-        }
-        req.flash('error', 'セッションが無効になりました。もう一度お試しください。');
-        const fallbackUrl = req.get('Referrer') || '/';
-        return res.redirect(fallbackUrl);
-      }
-      next(err);
     });
 
+    // CSRFトークンの処理を一元化
     app.use((req, res, next) => {
-      res.locals.csrfToken = req.csrfToken();
-      console.log('Generated CSRF Token:', res.locals.csrfToken);
-      next();
+      // multipart/form-dataリクエストの特別処理
+      if (req.headers['content-type']?.includes('multipart/form-data')) {
+        // multipart/form-dataの場合はクッキーからトークンを取得
+        const token = req.cookies['XSRF-TOKEN'];
+        if (!token) {
+          return res.status(403).json({
+            error: 'CSRF token missing',
+            message: 'セッションが無効になりました。ページを再読み込みしてください。'
+          });
+        }
+        req.csrfToken = () => token;
+        return next();
+      }
+
+      if (req.method === 'GET') {
+        csrfMiddleware(req, res, () => {
+          const token = req.csrfToken();
+          res.cookie('XSRF-TOKEN', token, {
+            secure: process.env.NODE_ENV === 'production',
+            sameSite: 'Lax',
+            path: '/'
+          });
+          res.locals.csrfToken = token;
+          next();
+        });
+      } else {
+        // GET以外のリクエストの場合のトークン検証
+        const token = req.headers['x-csrf-token'] || req.cookies['XSRF-TOKEN'];
+        if (!token) {
+          return res.status(403).json({
+            error: 'CSRF token missing',
+            message: 'セッションが無効になりました。ページを再読み込みしてください。'
+          });
+        }
+        req.csrfToken = () => token;
+        csrfMiddleware(req, res, next);
+      }
     });
 
     const limiter = rateLimit({

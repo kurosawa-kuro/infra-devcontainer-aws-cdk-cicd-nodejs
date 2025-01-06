@@ -251,38 +251,129 @@ class MicropostController extends BaseController {
 
   async index(req, res) {
     return this.handleRequest(req, res, async () => {
-      const [microposts, categories] = await Promise.all([
-        this.micropostService.getAllMicroposts(),
-        this.micropostService.prisma.category.findMany({
-          orderBy: { name: 'asc' },
-          include: {
-            _count: {
-              select: {
-                microposts: true
+      console.log('=== Starting micropost index request ===');
+      console.log('Path:', req.path);
+      console.log('Query:', req.query);
+      console.log('User:', req.user ? { id: req.user.id, email: req.user.email } : 'Not logged in');
+
+      try {
+        console.log('Fetching microposts and categories...');
+        const [microposts, categories] = await Promise.all([
+          this.micropostService.getAllMicroposts(),
+          this.micropostService.prisma.category.findMany({
+            orderBy: { name: 'asc' },
+            include: {
+              _count: {
+                select: {
+                  microposts: true
+                }
               }
             }
-          }
-        })
-      ]);
+          })
+        ]);
 
-      // 各投稿のいいね情報を取得
-      const micropostsWithLikes = await Promise.all(
-        microposts.map(async (micropost) => {
-          const [isLiked, likeCount] = await Promise.all([
-            req.user ? this.likeService.isLiked(req.user.id, micropost.id) : false,
-            this.likeService.getLikeCount(micropost.id)
-          ]);
-          return { ...micropost, isLiked, likeCount };
-        })
-      );
+        console.log('Initial data fetched:');
+        console.log('- Microposts count:', microposts?.length || 0);
+        console.log('- Categories count:', categories?.length || 0);
+        if (microposts?.[0]) {
+          console.log('- First micropost:', {
+            id: microposts[0].id,
+            title: microposts[0].title,
+            userId: microposts[0].userId
+          });
+        }
 
-      res.render('pages/public/microposts/index', { 
-        microposts: micropostsWithLikes,
-        categories,
-        title: '投稿一覧',
-        path: req.path,
-        user: req.user
-      });
+        console.log('Processing likes for microposts...');
+        const micropostsWithLikes = await Promise.all(
+          microposts.map(async (micropost) => {
+            try {
+              const [isLiked, likeCount] = await Promise.all([
+                req.user ? this.likeService.isLiked(req.user.id, micropost.id) : false,
+                this.likeService.getLikeCount(micropost.id)
+              ]);
+              return { ...micropost, isLiked, likeCount };
+            } catch (error) {
+              console.error('Error processing likes for micropost:', {
+                micropostId: micropost.id,
+                error: error.message
+              });
+              return { ...micropost, isLiked: false, likeCount: 0 };
+            }
+          })
+        );
+
+        // console.log('Processed microposts sample:', micropostsWithLikes.slice(0, 1).map(post => ({
+        //   id: post.id,
+        //   title: post.title,
+        //   userId: post.userId,
+        //   user: {
+        //     id: post.user.id,
+        //     email: post.user.email,
+        //     name: post.user.name,
+        //     profile: post.user.profile,
+        //     userRoles: post.user.userRoles.map(ur => ({
+        //       role: {
+        //         id: ur.role.id,
+        //         name: ur.role.name
+        //       }
+        //     }))
+        //   },
+        //   categories: post.categories.map(cat => ({
+        //     category: {
+        //       id: cat.category.id,
+        //       name: cat.category.name
+        //     }
+        //   })),
+        //   isLiked: post.isLiked,
+        //   likeCount: post.likeCount,
+        //   _count: post._count
+        // })));
+
+        // console.log('Categories sample:', categories.slice(0, 1).map(cat => ({
+        //   id: cat.id,
+        //   name: cat.name,
+        //   _count: cat._count
+        // })));
+
+        // console.log('Rendering template with data:', {
+        //   templatePath: 'pages/public/microposts/index',
+        //   dataAvailable: {
+        //     microposts: !!micropostsWithLikes,
+        //     categories: !!categories,
+        //     user: !!req.user
+        //   }
+        // });
+
+        try {
+          res.render('pages/public/microposts/index', { 
+            microposts: micropostsWithLikes,
+            categories,
+            title: '投稿一覧',
+            path: req.path,
+            user: req.user,
+            csrfToken: req.csrfToken(),
+            currentPage: 1,
+            totalPages: 1
+          });
+          console.log('Micropost index rendered successfully');
+        } catch (renderError) {
+          console.error('Template rendering error:', {
+            error: renderError.message,
+            stack: renderError.stack,
+            templatePath: 'pages/public/microposts/index'
+          });
+          throw renderError;
+        }
+      } catch (error) {
+        console.error('Error in micropost index:', {
+          error: error.message,
+          stack: error.stack,
+          path: req.path,
+          query: req.query,
+          user: req.user ? { id: req.user.id } : null
+        });
+        throw error;
+      }
     });
   }
 
@@ -319,13 +410,24 @@ class MicropostController extends BaseController {
         comments,
         title: micropost.title,
         path: req.path,
-        user: req.user
+        user: req.user,
+        csrfToken: req.csrfToken()
       });
     });
   }
 
   async create(req, res) {
     return this.handleRequest(req, res, async () => {
+      console.log('=== Starting micropost create request ===');
+      console.log('Headers:', {
+        'content-type': req.headers['content-type'],
+        'x-csrf-token': req.headers['x-csrf-token'],
+        'cookie': req.headers['cookie']
+      });
+      console.log('Cookies:', req.cookies);
+      console.log('Body:', req.body);
+      console.log('File:', req.file);
+      
       const { title, categories } = req.body;
       if (!title?.trim()) {
         throw this.errorHandler.createValidationError('投稿内容を入力してください', {
@@ -338,14 +440,26 @@ class MicropostController extends BaseController {
 
       let imageUrl = null;
       if (req.file) {
+        console.log('Processing uploaded file:', {
+          originalname: req.file.originalname,
+          mimetype: req.file.mimetype,
+          size: req.file.size
+        });
         imageUrl = this.fileUploader.generateFileUrl(req.file);
       }
 
-      await this.micropostService.createMicropost({
+      const micropost = await this.micropostService.createMicropost({
         title: title.trim(),
         imageUrl,
         userId: req.user.id,
         categories: Array.isArray(categories) ? categories : categories ? [categories] : []
+      });
+
+      console.log('Created micropost:', {
+        id: micropost.id,
+        title: micropost.title,
+        imageUrl: micropost.imageUrl,
+        userId: micropost.userId
       });
       
       this.sendResponse(req, res, {

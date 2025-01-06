@@ -3,9 +3,18 @@ const asyncHandler = require('express-async-handler');
 const path = require('path');
 const { isAuthenticated, forwardAuthenticated, isAdmin, handle404Error, handle500Error } = require('./middleware');
 const fs = require('fs');
+const csrf = require('csurf');
 
 function setupRoutes(app, controllers, fileUploader) {
   const { auth, profile, micropost, system, dev, admin, category, like, notification } = controllers;
+
+  // CSRFミドルウェアの設定
+  const csrfProtection = csrf({
+    cookie: {
+      key: 'XSRF-TOKEN',
+      secure: process.env.NODE_ENV === 'production'
+    }
+  });
 
   // ===================================
   // Static Assets
@@ -73,7 +82,24 @@ function setupRoutes(app, controllers, fileUploader) {
   micropostRouter.use(isAuthenticated);
   micropostRouter.get('/', asyncHandler((req, res) => micropost.index(req, res)));
   micropostRouter.get('/:id', asyncHandler((req, res) => micropost.show(req, res)));
-  micropostRouter.post('/', fileUploader.getUploader().single('image'), asyncHandler((req, res) => micropost.create(req, res)));
+  
+  // ファイルアップロード用のミドルウェアを先に配置
+  const uploadMiddleware = fileUploader.getUploader().single('image');
+  
+  micropostRouter.post('/', uploadMiddleware, asyncHandler((req, res) => {
+    console.log('=== Micropost POST Request ===');
+    console.log('Headers:', {
+      'content-type': req.headers['content-type'],
+      'x-csrf-token': req.headers['x-csrf-token'],
+      'cookie': req.headers.cookie,
+      'xsrf-token': req.cookies['XSRF-TOKEN']
+    });
+    console.log('Body:', req.body);
+    console.log('File:', req.file);
+
+    // CSRFトークンの検証はミドルウェアで処理済み
+    return micropost.create(req, res);
+  }));
   
   // いいね関連のルート
   micropostRouter.post('/:id/like', asyncHandler((req, res) => like.like(req, res)));
