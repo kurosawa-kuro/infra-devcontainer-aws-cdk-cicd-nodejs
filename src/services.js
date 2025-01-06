@@ -8,30 +8,61 @@ const fs = require('fs').promises;
 const path = require('path');
 require('dotenv').config({ path: path.join(__dirname, '../.env') });
 
+// 共通のユーティリティ関数
+const ValidationUtils = {
+  validateId(id) {
+    const numId = parseInt(id, 10);
+    if (isNaN(numId)) {
+      throw new Error(`Invalid ID: ${id}`);
+    }
+    return numId;
+  },
+
+  validateEmail(email) {
+    if (!email || !email.includes('@')) {
+      throw new Error('Invalid email format');
+    }
+    return email;
+  },
+
+  validatePassword(password, confirmation) {
+    if (!password || password.length < 6) {
+      throw new Error('Password must be at least 6 characters');
+    }
+    if (confirmation && password !== confirmation) {
+      throw new Error('Passwords do not match');
+    }
+    return password;
+  },
+
+  validateUsername(name) {
+    if (!name || !name.match(/^[a-zA-Z0-9]+$/)) {
+      throw new Error('Username must contain only alphanumeric characters');
+    }
+    return name;
+  }
+};
+
+// 通知タイプの定義
+const NotificationType = {
+  FOLLOW: 'FOLLOW',
+  LIKE: 'LIKE',
+  COMMENT: 'COMMENT'
+};
+
 // ベース抽象クラス - 共通機能を提供
 class BaseService {
   constructor(prisma, logger) {
     this.prisma = prisma;
     this.logger = logger;
     
-    // ロガーが正しく初期化されているか確認
     if (!this.logger) {
       throw new Error('Logger is not initialized in BaseService');
     }
   }
 
   validateId(id) {
-    const numId = parseInt(id, 10);
-    if (isNaN(numId)) {
-      const error = new Error(`Invalid ID: ${id}`);
-      this.logger.error('ID validation failed', {
-        inputId: id,
-        type: typeof id,
-        error: error.message
-      });
-      throw error;
-    }
-    return numId;
+    return ValidationUtils.validateId(id);
   }
 
   logError(error, context = {}) {
@@ -60,23 +91,93 @@ class BaseService {
       }
     });
   }
+
+  // 通知作成の共通メソッド
+  async createNotification(type, recipientId, actorId, data = {}) {
+    if (!Object.values(NotificationType).includes(type)) {
+      throw new Error('Invalid notification type');
+    }
+
+    return this.prisma.notification.create({
+      data: {
+        type,
+        recipientId: this.validateId(recipientId),
+        actorId: this.validateId(actorId),
+        micropostId: data.micropostId ? this.validateId(data.micropostId) : null,
+        commentId: data.commentId ? this.validateId(data.commentId) : null,
+        read: false
+      },
+      include: {
+        actor: {
+          include: {
+            profile: true
+          }
+        },
+        micropost: true,
+        comment: true
+      }
+    });
+  }
+
+  // トランザクション実行の共通メソッド
+  async executeTransaction(callback) {
+    return this.prisma.$transaction(async (prisma) => {
+      return callback(prisma);
+    });
+  }
 }
 
 // 認証関連サービス
 class AuthService extends BaseService {
-  async signup({ email, password, passwordConfirmation, name }) {
+  constructor(prisma, logger) {
+    super(prisma, logger);
+    this.csrfTokens = new Map();
+  }
+
+  generateCsrfToken(sessionId) {
+    const token = require('crypto').randomBytes(32).toString('hex');
+    this.csrfTokens.set(sessionId, {
+      token,
+      createdAt: new Date()
+    });
+    return token;
+  }
+
+  validateCsrfToken(sessionId, token) {
+    const storedData = this.csrfTokens.get(sessionId);
+    if (!storedData) {
+      return false;
+    }
+
+    // トークンの有効期限を24時間に設定
+    const tokenAge = Date.now() - storedData.createdAt;
+    if (tokenAge > 24 * 60 * 60 * 1000) {
+      this.csrfTokens.delete(sessionId);
+      return false;
+    }
+
+    return storedData.token === token;
+  }
+
+  cleanupExpiredTokens() {
+    const now = Date.now();
+    for (const [sessionId, data] of this.csrfTokens.entries()) {
+      if (now - data.createdAt > 24 * 60 * 60 * 1000) {
+        this.csrfTokens.delete(sessionId);
+      }
+    }
+  }
+
+  async signup({ email, password, passwordConfirmation, name, csrfToken, sessionId }) {
+    // CSRFトークン検証
+    if (!this.validateCsrfToken(sessionId, csrfToken)) {
+      throw new Error('Invalid CSRF token');
+    }
+
     // バリデーション
-    if (!email || !password || !name) {
-      throw new Error('メールアドレス、パスワード、お名前は必須です');
-    }
-
-    if (password !== passwordConfirmation) {
-      throw new Error('パスワードが一致しません');
-    }
-
-    if (!name.match(/^[a-zA-Z0-9]+$/)) {
-      throw new Error('お名前は半角英数字のみ使用可能です');
-    }
+    ValidationUtils.validateEmail(email);
+    ValidationUtils.validatePassword(password, passwordConfirmation);
+    ValidationUtils.validateUsername(name);
 
     // 既存ユーザーチェック
     const existingUser = await this.prisma.user.findUnique({ where: { email } });
@@ -84,31 +185,41 @@ class AuthService extends BaseService {
       throw new Error('このメールアドレスは既に登録されています');
     }
 
-    // ユーザー作成
-    const hashedPassword = await bcrypt.hash(password, 10);
-    const userRole = await this.prisma.role.findUnique({ where: { name: 'user' } });
-    if (!userRole) {
-      throw new Error('デフォルトのユーザーロールが見つかりません');
-    }
-
-    return this.prisma.user.create({
-      data: {
-        email,
-        name,
-        password: hashedPassword,
-        userRoles: {
-          create: { roleId: userRole.id }
-        }
-      },
-      include: {
-        userRoles: {
-          include: { role: true }
-        }
+    return this.executeTransaction(async (prisma) => {
+      const hashedPassword = await bcrypt.hash(password, 10);
+      const userRole = await prisma.role.findUnique({ where: { name: 'user' } });
+      
+      if (!userRole) {
+        throw new Error('デフォルトのユーザーロールが見つかりません');
       }
+
+      return prisma.user.create({
+        data: {
+          email,
+          name,
+          password: hashedPassword,
+          userRoles: {
+            create: { roleId: userRole.id }
+          }
+        },
+        include: {
+          userRoles: {
+            include: { role: true }
+          }
+        }
+      });
     });
   }
 
   async login(req, res) {
+    // CSRFトークンの生成と設定
+    const csrfToken = this.generateCsrfToken(req.sessionID);
+    res.cookie('XSRF-TOKEN', csrfToken, {
+      httpOnly: false,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'Lax'
+    });
+
     return new Promise((resolve, reject) => {
       passport.authenticate('local', (err, user, info) => {
         if (err) return reject(err);
@@ -129,9 +240,12 @@ class AuthService extends BaseService {
         return;
       }
 
+      // CSRFトークンの削除
+      this.csrfTokens.delete(req.sessionID);
+
       const logoutCallback = (err) => {
         if (err) {
-          this.logger.error('Logout error:', err);
+          this.logError(err, { context: 'logout' });
           reject(err);
           return;
         }
@@ -139,7 +253,7 @@ class AuthService extends BaseService {
         if (req.session) {
           req.session.destroy((err) => {
             if (err) {
-              this.logger.error('Session destruction error:', err);
+              this.logError(err, { context: 'session destruction' });
               reject(err);
               return;
             }
@@ -157,6 +271,13 @@ class AuthService extends BaseService {
       }
     });
   }
+
+  // 定期的なトークンクリーンアップを開始
+  startTokenCleanup() {
+    setInterval(() => {
+      this.cleanupExpiredTokens();
+    }, 60 * 60 * 1000); // 1時間ごとに実行
+  }
 }
 
 // プロフィール関連サービス
@@ -167,21 +288,11 @@ class ProfileService extends BaseService {
   }
 
   async getUserProfile(userId) {
-    return this.prisma.user.findUnique({
-      where: { id: this.validateId(userId) },
-      include: {
-        profile: true,
-        userRoles: {
-          include: { role: true }
-        },
-        _count: {
-          select: { microposts: true }
-        }
-      }
-    });
+    return this.findUserById(userId);
   }
 
   async getUserProfileByName(name) {
+    ValidationUtils.validateUsername(name);
     return this.prisma.user.findFirst({
       where: { name },
       include: {
@@ -211,34 +322,17 @@ class ProfileService extends BaseService {
     });
   }
 
-  async getMicropostsByUser(userId) {
-    return this.prisma.micropost.findMany({
-      where: { userId: this.validateId(userId) },
-      orderBy: { createdAt: 'desc' },
-      include: {
-        user: {
-          select: {
-            id: true,
-            email: true,
-            name: true
-          }
-        }
-      }
-    });
-  }
-
   async updateProfile(userId, profileData) {
     const parsedId = this.validateId(userId);
-
-    if (profileData.name && !profileData.name.match(/^[a-zA-Z0-9]+$/)) {
-      throw new Error('お名前は半角英数字のみ使用可能です');
+    if (profileData.name) {
+      ValidationUtils.validateUsername(profileData.name);
     }
 
-    const updatedUser = await this.prisma.$transaction(async (prisma) => {
+    return this.executeTransaction(async (prisma) => {
       const user = await prisma.user.update({
         where: { id: parsedId },
         data: { 
-          name: profileData.name || undefined  // 空文字列ではなく、undefinedを使用
+          name: profileData.name || undefined
         }
       });
 
@@ -261,49 +355,38 @@ class ProfileService extends BaseService {
         }
       });
 
-      // トランザクション内で最新のユーザー情報を取得
-      return prisma.user.findUnique({
-        where: { id: parsedId },
-        include: {
-          profile: true,
-          userRoles: {
-            include: {
-              role: true
-            }
-          }
-        }
-      });
+      return this.findUserById(parsedId);
     });
-
-    return updatedUser;
   }
 
   async updateUserRoles(userId, roleNames) {
     const parsedId = this.validateId(userId);
-    const roles = await this.prisma.role.findMany({
-      where: {
-        name: { in: ['user', 'admin', 'read-only-admin'] }
-      }
-    });
+    
+    return this.executeTransaction(async (prisma) => {
+      const roles = await prisma.role.findMany({
+        where: {
+          name: { in: roleNames }
+        }
+      });
 
-    const roleMap = new Map(roles.map(role => [role.name, role.id]));
-    const selectedRoleIds = roleNames
-      .filter(name => roleMap.has(name))
-      .map(name => roleMap.get(name));
+      const roleMap = new Map(roles.map(role => [role.name, role.id]));
+      const selectedRoleIds = roleNames
+        .filter(name => roleMap.has(name))
+        .map(name => roleMap.get(name));
 
-    await this.prisma.$transaction([
-      this.prisma.userRole.deleteMany({
+      await prisma.userRole.deleteMany({
         where: { userId: parsedId }
-      }),
-      this.prisma.userRole.createMany({
+      });
+
+      await prisma.userRole.createMany({
         data: selectedRoleIds.map(roleId => ({
           userId: parsedId,
           roleId
         }))
-      })
-    ]);
+      });
 
-    return this.getUserProfile(parsedId);
+      return this.findUserById(parsedId);
+    });
   }
 
   async getFollowCounts(userId) {
@@ -333,17 +416,15 @@ class ProfileService extends BaseService {
 
 // フォロー関連サービス
 class FollowService extends BaseService {
-  constructor(prisma, logger) {
-    super(prisma, logger);
-    this.notificationService = new NotificationService(prisma, logger);
-  }
-
   async isFollowing(followerId, followingId) {
+    const validFollowerId = this.validateId(followerId);
+    const validFollowingId = this.validateId(followingId);
+
     const follow = await this.prisma.follow.findUnique({
       where: {
         followerId_followingId: {
-          followerId: this.validateId(followerId),
-          followingId: this.validateId(followingId)
+          followerId: validFollowerId,
+          followingId: validFollowingId
         }
       }
     });
@@ -351,42 +432,52 @@ class FollowService extends BaseService {
   }
 
   async follow(followerId, followingId) {
-    const follow = await this.prisma.follow.create({
-      data: {
-        followerId: this.validateId(followerId),
-        followingId: this.validateId(followingId)
-      }
-    });
+    const validFollowerId = this.validateId(followerId);
+    const validFollowingId = this.validateId(followingId);
 
-    // フォロー通知の作成
-    await this.notificationService.createNotification({
-      type: 'FOLLOW',
-      recipientId: followingId,
-      actorId: followerId
+    const follow = await this.executeTransaction(async (prisma) => {
+      const follow = await prisma.follow.create({
+        data: {
+          followerId: validFollowerId,
+          followingId: validFollowingId
+        }
+      });
+
+      // フォロー通知の作成
+      await this.createNotification(
+        NotificationType.FOLLOW,
+        validFollowingId,
+        validFollowerId
+      );
+
+      return follow;
     });
 
     return follow;
   }
 
   async unfollow(followerId, followingId) {
+    const validFollowerId = this.validateId(followerId);
+    const validFollowingId = this.validateId(followingId);
+
     return this.prisma.follow.delete({
       where: {
         followerId_followingId: {
-          followerId: this.validateId(followerId),
-          followingId: this.validateId(followingId)
+          followerId: validFollowerId,
+          followingId: validFollowingId
         }
       }
     });
   }
 
   async getFollowCounts(userId) {
-    const parsedId = this.validateId(userId);
+    const validUserId = this.validateId(userId);
     const [followingCount, followersCount] = await Promise.all([
       this.prisma.follow.count({
-        where: { followerId: parsedId }
+        where: { followerId: validUserId }
       }),
       this.prisma.follow.count({
-        where: { followingId: parsedId }
+        where: { followingId: validUserId }
       })
     ]);
 
@@ -447,33 +538,40 @@ class MicropostService extends BaseService {
   }
 
   async createMicropost({ title, imageUrl, userId, categories = [] }) {
-    return this.prisma.micropost.create({
-      data: {
-        title,
-        imageUrl,
-        userId: this.validateId(userId),
-        categories: {
-          create: categories.map(categoryId => ({
-            categoryId: this.validateId(categoryId)
-          }))
-        }
-      },
-      include: {
-        user: {
-          select: {
-            id: true,
-            email: true }
+    const validUserId = this.validateId(userId);
+    const validCategories = categories.map(id => this.validateId(id));
+
+    return this.executeTransaction(async (prisma) => {
+      return prisma.micropost.create({
+        data: {
+          title,
+          imageUrl,
+          userId: validUserId,
+          categories: {
+            create: validCategories.map(categoryId => ({
+              categoryId
+            }))
+          }
         },
-        categories: {
-          include: { category: true }
+        include: {
+          user: {
+            select: {
+              id: true,
+              email: true
+            }
+          },
+          categories: {
+            include: { category: true }
+          }
         }
-      }
+      });
     });
   }
 
   async getMicropostsByUser(userId) {
+    const validUserId = this.validateId(userId);
     return this.prisma.micropost.findMany({
-      where: { userId: this.validateId(userId) },
+      where: { userId: validUserId },
       orderBy: { createdAt: 'desc' },
       take: 10,
       include: {
@@ -491,28 +589,31 @@ class MicropostService extends BaseService {
   }
 
   async trackView(micropostId, ipAddress) {
+    const validMicropostId = this.validateId(micropostId);
     try {
-      await this.prisma.micropostView.upsert({
-        where: {
-          micropostId_ipAddress: {
-            micropostId: this.validateId(micropostId),
-            ipAddress
+      return this.executeTransaction(async (prisma) => {
+        return prisma.micropostView.upsert({
+          where: {
+            micropostId_ipAddress: {
+              micropostId: validMicropostId,
+              ipAddress
+            }
+          },
+          create: {
+            micropostId: validMicropostId,
+            ipAddress,
+            viewedAt: new Date()
+          },
+          update: {
+            viewedAt: new Date()
           }
-        },
-        create: {
-          micropostId: this.validateId(micropostId),
-          ipAddress,
-          viewedAt: new Date()
-        },
-        update: {
-          viewedAt: new Date()
-        }
+        });
       });
     } catch (error) {
-      this.logger.error('Error tracking view:', {
+      this.logError(error, {
+        context: 'trackView',
         micropostId,
-        ipAddress,
-        error: error.message
+        ipAddress
       });
       throw error;
     }
@@ -680,21 +781,26 @@ class SystemService extends BaseService {
 
   async getDbHealth() {
     try {
-      await this.prisma.$queryRaw`SELECT 1`;
+      await this.executeTransaction(async (prisma) => {
+        await prisma.$queryRaw`SELECT 1`;
+      });
       return { status: 'healthy' };
-    } catch (err) {
-      throw err;
+    } catch (error) {
+      this.logError(error, { context: 'Database health check' });
+      throw error;
     }
   }
 
   async getStats() {
     try {
-      const [totalUsers, totalPosts] = await Promise.all([
-        this.prisma.user.count(),
-        this.prisma.micropost.count()
-      ]);
+      return this.executeTransaction(async (prisma) => {
+        const [totalUsers, totalPosts] = await Promise.all([
+          prisma.user.count(),
+          prisma.micropost.count()
+        ]);
 
-      return { totalUsers, totalPosts };
+        return { totalUsers, totalPosts };
+      });
     } catch (error) {
       this.logError(error, { context: 'Getting system stats' });
       throw error;
@@ -874,55 +980,55 @@ class PassportService extends BaseService {
 
 // いいね関連サービス
 class LikeService extends BaseService {
-  constructor(prisma, logger) {
-    super(prisma, logger);
-    this.notificationService = new NotificationService(prisma, logger);
-  }
-
   async like(userId, micropostId) {
     const validUserId = this.validateId(userId);
     const validMicropostId = this.validateId(micropostId);
 
-    const like = await this.prisma.like.createMany({
-      data: {
-        userId: validUserId,
-        micropostId: validMicropostId
-      },
-      skipDuplicates: true
-    });
-
-    // 投稿の作成者を取得
-    const micropost = await this.prisma.micropost.findUnique({
-      where: { id: validMicropostId },
-      select: { userId: true }
-    });
-
-    // 自分の投稿以外にいいねした場合のみ通知を作成
-    if (micropost && micropost.userId !== validUserId) {
-      await this.notificationService.createNotification({
-        type: 'LIKE',
-        recipientId: micropost.userId,
-        actorId: validUserId,
-        micropostId: validMicropostId
-      });
-    }
-
-    return this.prisma.like.findUnique({
-      where: {
-        userId_micropostId: {
+    return this.executeTransaction(async (prisma) => {
+      await prisma.like.createMany({
+        data: {
           userId: validUserId,
           micropostId: validMicropostId
-        }
+        },
+        skipDuplicates: true
+      });
+
+      // 投稿の作成者を取得
+      const micropost = await prisma.micropost.findUnique({
+        where: { id: validMicropostId },
+        select: { userId: true }
+      });
+
+      // 自分の投稿以外にいいねした場合のみ通知を作成
+      if (micropost && micropost.userId !== validUserId) {
+        await this.createNotification(
+          NotificationType.LIKE,
+          micropost.userId,
+          validUserId,
+          { micropostId: validMicropostId }
+        );
       }
+
+      return prisma.like.findUnique({
+        where: {
+          userId_micropostId: {
+            userId: validUserId,
+            micropostId: validMicropostId
+          }
+        }
+      });
     });
   }
 
   async unlike(userId, micropostId) {
+    const validUserId = this.validateId(userId);
+    const validMicropostId = this.validateId(micropostId);
+
     const like = await this.prisma.like.findUnique({
       where: {
         userId_micropostId: {
-          userId: this.validateId(userId),
-          micropostId: this.validateId(micropostId)
+          userId: validUserId,
+          micropostId: validMicropostId
         }
       }
     });
@@ -934,19 +1040,22 @@ class LikeService extends BaseService {
     return this.prisma.like.delete({
       where: {
         userId_micropostId: {
-          userId: this.validateId(userId),
-          micropostId: this.validateId(micropostId)
+          userId: validUserId,
+          micropostId: validMicropostId
         }
       }
     });
   }
 
   async isLiked(userId, micropostId) {
+    const validUserId = this.validateId(userId);
+    const validMicropostId = this.validateId(micropostId);
+
     const like = await this.prisma.like.findUnique({
       where: {
         userId_micropostId: {
-          userId: this.validateId(userId),
-          micropostId: this.validateId(micropostId)
+          userId: validUserId,
+          micropostId: validMicropostId
         }
       }
     });
@@ -987,47 +1096,48 @@ class LikeService extends BaseService {
   }
 }
 
-class CommentService {
-  constructor(prisma, logger) {
-    this.prisma = prisma;
-    this.logger = logger;
-    this.notificationService = new NotificationService(prisma, logger);
-  }
-
+class CommentService extends BaseService {
   async createComment({ content, userId, micropostId }) {
-    const comment = await this.prisma.comment.create({
-      data: {
-        content,
-        userId,
-        micropostId
-      },
-      include: {
-        user: true,
-        micropost: {
-          select: {
-            userId: true
+    const validUserId = this.validateId(userId);
+    const validMicropostId = this.validateId(micropostId);
+
+    return this.executeTransaction(async (prisma) => {
+      const comment = await prisma.comment.create({
+        data: {
+          content,
+          userId: validUserId,
+          micropostId: validMicropostId
+        },
+        include: {
+          user: true,
+          micropost: {
+            select: {
+              userId: true
+            }
           }
         }
-      }
-    });
-
-    // 自分の投稿以外にコメントした場合のみ通知を作成
-    if (comment.micropost.userId !== userId) {
-      await this.notificationService.createNotification({
-        type: 'COMMENT',
-        recipientId: comment.micropost.userId,
-        actorId: userId,
-        micropostId,
-        commentId: comment.id
       });
-    }
 
-    return comment;
+      // 自分の投稿以外にコメントした場合のみ通知を作成
+      if (comment.micropost.userId !== validUserId) {
+        await this.createNotification(
+          NotificationType.COMMENT,
+          comment.micropost.userId,
+          validUserId,
+          {
+            micropostId: validMicropostId,
+            commentId: comment.id
+          }
+        );
+      }
+
+      return comment;
+    });
   }
 
   async getCommentsByMicropostId(micropostId) {
     return this.prisma.comment.findMany({
-      where: { micropostId },
+      where: { micropostId: this.validateId(micropostId) },
       include: {
         user: {
           include: {
@@ -1046,14 +1156,10 @@ class CommentService {
 }
 
 class NotificationService extends BaseService {
-  constructor(prisma, logger) {
-    super(prisma, logger);
-  }
-
   async getNotifications(userId) {
     return this.prisma.notification.findMany({
       where: {
-        recipientId: userId
+        recipientId: this.validateId(userId)
       },
       include: {
         actor: {
@@ -1070,10 +1176,13 @@ class NotificationService extends BaseService {
   }
 
   async markAsRead(notificationId, userId) {
+    const validNotificationId = this.validateId(notificationId);
+    const validUserId = this.validateId(userId);
+
     return this.prisma.notification.update({
       where: {
-        id: notificationId,
-        recipientId: userId
+        id: validNotificationId,
+        recipientId: validUserId
       },
       data: {
         read: true
@@ -1084,36 +1193,8 @@ class NotificationService extends BaseService {
   async getUnreadCount(userId) {
     return this.prisma.notification.count({
       where: {
-        recipientId: userId,
+        recipientId: this.validateId(userId),
         read: false
-      }
-    });
-  }
-
-  async createNotification({ type, recipientId, actorId, micropostId = null, commentId = null }) {
-    // 通知タイプの検証
-    const validTypes = ['FOLLOW', 'LIKE', 'COMMENT'];
-    if (!validTypes.includes(type)) {
-      throw new Error('Invalid notification type');
-    }
-
-    return this.prisma.notification.create({
-      data: {
-        type,
-        recipientId: this.validateId(recipientId),
-        actorId: this.validateId(actorId),
-        micropostId: micropostId ? this.validateId(micropostId) : null,
-        commentId: commentId ? this.validateId(commentId) : null,
-        read: false
-      },
-      include: {
-        actor: {
-          include: {
-            profile: true
-          }
-        },
-        micropost: true,
-        comment: true
       }
     });
   }

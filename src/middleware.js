@@ -386,6 +386,24 @@ ${logMessage.error.stack ? `Stack: ${logMessage.error.stack}` : ''}
   setupSecurity: (app) => {
     app.use(cookieParser(process.env.COOKIE_SECRET || 'your-cookie-secret'));
 
+    const sessionConfig = {
+      secret: process.env.SESSION_SECRET || 'your-session-secret',
+      resave: false,
+      saveUninitialized: true,
+      cookie: {
+        secure: process.env.NODE_ENV === 'production',
+        maxAge: parseInt(process.env.SESSION_MAX_AGE, 10) || 24 * 60 * 60 * 1000
+      }
+    };
+
+    if (process.env.APP_ENV === 'test') {
+      sessionConfig.cookie.secure = false;
+      sessionConfig.resave = true;
+    }
+
+    app.use(session(sessionConfig));
+    app.use(flash());
+
     app.use(helmet({
       contentSecurityPolicy: {
         directives: {
@@ -394,7 +412,7 @@ ${logMessage.error.stack ? `Stack: ${logMessage.error.stack}` : ''}
           styleSrc: ["'self'", "'unsafe-inline'"],
           imgSrc: ["'self'", "data:", "blob:"],
           connectSrc: ["'self'"],
-          fontSrc: ["'self'"],
+          fontSrc: ["'self'", "data:", "https:"],
           objectSrc: ["'none'"],
           mediaSrc: ["'self'"],
           frameSrc: ["'none'"],
@@ -408,16 +426,48 @@ ${logMessage.error.stack ? `Stack: ${logMessage.error.stack}` : ''}
 
     app.use(csrf({
       cookie: {
-        key: '_csrf',
-        httpOnly: true,
+        key: 'XSRF-TOKEN',
+        httpOnly: false,
         secure: process.env.NODE_ENV === 'production',
-        sameSite: 'strict',
-        signed: true
+        sameSite: 'Lax'
+      },
+      value: (req) => {
+        return (
+          req.headers['x-xsrf-token'] ||
+          req.headers['x-csrf-token'] ||
+          req.body._csrf
+        );
       }
     }));
 
+    app.use((err, req, res, next) => {
+      if (err.code === 'EBADCSRFTOKEN') {
+        console.log('CSRF Error Details:', {
+          method: req.method,
+          url: req.url,
+          headers: {
+            'x-xsrf-token': req.headers['x-xsrf-token'],
+            'x-csrf-token': req.headers['x-csrf-token']
+          },
+          body: req.body
+        });
+
+        if (req.xhr || req.headers.accept?.includes('json')) {
+          return res.status(403).json({
+            error: 'Invalid CSRF token',
+            message: 'セッションが無効になりました。もう一度お試しください。'
+          });
+        }
+        req.flash('error', 'セッションが無効になりました。もう一度お試しください。');
+        const fallbackUrl = req.get('Referrer') || '/';
+        return res.redirect(fallbackUrl);
+      }
+      next(err);
+    });
+
     app.use((req, res, next) => {
       res.locals.csrfToken = req.csrfToken();
+      console.log('Generated CSRF Token:', res.locals.csrfToken);
       next();
     });
 
