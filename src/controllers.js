@@ -141,7 +141,14 @@ class MicropostController extends BaseController {
       const [microposts, categories] = await Promise.all([
         this.micropostService.getAllMicroposts(),
         this.micropostService.prisma.category.findMany({
-          orderBy: { name: 'asc' }
+          orderBy: { name: 'asc' },
+          include: {
+            _count: {
+              select: {
+                microposts: true
+              }
+            }
+          }
         })
       ]);
 
@@ -700,6 +707,24 @@ class CategoryController extends BaseController {
         path: req.path
       });
     });
+  }
+
+  async listCategories(req, res) {
+    try {
+      const categories = await prisma.category.findMany({
+        include: {
+          _count: {
+            select: {
+              microposts: true
+            }
+          }
+        }
+      });
+      return categories;
+    } catch (error) {
+      console.error('Error fetching categories:', error);
+      throw error;
+    }
   }
 }
 

@@ -24,8 +24,12 @@
                     const categoryBtns = document.querySelectorAll('.category-btn-wrapper');
                     categoryBtns.forEach(wrapper => {
                         wrapper.addEventListener('click', function(e) {
+                            e.preventDefault();
                             const checkbox = this.querySelector('input[type="checkbox"]');
-                            checkbox.checked = !checkbox.checked;
+                            if (e.target.closest('.category-btn')) {
+                                checkbox.checked = !checkbox.checked;
+                                checkbox.dispatchEvent(new Event('change', { bubbles: true }));
+                            }
                         });
                     });
                 });
