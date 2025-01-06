@@ -9,11 +9,6 @@ const multerS3 = require('multer-s3');
 const fs = require('fs');
 require('dotenv').config();
 const passport = require('passport');
-const helmet = require('helmet');
-const csrf = require('csurf');
-const rateLimit = require('express-rate-limit');
-const xss = require('xss-clean');
-const cookieParser = require('cookie-parser');
 
 const setupRoutes = require('./routes');
 const {
@@ -21,6 +16,7 @@ const {
   setupAuthMiddleware,
   setupRequestLogging,
   setupErrorLogging,
+  setupSecurity,
   handle500Error
 } = require('./middleware');
 const {
@@ -480,77 +476,12 @@ class Application {
     this.port = CONFIG.app.port;
     
     this.setupDirectories();
-    this.app.use(cookieParser(process.env.COOKIE_SECRET || 'your-cookie-secret'));
-    this.setupSecurity();
+    setupSecurity(this.app);
     this.app.use(express.static(path.join(__dirname, 'public')));
     
     this.initializeCore();
     this.services = this.initializeServices();
     this.controllers = this.initializeControllers();
-  }
-
-  setupSecurity() {
-    // セキュリティヘッダーの設定
-    this.app.use(helmet({
-      contentSecurityPolicy: {
-        directives: {
-          defaultSrc: ["'self'"],
-          scriptSrc: ["'self'", "'unsafe-inline'"],
-          styleSrc: ["'self'", "'unsafe-inline'"],
-          imgSrc: ["'self'", "data:", "blob:"],
-          connectSrc: ["'self'"],
-          fontSrc: ["'self'"],
-          objectSrc: ["'none'"],
-          mediaSrc: ["'self'"],
-          frameSrc: ["'none'"],
-        },
-      },
-      crossOriginEmbedderPolicy: false,
-      crossOriginResourcePolicy: false,
-    }));
-
-    // XSS対策
-    this.app.use(xss());
-
-    // CSRF対策
-    this.app.use(csrf({
-      cookie: {
-        key: '_csrf',
-        httpOnly: true,
-        secure: process.env.NODE_ENV === 'production',
-        sameSite: 'strict',
-        signed: true
-      }
-    }));
-
-    // CSRFトークンをレスポンスのローカル変数として設定
-    this.app.use((req, res, next) => {
-      res.locals.csrfToken = req.csrfToken();
-      next();
-    });
-
-    // レート制限の設定
-    const limiter = rateLimit({
-      windowMs: 15 * 60 * 1000, // 15分間
-      max: 100, // IPアドレスごとに100リクエストまで
-      message: 'リクエスト数が制限を超えました。しばらく時間をおいて再度お試しください。',
-      standardHeaders: true,
-      legacyHeaders: false,
-    });
-
-    // APIエンドポイントへのレート制限
-    this.app.use('/api', limiter);
-
-    // ログインエンドポイントへの厳格なレート制限
-    const loginLimiter = rateLimit({
-      windowMs: 60 * 60 * 1000, // 1時間
-      max: 5, // IPアドレスごとに5回まで
-      message: 'ログイン試行回数が制限を超えました。1時間後に再度お試しください。',
-      standardHeaders: true,
-      legacyHeaders: false,
-    });
-
-    this.app.use('/auth/login', loginLimiter);
   }
 
   setupDirectories() {
