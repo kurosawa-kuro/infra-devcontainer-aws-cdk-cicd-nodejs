@@ -38,50 +38,65 @@
                         <% if (locals.user) { %>
                             <div class="bg-white dark:bg-gray-900 rounded-xl shadow-sm border border-gray-200 dark:border-gray-800 mb-6">
                                 <div class="p-6">
-                                    <form action="/microposts" method="POST" class="space-y-4" enctype="multipart/form-data">
+                                    <form action="/microposts" method="POST" class="space-y-6" enctype="multipart/form-data">
                                         <div>
-                                            <label for="title" class="sr-only">投稿内容</label>
-                                            <textarea id="title"
-                                                      name="title"
-                                                      rows="3"
-                                                      placeholder="いまどうしてる？"
-                                                      required
-                                                      class="block w-full rounded-lg border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-900 dark:text-white shadow-sm focus:border-rose-500 dark:focus:border-rose-500 focus:ring-rose-500 dark:focus:ring-rose-500"></textarea>
+                                            <textarea 
+                                                id="title"
+                                                name="title"
+                                                rows="3"
+                                                placeholder="いまどうしてる？"
+                                                required
+                                                class="block w-full rounded-lg border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-900 dark:text-white shadow-sm focus:border-rose-500 dark:focus:border-rose-500 focus:ring-rose-500 dark:focus:ring-rose-500 resize-none"
+                                            ></textarea>
                                         </div>
-                                        <div>
-                                            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">カテゴリー</label>
-                                            <div class="flex flex-wrap gap-2">
-                                                <% categories.forEach(category => { %>
-                                                    <label class="category-btn-wrapper">
-                                                        <input type="checkbox"
-                                                               name="categories"
-                                                               value="<%= category.id %>"
-                                                               class="hidden category-checkbox">
-                                                        <span class="inline-flex items-center px-3 py-1.5 rounded-full text-sm font-medium bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-200 cursor-pointer hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors category-btn">
-                                                            <%= category.name %>
-                                                        </span>
-                                                    </label>
-                                                <% }) %>
+
+                                        <div class="flex flex-wrap gap-4">
+                                            <div class="flex-1 min-w-[200px]">
+                                                <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                                                    カテゴリー
+                                                </label>
+                                                <div class="flex flex-wrap gap-2">
+                                                    <% categories.forEach(category => { %>
+                                                        <label class="category-btn-wrapper">
+                                                            <input type="checkbox"
+                                                                   name="categories"
+                                                                   value="<%= category.id %>"
+                                                                   class="hidden category-checkbox">
+                                                            <span class="inline-flex items-center px-3 py-1.5 rounded-full text-sm font-medium bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-200 cursor-pointer hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors category-btn">
+                                                                <%= category.name %>
+                                                            </span>
+                                                        </label>
+                                                    <% }) %>
+                                                </div>
                                             </div>
-                                            <p class="mt-2 text-sm text-gray-500 dark:text-gray-400">複数選択可能です</p>
+
+                                            <div class="flex-1 min-w-[200px]">
+                                                <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                                                    画像を追加
+                                                </label>
+                                                <input type="file"
+                                                       id="image"
+                                                       name="image"
+                                                       accept="image/*"
+                                                       class="block w-full text-sm text-gray-500 dark:text-gray-400
+                                                              file:mr-4 file:py-2 file:px-4
+                                                              file:rounded-lg file:border-0
+                                                              file:text-sm file:font-medium
+                                                              file:bg-rose-50 file:text-rose-600
+                                                              dark:file:bg-rose-900 dark:file:text-rose-400
+                                                              hover:file:bg-rose-100 dark:hover:file:bg-rose-800
+                                                              cursor-pointer
+                                                              transition-colors"
+                                                >
+                                            </div>
                                         </div>
-                                        <div>
-                                            <label for="image" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">画像を追加</label>
-                                            <input type="file"
-                                                   id="image"
-                                                   name="image"
-                                                   accept="image/*"
-                                                   class="block w-full text-sm text-gray-500 dark:text-gray-400
-                                                          file:mr-4 file:py-2 file:px-4
-                                                          file:rounded-lg file:border-0
-                                                          file:text-sm file:font-medium
-                                                          file:bg-rose-50 file:text-rose-600
-                                                          dark:file:bg-rose-900 dark:file:text-rose-400
-                                                          hover:file:bg-rose-100 dark:hover:file:bg-rose-800">
-                                        </div>
-                                        <div class="flex items-center justify-end">
+
+                                        <div class="flex items-center justify-between pt-2">
+                                            <p class="text-sm text-gray-500 dark:text-gray-400">
+                                                カテゴリーは複数選択可能です
+                                            </p>
                                             <button type="submit" 
-                                                    class="inline-flex items-center px-4 py-2 border border-transparent rounded-lg text-sm font-medium text-white bg-rose-600 hover:bg-rose-700 dark:bg-rose-500 dark:hover:bg-rose-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-rose-500 dark:focus:ring-offset-gray-900 transition-colors">
+                                                    class="inline-flex items-center px-6 py-2.5 border border-transparent rounded-lg text-sm font-medium text-white bg-rose-600 hover:bg-rose-700 dark:bg-rose-500 dark:hover:bg-rose-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-rose-500 dark:focus:ring-offset-gray-900 transition-colors">
                                                 投稿する
                                             </button>
                                         </div>

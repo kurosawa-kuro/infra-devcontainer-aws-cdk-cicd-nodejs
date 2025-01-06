@@ -1,80 +1,68 @@
 <%- contentFor('body') %>
-<div class="max-w-2xl mx-auto px-4">
-  <div class="bg-white dark:bg-gray-900 shadow sm:rounded-lg">
-    <div class="px-4 py-5 sm:p-6">
-      <div class="flex items-center mb-6">
-        <img 
-          src="<%= userProfile?.avatarPath ? `/uploads/${userProfile.avatarPath}` : '/uploads/default_avatar.png' %>" 
-          alt="プロフィール画像" 
-          class="h-20 w-20 rounded-full object-cover mr-4"
-        >
-        <div>
-          <h1 class="text-2xl font-bold text-gray-900 dark:text-white">
-            <%= user.name %>
-          </h1>
-          <p class="text-sm text-gray-500 dark:text-gray-400">
-            <%= user.email %>
-          </p>
-        </div>
-      </div>
-
-      <form action="/users/<%= user.name %>/edit" method="POST" enctype="multipart/form-data" class="space-y-8">
-        <div class="space-y-2">
-          <label for="name" class="block text-base font-medium text-gray-700 dark:text-gray-300">
-            ユーザー名（ID）
-          </label>
-          <div class="mt-1">
-            <input
-              type="text"
-              name="name"
-              id="name"
-              value="<%= user.name %>"
-              class="shadow-sm focus:ring-indigo-500 focus:border-indigo-500 block w-full px-4 py-3 text-base border-gray-300 rounded-md dark:bg-gray-800 dark:border-gray-700 dark:text-white"
-              required
-              pattern="^[a-zA-Z0-9]+$"
-              title="半角英数字のみ使用可能です"
-            >
-          </div>
-          <p class="mt-2 text-sm text-gray-500">半角英数字のみ使用可能です（一意の識別子として使用されます）</p>
-        </div>
-        
-        <div class="space-y-2">
-          <label class="block text-base font-medium text-gray-700 dark:text-gray-300">
-            プロフィール画像
-          </label>
-          <div class="mt-1">
-            <input 
-              type="file" 
-              name="avatar" 
-              accept="image/jpeg,image/png,image/gif" 
-              class="block w-full text-base text-gray-500 dark:text-gray-400
-                file:mr-4 file:py-3 file:px-4
-                file:rounded-md file:border-0
-                file:text-base file:font-medium
-                file:bg-indigo-50 file:text-indigo-700
-                hover:file:bg-indigo-100
-                cursor-pointer
-              "
-            >
-          </div>
-          <p class="mt-2 text-sm text-gray-500">JPG, PNG, GIF形式のみ対応。最大5MB。</p>
-        </div>
-
-        <div class="flex justify-end space-x-4 pt-6">
-          <a
-            href="/users/<%= user.name %>"
-            class="inline-flex items-center px-6 py-3 border border-gray-300 shadow-sm text-base font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 dark:bg-gray-800 dark:text-gray-300 dark:border-gray-600 dark:hover:bg-gray-700"
-          >
-            キャンセル
-          </a>
-          <button
-            type="submit"
-            class="inline-flex items-center px-6 py-3 border border-transparent text-base font-medium rounded-md shadow-sm text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
-          >
-            保存
-          </button>
-        </div>
-      </form>
+<div class="max-w-3xl mx-auto px-4">
+    <div class="mb-12">
+        <h1 class="text-3xl font-semibold mb-3 text-gray-900 dark:text-white">プロフィール編集</h1>
+        <p class="text-base text-gray-600 dark:text-gray-400">プロフィール情報を更新する</p>
     </div>
-  </div>
+
+    <div class="bg-white dark:bg-gray-900 rounded-xl shadow-sm border border-gray-200 dark:border-gray-800">
+        <div class="p-6">
+            <form action="<%= req.path %>" method="POST" class="space-y-6" enctype="multipart/form-data">
+                <div class="flex flex-wrap gap-4">
+                    <div class="flex-1 min-w-[200px]">
+                        <label for="name" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                            ユーザー名
+                        </label>
+                        <input type="text"
+                               id="name"
+                               name="name"
+                               value="<%= user.name %>"
+                               required
+                               pattern="^[a-zA-Z0-9]+$"
+                               class="block w-full rounded-lg border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-900 dark:text-white shadow-sm focus:border-rose-500 dark:focus:border-rose-500 focus:ring-rose-500 dark:focus:ring-rose-500"
+                        >
+                        <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                            半角英数字のみ使用可能です
+                        </p>
+                    </div>
+
+                    <div class="flex-1 min-w-[200px]">
+                        <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                            プロフィール画像
+                        </label>
+                        <input type="file"
+                               id="avatar"
+                               name="avatar"
+                               accept="image/*"
+                               class="block w-full text-sm text-gray-500 dark:text-gray-400
+                                      file:mr-4 file:py-2 file:px-4
+                                      file:rounded-lg file:border-0
+                                      file:text-sm file:font-medium
+                                      file:bg-rose-50 file:text-rose-600
+                                      dark:file:bg-rose-900 dark:file:text-rose-400
+                                      hover:file:bg-rose-100 dark:hover:file:bg-rose-800
+                                      cursor-pointer
+                                      transition-colors"
+                        >
+                        <% if (user.avatar) { %>
+                            <div class="mt-2">
+                                <img src="/uploads/avatars/<%= user.avatar %>" alt="Current avatar" class="w-16 h-16 rounded-full object-cover">
+                            </div>
+                        <% } %>
+                    </div>
+                </div>
+
+                <div class="flex items-center justify-between pt-4">
+                    <a href="/users/<%= user.name %>" 
+                       class="text-sm font-medium text-gray-700 dark:text-gray-300 hover:text-gray-800 dark:hover:text-gray-200">
+                        キャンセル
+                    </a>
+                    <button type="submit" 
+                            class="inline-flex items-center px-6 py-2.5 border border-transparent rounded-lg text-sm font-medium text-white bg-rose-600 hover:bg-rose-700 dark:bg-rose-500 dark:hover:bg-rose-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-rose-500 dark:focus:ring-offset-gray-900 transition-colors">
+                        更新する
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
 </div> 

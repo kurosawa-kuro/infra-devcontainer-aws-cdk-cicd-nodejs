@@ -947,6 +947,10 @@ p:is(.dark *) {
   height: 100%;
 }
 
+.h-16 {
+  height: 4rem;
+}
+
 .max-h-96 {
   max-height: 24rem;
 }
@@ -1003,12 +1007,20 @@ p:is(.dark *) {
   width: 100%;
 }
 
+.w-16 {
+  width: 4rem;
+}
+
 .min-w-0 {
   min-width: 0px;
 }
 
 .min-w-full {
   min-width: 100%;
+}
+
+.min-w-\[200px\] {
+  min-width: 200px;
 }
 
 .max-w-2xl {
@@ -1031,6 +1043,10 @@ p:is(.dark *) {
   max-width: 24rem;
 }
 
+.max-w-3xl {
+  max-width: 48rem;
+}
+
 .flex-1 {
   flex: 1 1 0%;
 }
@@ -1050,6 +1066,10 @@ p:is(.dark *) {
 
 .cursor-pointer {
   cursor: pointer;
+}
+
+.resize-none {
+  resize: none;
 }
 
 .grid-cols-1 {
@@ -1435,6 +1455,10 @@ p:is(.dark *) {
   padding-top: 1.5rem;
 }
 
+.pt-2 {
+  padding-top: 0.5rem;
+}
+
 .text-left {
   text-align: left;
 }
@@ -1782,6 +1806,11 @@ p:is(.dark *) {
   color: rgb(190 18 60 / var(--tw-text-opacity, 1));
 }
 
+.hover\:text-gray-800:hover {
+  --tw-text-opacity: 1;
+  color: rgb(31 41 55 / var(--tw-text-opacity, 1));
+}
+
 .hover\:underline:hover {
   text-decoration-line: underline;
 }
@@ -2050,6 +2079,11 @@ p:is(.dark *) {
 .dark\:hover\:text-rose-400:hover:is(.dark *) {
   --tw-text-opacity: 1;
   color: rgb(251 113 133 / var(--tw-text-opacity, 1));
+}
+
+.dark\:hover\:text-gray-200:hover:is(.dark *) {
+  --tw-text-opacity: 1;
+  color: rgb(229 231 235 / var(--tw-text-opacity, 1));
 }
 
 .dark\:hover\:file\:bg-rose-800:is(.dark *)::file-selector-button:hover {
