@@ -114,6 +114,7 @@ setup_postgresql_db() {
     sudo -u postgres bash -c "
         psql -c \"ALTER USER postgres WITH PASSWORD '${DB_CONFIG[PASSWORD]}';\"
         createdb ${DB_CONFIG[DB]}
+        createdb ${DB_CONFIG[DB]}_test
     "
 }
 
@@ -276,7 +277,8 @@ main() {
         install_postgresql
         INSTALL_INFO[POSTGRESQL]=$(cat << EOF
 PostgreSQL情報:
-- Database: ${DB_CONFIG[DB]}
+- Database (開発用): ${DB_CONFIG[DB]}
+- Database (テスト用): ${DB_CONFIG[DB]}_test
 - User: ${DB_CONFIG[USER]}
 - Password: ${DB_CONFIG[PASSWORD]}
 - Port: 5432
