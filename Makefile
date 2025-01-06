@@ -117,3 +117,19 @@ batch-s3-log-now:
 # ファイル構造表示
 tree:
 	tree -I "node_modules" | cat
+
+# ===========================================
+# Development Support Commands
+# ===========================================
+.PHONY: mark-success
+
+SUCCESS_DATE := $(shell date +%Y%m%d)
+SUCCESS_TAG := success-$(SUCCESS_DATE)
+SUCCESS_MESSAGE := "Successful deployment on $(shell date '+%b %d, %Y')"
+
+mark-success:
+    $(call log_section,Marking successful configuration)
+    @git tag -a "$(SUCCESS_TAG)" -m $(SUCCESS_MESSAGE)
+    @git push origin $(SUCCESS_TAG)
+    $(call log_section,Success marker added)
+    $(call log_end_section)

@@ -4,7 +4,9 @@
 AWS_ACCOUNT_ID = 448049833348
 REGION_TOKYO = ap-northeast-1
 
+# ===========================================
 # CDK Command Settings
+# ===========================================
 CDK = cdk
 DEPLOY_FLAGS = --require-approval never
 DESTROY_FLAGS = --force --debug
@@ -18,90 +20,96 @@ MAIN_STACK = AwsCdkWebBasicStack
 # ===========================================
 # Notification Messages
 # ===========================================
-NOTIFY_TEST_MSG = "[TEST]_Notification_system_check"
-NOTIFY_FIRST_DEPLOY_MSG = "[INFO]_First_deployment_completed"
-NOTIFY_RESET_DEPLOY_MSG = "[INFO]_Reset_and_redeploy_completed"
-NOTIFY_DESTROY_MSG = "[INFO]_Stack_destruction_completed"
+NOTIFY_PREFIX = [INFO]
+NOTIFY_TEST = [TEST]_Notification_system_check
+NOTIFY_DEPLOY = $(NOTIFY_PREFIX)_Deployment_completed
+NOTIFY_DESTROY = $(NOTIFY_PREFIX)_Stack_destruction_completed
+NOTIFY_FIRST_DEPLOY = $(NOTIFY_PREFIX)_First_deployment_completed
+NOTIFY_RESET_DEPLOY = $(NOTIFY_PREFIX)_Reset_and_redeploy_completed
 
 # ===========================================
 # Helper Functions
 # ===========================================
-define bootstrap_regions
-	@printf "\033[32m=== Bootstrapping CDK in Tokyo region ===\033[0m\n"
-	$(CDK) bootstrap aws://$(AWS_ACCOUNT_ID)/$(REGION_TOKYO) --cloudformation-execution-policies arn:aws:iam::aws:policy/AdministratorAccess --trust $(AWS_ACCOUNT_ID) --force --verbose
+define log_section
+	@printf "\033[32m=== $(1) ===\033[0m\n"
+endef
+
+define log_end_section
 	@printf "\033[32m=============================================\033[0m\n"
+endef
+
+define bootstrap_regions
+	$(call log_section,Bootstrapping CDK in Tokyo region)
+	$(CDK) bootstrap aws://$(AWS_ACCOUNT_ID)/$(REGION_TOKYO) \
+		--cloudformation-execution-policies arn:aws:iam::aws:policy/AdministratorAccess \
+		--trust $(AWS_ACCOUNT_ID) \
+		--force \
+		--verbose
+	$(call log_end_section)
 endef
 
 define check_failed_stacks
-	@printf "\033[32m=== Checking for failed CloudFormation stacks ===\033[0m\n"
-	@aws cloudformation list-stacks --region $(REGION_TOKYO) \
+	$(call log_section,Checking for failed CloudFormation stacks)
+	@aws cloudformation list-stacks \
+		--region $(REGION_TOKYO) \
 		--query 'StackSummaries[?StackStatus!=`DELETE_COMPLETE` && StackStatus!=`CREATE_COMPLETE` && StackStatus!=`UPDATE_COMPLETE`].[StackName,StackStatus,StackStatusReason]' \
 		--output table || true
-	@printf "\033[32m=============================================\033[0m\n"
+	$(call log_end_section)
 endef
 
 define send_notification
-	@echo "=== Sending notification ==="
-	@node ../../script/invoke-lambda/send_notification.js "$(MESSAGE)"
+	$(call log_section,Sending notification)
+	@node ../../script/invoke-lambda/send_notification.js "$(1)"
+	$(call log_end_section)
 endef
 
 # ===========================================
-# Main Deployment Commands
+# Main Commands
 # ===========================================
-.PHONY: first-deploy destroy reset-deploy notify-test
+.PHONY: deploy destroy notify-test bootstrap check-stacks first-deploy reset-deploy
 
-# Test notification
+# Test notification system
 notify-test:
-	$(eval MESSAGE := $(NOTIFY_TEST_MSG))
-	$(call send_notification)
+	$(call send_notification,$(NOTIFY_TEST))
 
-# Bootstrap both regions and deploy main stack with notification
-first-deploy:
+# Bootstrap AWS environment
+bootstrap:
 	$(call bootstrap_regions)
-	@printf "\033[32m=== Deploying main stacks ===\033[0m\n"
-	$(CDK) deploy $(MAIN_STACK) $(DEPLOY_FLAGS)
-	$(eval MESSAGE := $(NOTIFY_FIRST_DEPLOY_MSG))
-	$(call send_notification)
-	@printf "\033[32m=== Deployment completed successfully ===\033[0m\n"
-	@printf "\033[32m=============================================\033[0m\n"
 
-# Reset and redeploy all stacks with notification
-reset-deploy:
-	@printf "\033[32m=== Starting full reset and redeploy ===\033[0m\n"
-	$(MAKE) destroy
-	@printf "\033[32m=============================================\033[0m\n"
-	@printf "\033[32m=== Starting fresh deployment ===\033[0m\n"
-	$(MAKE) first-deploy
-	$(eval MESSAGE := $(NOTIFY_RESET_DEPLOY_MSG))
-	$(call send_notification)
-	@printf "\033[32m=== Reset and redeploy completed successfully ===\033[0m\n"
-	@printf "\033[32m=============================================\033[0m\n"
-
-# Destroy all stacks with notification
-destroy:
-	$(call bootstrap_regions)
+# Check failed stacks
+check-stacks:
 	$(call check_failed_stacks)
-	@printf "\033[32m=== Destroying stacks ===\033[0m\n"
+
+# First time deployment with bootstrap
+first-deploy: bootstrap
+	$(call log_section,First time deployment)
+	$(CDK) deploy $(MAIN_STACK) $(DEPLOY_FLAGS)
+	$(call send_notification,$(NOTIFY_FIRST_DEPLOY))
+	$(call log_section,First deployment completed successfully)
+	$(call log_end_section)
+
+# Reset and redeploy all stacks
+reset-deploy:
+	$(call log_section,Starting full reset and redeploy)
+	$(MAKE) destroy
+	$(call log_section,Starting fresh deployment)
+	$(MAKE) first-deploy
+	$(call send_notification,$(NOTIFY_RESET_DEPLOY))
+	$(call log_section,Reset and redeploy completed successfully)
+	$(call log_end_section)
+
+# Deploy stack
+deploy: bootstrap
+	$(call log_section,Deploying main stack)
+	$(CDK) deploy $(MAIN_STACK) $(DEPLOY_FLAGS)
+	$(call send_notification,$(NOTIFY_DEPLOY))
+	$(call log_section,Deployment completed successfully)
+	$(call log_end_section)
+
+# Destroy stack
+destroy: bootstrap check-stacks
+	$(call log_section,Destroying stacks)
 	-$(CDK) destroy $(MAIN_STACK) $(DESTROY_FLAGS)
-	$(eval MESSAGE := $(NOTIFY_DESTROY_MSG))
-	$(call send_notification)
-	@printf "\033[32m=== Destroy process completed ===\033[0m\n"
-	@printf "\033[32m=============================================\033[0m\n"
-
-# ===========================================
-# Success Marking
-# ===========================================
-SUCCESS_DATE := $(shell date +%Y%m%d)
-SUCCESS_TAG := success-$(SUCCESS_DATE)
-SUCCESS_MESSAGE := "Successful on $(shell date '+%b %d, %Y')"
-
-mark-success:
-	@printf "\033[32m=== Marking successful configuration ===\033[0m\n"
-	@git tag -a "$(SUCCESS_TAG)" -m $(SUCCESS_MESSAGE)
-	@git push origin $(SUCCESS_TAG)
-	@printf "\033[32m=== Success marker added ===\033[0m\n"
-	@printf "\033[32m=============================================\033[0m\n"
-
-deploy:
-	@echo "Deploying CDK stack..."
-	@npx cdk deploy --require-approval never || (node ../../script/invoke-lambda/send_notification.js "$$?" --error && exit 1)
+	$(call send_notification,$(NOTIFY_DESTROY))
+	$(call log_section,Destroy process completed)
+	$(call log_end_section)
