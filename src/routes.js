@@ -123,6 +123,10 @@ function setupRoutes(app, controllers, fileUploader) {
   profileRouter.post('/:id/edit', isAuthenticated, fileUploader.getUploader().single('avatar'), asyncHandler((req, res) => profile.update(req, res)));
   app.use('/profile', profileRouter);
 
+  // Add additional routes for backward compatibility
+  app.get('/users/:id/edit', isAuthenticated, asyncHandler((req, res) => profile.getEditPage(req, res)));
+  app.post('/users/:id/edit', isAuthenticated, fileUploader.getUploader().single('avatar'), asyncHandler((req, res) => profile.update(req, res)));
+
   // ===================================
   // Error Handlers
   // ===================================

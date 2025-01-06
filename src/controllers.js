@@ -1,3 +1,7 @@
+const express = require('express');
+const path = require('path');
+const asyncHandler = require('express-async-handler');
+
 class BaseController {
   constructor(services, errorHandler, logger) {
     this.services = services;
@@ -312,9 +316,11 @@ class ProfileController extends BaseController {
         return this.errorHandler.handlePermissionError(req, res, '他のユーザーのプロフィールは編集できません');
       }
 
-      this.renderWithUser(req, res, 'pages/public/profile/edit', {
+      this.renderWithUser(req, res, 'pages/public/users/profile/edit', {
         title: 'プロフィール編集',
-        profileUser: user
+        profileUser: user,
+        userProfile: user.profile,
+        req: req
       });
     });
   }
@@ -345,7 +351,7 @@ class ProfileController extends BaseController {
 
       let avatarPath = user.profile?.avatarPath;
       if (req.file) {
-        avatarPath = path.basename(req.file.path);
+        avatarPath = req.file.filename || path.basename(req.file.path);
       }
 
       const updatedUser = await this.services.profile.updateProfile(userId, {
@@ -355,7 +361,7 @@ class ProfileController extends BaseController {
       
       this.sendResponse(req, res, {
         message: 'プロフィールを更新しました',
-        redirectUrl: `/profile/${updatedUser.name || updatedUser.id}`
+        redirectUrl: `/profile/${updatedUser.name}`
       });
     });
   }
@@ -432,7 +438,7 @@ class ProfileController extends BaseController {
       const identifier = req.params.id;
       this.logger.debug('Looking up user:', { identifier });
       
-      const profileUser = await this.service.findUserByIdentifier(identifier);
+      const profileUser = await this.services.profile.findUserByIdentifier(identifier);
 
       if (!profileUser) {
         this.logger.debug('Profile not found:', { identifier });
@@ -444,8 +450,8 @@ class ProfileController extends BaseController {
         name: profileUser.name
       });
 
-      const following = await this.service.getFollowing(profileUser.id);
-      const followCounts = await this.service.getFollowCounts(profileUser.id);
+      const following = await this.services.profile.getFollowing(profileUser.id);
+      const followCounts = await this.services.profile.getFollowCounts(profileUser.id);
 
       this.logger.debug('Following data:', {
         followingCount: following.length,
@@ -473,7 +479,7 @@ class ProfileController extends BaseController {
       const identifier = req.params.id;
       this.logger.debug('Looking up user:', { identifier });
       
-      const profileUser = await this.service.findUserByIdentifier(identifier);
+      const profileUser = await this.services.profile.findUserByIdentifier(identifier);
 
       if (!profileUser) {
         this.logger.debug('Profile not found:', { identifier });
@@ -485,8 +491,8 @@ class ProfileController extends BaseController {
         name: profileUser.name
       });
 
-      const followers = await this.service.getFollowers(profileUser.id);
-      const followCounts = await this.service.getFollowCounts(profileUser.id);
+      const followers = await this.services.profile.getFollowers(profileUser.id);
+      const followCounts = await this.services.profile.getFollowCounts(profileUser.id);
 
       this.logger.debug('Followers data:', {
         followersCount: followers.length,
