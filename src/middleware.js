@@ -67,25 +67,84 @@ const handle404Error = (req, res, next) => {
   });
 };
 
-const handle500Error = (err, req, res, next) => {
-  console.error('Server Error:', err);
+function createErrorLogMessage(err, req) {
+  const baseInfo = {
+    url: req.url,
+    method: req.method,
+    ip: req.ip,
+    userId: req.user?.id,
+    headers: req.headers,
+    query: req.query,
+    body: req.body,
+    params: req.params
+  };
 
-  const isApiRequest = req.xhr || req.headers.accept?.includes('application/json');
-  if (isApiRequest) {
-    return res.status(500).json({
-      error: 'Internal Server Error',
-      message: process.env.NODE_ENV === 'production' 
-        ? 'サーバーエラーが発生しました'
-        : err.message
+  // エラーオブジェクトの安全な取り扱い
+  const errorInfo = {
+    message: err?.message || 'Unknown error',
+    name: err?.name || 'Error',
+    stack: err?.stack || '',
+    status: err?.status || 500,
+    code: err?.code,
+    type: err?.constructor?.name
+  };
+
+  return {
+    timestamp: new Date().toISOString(),
+    level: errorInfo.status >= 500 ? 'error' : 'warn',
+    environment: process.env.NODE_ENV || 'development',
+    ...baseInfo,
+    error: errorInfo
+  };
+}
+
+function setupErrorLogging(app, logger) {
+  app.use((err, req, res, next) => {
+    const logMessage = createErrorLogMessage(err, req);
+    const logLevel = logMessage.level;
+
+    // エラーメッセージをフォーマット
+    const formattedMessage = `
+[${logMessage.timestamp}] ${logLevel.toUpperCase()}: ${logMessage.error.name}
+URL: ${logMessage.method} ${logMessage.url}
+Status: ${logMessage.error.status}
+Message: ${logMessage.error.message}
+User ID: ${logMessage.userId || 'Not authenticated'}
+Environment: ${logMessage.environment}
+${logMessage.error.stack ? `Stack: ${logMessage.error.stack}` : ''}
+    `.trim();
+
+    // エラーの重要度に応じてログを出力
+    logger[logLevel](formattedMessage, {
+      metadata: logMessage,
+      timestamp: logMessage.timestamp
+    });
+
+    next(err);
+  });
+}
+
+function handle500Error(err, req, res, next) {
+  const statusCode = err?.status || 500;
+  const message = err?.message || 'Internal Server Error';
+  
+  // APIリクエストの場合はJSONレスポンス
+  if (req.xhr || req.headers.accept?.includes('application/json')) {
+    return res.status(statusCode).json({
+      success: false,
+      message: message,
+      error: process.env.NODE_ENV === 'development' ? err : undefined
     });
   }
 
-  res.status(500).render('pages/errors/500', {
-    title: 'サーバーエラー',
-    path: req.path,
-    error: process.env.NODE_ENV === 'production' ? null : err
+  // 通常のリクエストの場合はエラーページを表示
+  res.status(statusCode).render('pages/errors/500', {
+    message: message,
+    error: process.env.NODE_ENV === 'development' ? err : {},
+    title: `Error ${statusCode}`,
+    path: req.path
   });
-};
+}
 
 const express = require('express');
 const expressLayouts = require('express-ejs-layouts');
@@ -156,16 +215,6 @@ const setupRequestLogging = (app, logger) => {
   }));
 };
 
-const setupErrorLogging = (app, logger) => {
-  app.use(expressWinston.errorLogger({
-    winstonInstance: logger,
-    meta: true,
-    msg: (req, res, err) => createErrorLogMessage(req, res, err, logger),
-    requestWhitelist: ['url', 'headers', 'method', 'httpVersion', 'originalUrl', 'query', 'body'],
-    blacklistedMetaFields: ['error', 'exception', 'process', 'os', 'trace', '_readableState']
-  }));
-};
-
 const getStatusColor = (statusCode) => {
   if (statusCode >= 500) return '\x1b[31m'; // red
   if (statusCode >= 400) return '\x1b[33m'; // yellow
@@ -219,29 +268,6 @@ const createRequestLogMessage = (req, res, logger) => {
   }
 
   return `${req.method.padEnd(6)} ${statusColor}${statusCode}${reset} ${req.url.padEnd(30)} ${responseTime}ms${errorInfo}`;
-};
-
-const createErrorLogMessage = (req, res, err, logger) => {
-  const responseTime = res.responseTime || 0;
-  const statusCode = res.statusCode;
-  
-  const errorDetails = {
-    message: err.message,
-    stack: err.stack,
-    type: err.name,
-    code: err.code,
-    status: statusCode,
-    request: getRequestInfo(req, res),
-    response: {
-      statusCode,
-      responseTime
-    }
-  };
-
-  console.error('Error Details:', errorDetails);
-  logger.error('Error Details:', errorDetails);
-
-  return `ERROR ${req.method.padEnd(6)} ${statusCode} ${req.url.padEnd(30)} ${responseTime}ms\nMessage: ${err.message}\nStack: ${err.stack}\nRequest Body: ${JSON.stringify(req.body)}`;
 };
 
 module.exports = {
