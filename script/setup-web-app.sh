@@ -1,78 +1,134 @@
 #!/bin/bash
 
-echo -e "\n=== Checking Global Dependencies ==="
+# 共通の変数定義
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+NPM_GLOBAL_DIR="$HOME/.npm-global"
+ENV_FILE="$(cd "$SCRIPT_DIR/.." && pwd)/.env"
+TIMESTAMP=$(date +%Y%m%d_%H%M%S)
+BACKUP_DIR="$SCRIPT_DIR/config"
 
-# Create directory for global packages if it doesn't exist
-if [ ! -d "$HOME/.npm-global" ]; then
-    echo "Creating npm global directory..."
-    mkdir "$HOME/.npm-global"
-    npm config set prefix "$HOME/.npm-global"
-    # Add NPM_CONFIG_PREFIX to ~/.profile if it doesn't exist
-    if ! grep -q "NPM_CONFIG_PREFIX" "$HOME/.profile"; then
-        echo "export PATH=\$HOME/.npm-global/bin:\$PATH" >> "$HOME/.profile"
-        echo "export NPM_CONFIG_PREFIX=\$HOME/.npm-global" >> "$HOME/.profile"
+# ログ関数
+log_info() {
+    echo -e "\n=== $1 ==="
+}
+
+log_error() {
+    echo "Error: $1"
+    exit 1
+}
+
+# npmグローバルディレクトリのセットアップ
+setup_npm_global() {
+    if [ ! -d "$NPM_GLOBAL_DIR" ]; then
+        log_info "Creating npm global directory"
+        mkdir "$NPM_GLOBAL_DIR"
+        npm config set prefix "$NPM_GLOBAL_DIR"
+        if ! grep -q "NPM_CONFIG_PREFIX" "$HOME/.profile"; then
+            echo "export PATH=$NPM_GLOBAL_DIR/bin:\$PATH" >> "$HOME/.profile"
+            echo "export NPM_CONFIG_PREFIX=$NPM_GLOBAL_DIR" >> "$HOME/.profile"
+        fi
     fi
-fi
+    export PATH="$NPM_GLOBAL_DIR/bin:$PATH"
+    export NPM_CONFIG_PREFIX="$NPM_GLOBAL_DIR"
+}
 
-# Ensure the npm global bin directory is in the current PATH
-export PATH="$HOME/.npm-global/bin:$PATH"
-export NPM_CONFIG_PREFIX="$HOME/.npm-global"
-
-# nodemonのチェックとインストール
-if ! command -v nodemon &> /dev/null; then
-    echo "Installing nodemon globally..."
-    npm install -g nodemon || sudo npm install -g nodemon
-    # Verify installation
-    if ! command -v nodemon &> /dev/null; then
-        echo "Failed to install nodemon. Please check permissions and try again."
-        exit 1
+# グローバルパッケージのインストール
+install_global_package() {
+    local package_name=$1
+    if ! command -v "$package_name" &> /dev/null; then
+        log_info "Installing $package_name globally"
+        npm install -g "$package_name" || sudo npm install -g "$package_name"
+        if ! command -v "$package_name" &> /dev/null; then
+            log_error "Failed to install $package_name. Please check permissions and try again."
+        fi
+    else
+        echo "$package_name is already installed"
     fi
-else
-    echo "nodemon is already installed"
-fi
+}
 
-# pm2のチェックとインストール
-if ! command -v pm2 &> /dev/null; then
-    echo "Installing pm2 globally..."
-    npm install -g pm2 || sudo npm install -g pm2
-    # Verify installation
-    if ! command -v pm2 &> /dev/null; then
-        echo "Failed to install pm2. Please check permissions and try again."
-        exit 1
+# 環境変数ファイルの設定
+setup_env_file() {
+    if [ -f .env ]; then
+        local backup_file="$BACKUP_DIR/.env.backup_$TIMESTAMP"
+        log_info "Backing up existing .env file"
+        cp .env "$backup_file"
+        echo "Backup created at $backup_file"
     fi
-else
-    echo "pm2 is already installed"
-fi
+    
+    log_info "Creating .env file from example"
+    cp "$SCRIPT_DIR/config/.env.example" .env
+    echo ".env file created/updated successfully."
+}
 
-echo -e "\n=== Setting up environment variables ==="
-if [ -f .env ]; then
-    # バックアップのタイムスタンプを作成
-    timestamp=$(date +%Y%m%d_%H%M%S)
-    backup_dir="script/config"
-    backup_file="$backup_dir/.env.backup_${timestamp}"
-    echo "Backing up existing .env file to ${backup_file}"
-    cp .env "${backup_file}"
-fi
+# AWS認証情報の更新
+update_aws_credentials() {
+    log_info "Updating AWS credentials"
+    local access_key=$(aws configure get aws_access_key_id)
+    local secret_key=$(aws configure get aws_secret_access_key)
 
-# 新しい.envファイルをコピー
-echo "Creating .env file from example..."
-cp script/config/.env.example .env
-echo ".env file created/updated successfully."
+    if [ -z "$access_key" ] || [ -z "$secret_key" ]; then
+        log_error "AWS credentials not found in ~/.aws/config"
+    fi
 
-# プロジェクトの依存関係をクリーンインストール
-echo -e "\n=== Installing Project Dependencies ==="
-rm -rf node_modules
-rm -rf package-lock.json
-npm install --no-fund --no-audit
+    local backup_file="$ENV_FILE.backup_$TIMESTAMP"
+    cp "$ENV_FILE" "$backup_file"
 
-echo -e "\n=== Setting up Prisma ==="
-# Prismaクライアントの生成
-npx prisma generate
+    local tmp_file=$(mktemp)
+    while IFS= read -r line; do
+        if [[ $line == AWS_ACCESS_KEY_ID=* ]]; then
+            echo "AWS_ACCESS_KEY_ID=$access_key"
+        elif [[ $line == AWS_SECRET_ACCESS_KEY=* ]]; then
+            echo "AWS_SECRET_ACCESS_KEY=$secret_key"
+        else
+            echo "$line"
+        fi
+    done < "$ENV_FILE" > "$tmp_file"
 
-# 開発環境の場合のみマイグレーションとseederを実行
-if [ "$NODE_ENV" != "production" ]; then
-  echo "Running database migrations..."
-  npx prisma migrate dev
-  echo "Running database seeder..."
-  npx prisma db seed
-fi
+    mv "$tmp_file" "$ENV_FILE"
+    echo "AWS credentials have been updated in $ENV_FILE"
+    echo "Backup created at $backup_file"
+}
+
+# Prismaのセットアップ
+setup_prisma() {
+    log_info "Setting up Prisma"
+    npx prisma generate
+
+    if [ "$NODE_ENV" != "production" ]; then
+        echo "Running database migrations..."
+        npx prisma migrate dev
+        echo "Running database seeder..."
+        npx prisma db seed
+    fi
+}
+
+# メイン実行フロー
+main() {
+    log_info "Starting Web App Setup"
+    
+    # NPMグローバル設定
+    setup_npm_global
+    
+    # グローバルパッケージのインストール
+    install_global_package "nodemon"
+    install_global_package "pm2"
+    
+    # 環境変数の設定
+    setup_env_file
+    
+    # プロジェクトの依存関係インストール
+    log_info "Installing Project Dependencies"
+    rm -rf node_modules package-lock.json
+    npm install --no-fund --no-audit
+    
+    # Prismaセットアップ
+    setup_prisma
+    
+    # AWS認証情報の更新
+    update_aws_credentials
+    
+    log_info "Setup completed successfully"
+}
+
+# スクリプトの実行
+main 
