@@ -6,7 +6,6 @@ import * as targets from 'aws-cdk-lib/aws-elasticloadbalancingv2-targets';
 import * as s3 from 'aws-cdk-lib/aws-s3';
 import * as cloudfront from 'aws-cdk-lib/aws-cloudfront';
 import * as origins from 'aws-cdk-lib/aws-cloudfront-origins';
-import * as wafv2 from 'aws-cdk-lib/aws-wafv2';
 import * as iam from 'aws-cdk-lib/aws-iam';
 
 // Configuration types
@@ -144,8 +143,7 @@ export class AwsCdkWebBasicStack extends cdk.Stack {
 
     // Storage and CDN
     const bucket = this.createS3Bucket();
-    const webAcl = this.createWebAcl();
-    const distribution = this.createCloudFrontDistribution(bucket, webAcl);
+    const distribution = this.createCloudFrontDistribution(bucket);
 
     return {
       vpc,
@@ -363,29 +361,8 @@ export class AwsCdkWebBasicStack extends cdk.Stack {
     });
   }
 
-  private createWebAcl(): wafv2.CfnWebACL {
-    const webAclStack = new cdk.Stack(this.app, `${CONFIG.prefix}-WebAclStack`, {
-      env: { region: 'us-east-1' },
-      crossRegionReferences: true,
-    });
-
-    return new wafv2.CfnWebACL(webAclStack, `${CONFIG.prefix}-CloudFrontWebAcl`, {
-      defaultAction: { allow: {} },
-      scope: 'CLOUDFRONT',
-      visibilityConfig: {
-        cloudWatchMetricsEnabled: true,
-        metricName: `${CONFIG.prefix}-cf-waf-metric`,
-        sampledRequestsEnabled: true,
-      },
-      rules: [],
-      name: `${CONFIG.prefix}-cf-waf`,
-      description: 'WAF rules for CloudFront distribution'
-    });
-  }
-
   private createCloudFrontDistribution(
     bucket: s3.Bucket,
-    webAcl: wafv2.CfnWebACL
   ): cloudfront.Distribution {
     const oac = new cloudfront.CfnOriginAccessControl(this, 'CloudFrontOAC', {
       originAccessControlConfig: {
@@ -397,7 +374,7 @@ export class AwsCdkWebBasicStack extends cdk.Stack {
     });
 
     const cachePolicy = this.createCachePolicy();
-    const distribution = this.createDistribution(bucket, webAcl, cachePolicy);
+    const distribution = this.createDistribution(bucket, cachePolicy);
     
     this.configureBucketPolicy(bucket, distribution);
     this.configureOriginAccess(distribution, oac);
@@ -422,7 +399,6 @@ export class AwsCdkWebBasicStack extends cdk.Stack {
 
   private createDistribution(
     bucket: s3.Bucket,
-    webAcl: wafv2.CfnWebACL,
     cachePolicy: cloudfront.CachePolicy
   ): cloudfront.Distribution {
     const distribution = new cloudfront.Distribution(this, 'StaticContentDistribution', {
@@ -434,13 +410,41 @@ export class AwsCdkWebBasicStack extends cdk.Stack {
         compress: true,
         cachePolicy,
         originRequestPolicy: cloudfront.OriginRequestPolicy.CORS_S3_ORIGIN,
+        responseHeadersPolicy: new cloudfront.ResponseHeadersPolicy(this, 'CountryHeadersPolicy', {
+          customHeadersBehavior: {
+            customHeaders: [
+              {
+                header: 'CloudFront-Viewer-Country',
+                value: '${CloudFront-Viewer-Country}',
+                override: true
+              },
+              {
+                header: 'CloudFront-Viewer-Country-Name',
+                value: '${CloudFront-Viewer-Country-Name}',
+                override: true
+              },
+              {
+                header: 'CloudFront-Viewer-Country-Region',
+                value: '${CloudFront-Viewer-Country-Region}',
+                override: true
+              }
+            ]
+          }
+        })
       },
-      webAclId: webAcl.attrArn,
       comment: CONFIG.cloudfront.comment,
       defaultRootObject: 'index.html',
       enableIpv6: true,
       httpVersion: cloudfront.HttpVersion.HTTP2,
       priceClass: cloudfront.PriceClass.PRICE_CLASS_ALL,
+      geoRestriction: cloudfront.GeoRestriction.allowlist(
+        'JP',  // 日本
+        'US',  // アメリカ
+        'GB',  // イギリス
+        'CN',  // 中国
+        'KR',  // 韓国
+        'TW'   // 台湾
+      )
     });
 
     const cfnDistribution = distribution.node.defaultChild as cloudfront.CfnDistribution;
