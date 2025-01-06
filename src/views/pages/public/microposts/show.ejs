@@ -82,7 +82,7 @@
                 
                 <% if (locals.user) { %>
                     <form action="/microposts/<%= micropost.id %>/comments" method="POST" class="mb-6">
-                        <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+                        <input type="hidden" name="_csrf" value="<%= locals.csrfToken %>">
                         <div class="mb-4">
                             <label for="content" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                                 コメントを投稿

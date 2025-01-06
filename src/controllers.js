@@ -302,48 +302,6 @@ class MicropostController extends BaseController {
           })
         );
 
-        // console.log('Processed microposts sample:', micropostsWithLikes.slice(0, 1).map(post => ({
-        //   id: post.id,
-        //   title: post.title,
-        //   userId: post.userId,
-        //   user: {
-        //     id: post.user.id,
-        //     email: post.user.email,
-        //     name: post.user.name,
-        //     profile: post.user.profile,
-        //     userRoles: post.user.userRoles.map(ur => ({
-        //       role: {
-        //         id: ur.role.id,
-        //         name: ur.role.name
-        //       }
-        //     }))
-        //   },
-        //   categories: post.categories.map(cat => ({
-        //     category: {
-        //       id: cat.category.id,
-        //       name: cat.category.name
-        //     }
-        //   })),
-        //   isLiked: post.isLiked,
-        //   likeCount: post.likeCount,
-        //   _count: post._count
-        // })));
-
-        // console.log('Categories sample:', categories.slice(0, 1).map(cat => ({
-        //   id: cat.id,
-        //   name: cat.name,
-        //   _count: cat._count
-        // })));
-
-        // console.log('Rendering template with data:', {
-        //   templatePath: 'pages/public/microposts/index',
-        //   dataAvailable: {
-        //     microposts: !!micropostsWithLikes,
-        //     categories: !!categories,
-        //     user: !!req.user
-        //   }
-        // });
-
         try {
           res.render('pages/public/microposts/index', { 
             microposts: micropostsWithLikes,
@@ -379,40 +337,111 @@ class MicropostController extends BaseController {
 
   async show(req, res) {
     return this.handleRequest(req, res, async () => {
+      console.log('\n=== Micropost Show Request ===');
+      console.log('Params:', req.params);
+      console.log('User:', req.user ? { id: req.user.id, email: req.user.email } : 'Not logged in');
+      console.log('CSRF Token:', req.csrfToken());
+
       const micropostId = parseInt(req.params.id, 10);
       if (isNaN(micropostId)) {
+        console.error('Invalid micropost ID:', req.params.id);
         return this.errorHandler.handleNotFoundError(req, res, '投稿が見つかりません');
       }
 
       // Get client's IP address
       const ipAddress = req.headers['x-forwarded-for']?.split(',')[0].trim() || 
                        req.socket.remoteAddress;
+      console.log('Client IP:', ipAddress);
 
-      // Track the view
-      await this.micropostService.trackView(micropostId, ipAddress);
+      try {
+        // Track the view
+        await this.micropostService.trackView(micropostId, ipAddress);
+        console.log('View tracked successfully');
 
-      // Get micropost with updated view count and check if user has liked it
-      const [micropost, isLiked, likeCount, comments] = await Promise.all([
-        this.micropostService.getMicropostWithViews(micropostId),
-        req.user ? this.likeService.isLiked(req.user.id, micropostId) : false,
-        this.likeService.getLikeCount(micropostId),
-        this.commentService.getCommentsByMicropostId(micropostId)
-      ]);
+        // Get micropost with updated view count and check if user has liked it
+        console.log('Fetching micropost data...');
+        const [micropost, isLiked, likeCount, comments, likedUsers] = await Promise.all([
+          this.micropostService.getMicropostWithViews(micropostId),
+          req.user ? this.likeService.isLiked(req.user.id, micropostId) : false,
+          this.likeService.getLikeCount(micropostId),
+          this.commentService.getCommentsByMicropostId(micropostId),
+          this.likeService.getLikedUsers(micropostId)
+        ]);
 
-      if (!micropost) {
-        return this.errorHandler.handleNotFoundError(req, res, '投稿が見つかりません');
+        if (!micropost) {
+          console.error('Micropost not found:', micropostId);
+          return this.errorHandler.handleNotFoundError(req, res, '投稿が見つかりません');
+        }
+
+        console.log('Micropost data:', {
+          id: micropost.id,
+          title: micropost.title,
+          userId: micropost.userId,
+          user: micropost.user,
+          categories: micropost.categories,
+          isLiked,
+          likeCount,
+          commentsCount: comments.length,
+          likedUsersCount: likedUsers.length,
+          _count: micropost._count
+        });
+
+        const templateData = {
+          micropost,
+          isLiked,
+          likeCount,
+          comments,
+          likedUsers,
+          title: micropost.title,
+          path: req.path,
+          user: req.user,
+          csrfToken: req.csrfToken(),
+          currentPage: 1,
+          totalPages: 1,
+          categories: micropost.categories.map(mc => mc.category)
+        };
+
+        console.log('Template data prepared:', JSON.stringify(templateData, (key, value) => {
+          if (key === 'comments' || key === 'categories' || key === 'likedUsers') {
+            return `[Array(${value.length})]`;
+          }
+          if (typeof value === 'object' && value !== null) {
+            return Object.keys(value).reduce((acc, k) => {
+              if (!['password', 'createdAt', 'updatedAt'].includes(k)) {
+                acc[k] = value[k];
+              }
+              return acc;
+            }, {});
+          }
+          return value;
+        }, 2));
+
+        try {
+          await res.render('pages/public/microposts/show', templateData);
+          console.log('Show template rendered successfully');
+        } catch (renderError) {
+          console.error('Template rendering error:', {
+            error: renderError.message,
+            stack: renderError.stack,
+            templatePath: 'pages/public/microposts/show',
+            templateData: JSON.stringify(templateData, (key, value) => {
+              if (key === 'comments' || key === 'categories' || key === 'likedUsers') {
+                return `[Array(${value.length})]`;
+              }
+              return value;
+            })
+          });
+          throw renderError;
+        }
+      } catch (error) {
+        console.error('Error in show method:', {
+          error: error.message,
+          stack: error.stack,
+          micropostId,
+          userId: req.user?.id
+        });
+        throw error;
       }
-
-      res.render('pages/public/microposts/show', {
-        micropost,
-        isLiked,
-        likeCount,
-        comments,
-        title: micropost.title,
-        path: req.path,
-        user: req.user,
-        csrfToken: req.csrfToken()
-      });
     });
   }
 

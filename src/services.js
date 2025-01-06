@@ -627,24 +627,79 @@ class MicropostService extends BaseService {
   }
 
   async getMicropostWithViews(micropostId) {
-    return this.prisma.micropost.findUnique({
-      where: { id: this.validateId(micropostId) },
-      include: {
-        user: {
-          select: {
-            id: true,
-            email: true,
-            name: true
+    console.log('Fetching micropost with views:', micropostId);
+    try {
+      const micropost = await this.prisma.micropost.findUnique({
+        where: { id: this.validateId(micropostId) },
+        include: {
+          user: {
+            select: {
+              id: true,
+              email: true,
+              name: true,
+              profile: true,
+              userRoles: {
+                include: {
+                  role: true
+                }
+              }
+            }
+          },
+          categories: {
+            include: {
+              category: true
+            }
+          },
+          comments: {
+            include: {
+              user: {
+                include: {
+                  profile: true
+                }
+              }
+            },
+            orderBy: {
+              createdAt: 'desc'
+            }
+          },
+          _count: {
+            select: {
+              views: true,
+              likes: true,
+              comments: true
+            }
           }
-        },
-        categories: {
-          include: { category: true }
-        },
-        _count: {
-          select: { views: true }
         }
+      });
+
+      if (!micropost) {
+        console.log('Micropost not found:', micropostId);
+        return null;
       }
-    });
+
+      console.log('Micropost fetched successfully:', {
+        id: micropost.id,
+        title: micropost.title,
+        userId: micropost.userId,
+        user: {
+          id: micropost.user.id,
+          name: micropost.user.name
+        },
+        categoriesCount: micropost.categories.length,
+        commentsCount: micropost._count.comments,
+        viewsCount: micropost._count.views,
+        likesCount: micropost._count.likes
+      });
+
+      return micropost;
+    } catch (error) {
+      console.error('Error fetching micropost:', {
+        error: error.message,
+        stack: error.stack,
+        micropostId
+      });
+      throw error;
+    }
   }
 }
 
@@ -1070,14 +1125,30 @@ class LikeService extends BaseService {
   }
 
   async getLikedUsers(micropostId) {
-    return this.prisma.like.findMany({
-      where: { micropostId: this.validateId(micropostId) },
-      include: {
-        user: {
-          include: { profile: true }
+    console.log('Fetching liked users for micropost:', micropostId);
+    try {
+      const likes = await this.prisma.like.findMany({
+        where: { micropostId },
+        include: {
+          user: {
+            include: {
+              profile: true
+            }
+          }
+        },
+        orderBy: {
+          createdAt: 'desc'
         }
-      }
-    });
+      });
+      console.log(`Found ${likes.length} likes for micropost ${micropostId}`);
+      return likes;
+    } catch (error) {
+      console.error('Error fetching liked users:', {
+        error: error.message,
+        micropostId
+      });
+      return [];
+    }
   }
 
   async getUserLikes(userId) {

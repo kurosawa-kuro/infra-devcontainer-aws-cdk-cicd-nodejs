@@ -204,6 +204,21 @@ const errorMiddleware = {
   },
 
   handle500Error: (err, req, res, next) => {
+    console.error('\n=== Internal Server Error ===');
+    console.error('Error:', {
+      message: err.message,
+      name: err.name,
+      stack: err.stack
+    });
+    console.error('Request:', {
+      method: req.method,
+      path: req.path,
+      params: req.params,
+      query: req.query,
+      body: req.body,
+      user: req.user ? { id: req.user.id, email: req.user.email } : null
+    });
+
     const statusCode = err?.status || 500;
     const message = err?.message || 'Internal Server Error';
     
@@ -211,16 +226,42 @@ const errorMiddleware = {
       return res.status(statusCode).json({
         success: false,
         message: message,
-        error: process.env.NODE_ENV === 'development' ? err : undefined
+        error: process.env.NODE_ENV === 'development' ? {
+          name: err.name,
+          message: err.message,
+          stack: err.stack
+        } : undefined
       });
     }
 
-    res.status(statusCode).render('pages/errors/500', {
-      message: message,
+    // エラーページをレンダリングする前にデバッグ情報を出力
+    console.error('Attempting to render error page with:', {
+      message,
       error: process.env.NODE_ENV === 'development' ? err : {},
       title: `Error ${statusCode}`,
-      path: req.path
+      path: req.path,
+      user: req.user ? { id: req.user.id } : null
     });
+
+    try {
+      res.status(statusCode).render('pages/errors/500', {
+        message: message,
+        error: process.env.NODE_ENV === 'development' ? err : {},
+        title: `Error ${statusCode}`,
+        path: req.path,
+        user: req.user
+      });
+    } catch (renderError) {
+      console.error('Error rendering error page:', {
+        originalError: err,
+        renderError: {
+          message: renderError.message,
+          stack: renderError.stack
+        }
+      });
+      // エラーページのレンダリングに失敗した場合は、シンプルなエラーレスポンスを返す
+      res.status(500).send('Internal Server Error');
+    }
   }
 };
 
@@ -431,52 +472,77 @@ ${logMessage.error.stack ? `Stack: ${logMessage.error.stack}` : ''}
 
     // CSRFミドルウェアの設定を改善
     const csrfMiddleware = csrf({
-      cookie: {
-        key: 'XSRF-TOKEN',
-        secure: process.env.NODE_ENV === 'production',
-        sameSite: 'Lax',
-        path: '/'
+      cookie: true,
+      ignoreMethods: ['GET', 'HEAD', 'OPTIONS'],
+      value: function (req) {
+        return req.headers['x-csrf-token'] || 
+               req.body?._csrf || 
+               req.cookies['XSRF-TOKEN'];
       }
     });
 
     // CSRFトークンの処理を一元化
     app.use((req, res, next) => {
+      console.log('\n=== CSRF Middleware ===');
+      console.log('Request Method:', req.method);
+      console.log('Content-Type:', req.headers['content-type']);
+      console.log('CSRF Token in Cookie:', req.cookies['XSRF-TOKEN']);
+      console.log('CSRF Token in Header:', req.headers['x-csrf-token']);
+      console.log('CSRF Token in Body:', req.body?._csrf);
+
       // multipart/form-dataリクエストの特別処理
       if (req.headers['content-type']?.includes('multipart/form-data')) {
-        // multipart/form-dataの場合はクッキーからトークンを取得
+        console.log('Handling multipart/form-data request');
         const token = req.cookies['XSRF-TOKEN'];
         if (!token) {
+          console.error('No CSRF token found in cookies for multipart request');
           return res.status(403).json({
             error: 'CSRF token missing',
             message: 'セッションが無効になりました。ページを再読み込みしてください。'
           });
         }
+        console.log('Using token from cookie for multipart request:', token);
         req.csrfToken = () => token;
+        res.locals.csrfToken = token;
         return next();
       }
 
-      if (req.method === 'GET') {
-        csrfMiddleware(req, res, () => {
-          const token = req.csrfToken();
-          res.cookie('XSRF-TOKEN', token, {
-            secure: process.env.NODE_ENV === 'production',
-            sameSite: 'Lax',
-            path: '/'
+      try {
+        if (req.method === 'GET') {
+          console.log('Handling GET request');
+          csrfMiddleware(req, res, () => {
+            const token = req.csrfToken();
+            console.log('Generated new CSRF token for GET request:', token);
+            res.cookie('XSRF-TOKEN', token, {
+              secure: process.env.NODE_ENV === 'production',
+              sameSite: 'Lax',
+              path: '/'
+            });
+            res.locals.csrfToken = token;
+            next();
           });
-          res.locals.csrfToken = token;
-          next();
-        });
-      } else {
-        // GET以外のリクエストの場合のトークン検証
-        const token = req.headers['x-csrf-token'] || req.cookies['XSRF-TOKEN'];
-        if (!token) {
-          return res.status(403).json({
-            error: 'CSRF token missing',
-            message: 'セッションが無効になりました。ページを再読み込みしてください。'
+        } else {
+          console.log('Handling non-GET request');
+          csrfMiddleware(req, res, (err) => {
+            if (err) {
+              console.error('CSRF validation failed:', {
+                error: err.message,
+                token: req.body?._csrf,
+                cookieToken: req.cookies['XSRF-TOKEN']
+              });
+              return res.status(403).json({
+                error: 'CSRF token invalid',
+                message: 'セッションが無効になりました。ページを再読み込みしてください。'
+              });
+            }
+            const token = req.csrfToken();
+            res.locals.csrfToken = token;
+            next();
           });
         }
-        req.csrfToken = () => token;
-        csrfMiddleware(req, res, next);
+      } catch (error) {
+        console.error('Error in CSRF middleware:', error);
+        next(error);
       }
     });
 
