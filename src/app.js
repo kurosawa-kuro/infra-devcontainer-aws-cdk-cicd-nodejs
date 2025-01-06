@@ -28,7 +28,8 @@ const {
   PassportService,
   LikeService,
   CommentService,
-  NotificationService
+  NotificationService,
+  FollowService
 } = require('./services');
 const {
   AuthController,
@@ -525,7 +526,8 @@ class Application {
       passport: new PassportService(this.prisma, this.logger),
       like: new LikeService(this.prisma, this.logger),
       comment: new CommentService(this.prisma, this.logger),
-      notification: new NotificationService(this.prisma, this.logger)
+      notification: new NotificationService(this.prisma, this.logger),
+      follow: new FollowService(this.prisma, this.logger)
     };
   }
 
@@ -535,7 +537,8 @@ class Application {
       profile: new ProfileController(
         { 
           profile: this.services.profile,
-          micropost: this.services.micropost
+          micropost: this.services.micropost,
+          follow: this.services.follow
         },
         this.errorHandler,
         this.logger

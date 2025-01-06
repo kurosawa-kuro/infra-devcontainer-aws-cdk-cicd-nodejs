@@ -502,6 +502,18 @@ class MicropostController extends BaseController {
 class ProfileController extends BaseController {
   constructor(services, errorHandler, logger) {
     super(services, errorHandler, logger);
+    this.profileService = services.profile;
+    this.followService = services.follow;
+    this.logger = logger;
+
+    // サービスの存在確認
+    if (!this.profileService) {
+      throw new Error('Profile service is not initialized in ProfileController');
+    }
+
+    if (!this.followService) {
+      throw new Error('Follow service is not initialized in ProfileController');
+    }
   }
 
   async show(req, res) {
@@ -631,61 +643,247 @@ class ProfileController extends BaseController {
 
   async follow(req, res) {
     return this.handleRequest(req, res, async () => {
+      console.log('\n=== Follow Request Start ===');
+      console.log('Request:', {
+        method: req.method,
+        path: req.path,
+        params: req.params,
+        body: req.body,
+        headers: {
+          'content-type': req.headers['content-type'],
+          'x-csrf-token': req.headers['x-csrf-token']
+        },
+        user: req.user ? { id: req.user.id, email: req.user.email } : null
+      });
+
       if (!req.user) {
-        this.logger.debug('Follow attempt without authentication');
-        return this.errorHandler.handlePermissionError(req, res, 'ログインが必要です');
+        console.log('Authentication check failed: No user in request');
+        this.logger.warn('Follow attempt without authentication');
+        return res.status(403).json({
+          success: false,
+          message: 'ログインが必要です'
+        });
       }
 
-      const targetUserId = req.params.id;
+      const targetUserId = parseInt(req.params.id, 10);
+      console.log('Target user ID:', targetUserId);
+      
+      if (isNaN(targetUserId)) {
+        console.log('Invalid target user ID:', req.params.id);
+        this.logger.warn('Invalid target user ID:', req.params.id);
+        return res.status(400).json({
+          success: false,
+          message: '無効なユーザーIDです'
+        });
+      }
+
       this.logger.debug('Follow request:', {
         followerId: req.user.id,
         targetUserId,
         path: req.path
       });
 
-      await this.service.follow(req.user.id, targetUserId);
-      const followCounts = await this.service.getFollowCounts(targetUserId);
-      
-      this.logger.debug('Follow successful:', {
-        followCounts,
-        targetUserId
-      });
+      try {
+        console.log('Checking target user existence...');
+        const targetUser = await this.profileService.getUserProfile(targetUserId);
+        console.log('Target user:', targetUser ? { 
+          id: targetUser.id, 
+          name: targetUser.name 
+        } : 'Not found');
 
-      this.sendResponse(req, res, {
-        status: 200,
-        message: 'フォローしました',
-        data: { followCounts }
-      });
+        if (!targetUser) {
+          console.log('Target user not found');
+          this.logger.warn('Target user not found:', targetUserId);
+          return res.status(404).json({
+            success: false,
+            message: 'ユーザーが見つかりません'
+          });
+        }
+
+        if (req.user.id === targetUserId) {
+          console.log('Self-follow attempt detected');
+          this.logger.warn('User attempted to follow themselves:', req.user.id);
+          return res.status(400).json({
+            success: false,
+            message: '自分自身をフォローすることはできません'
+          });
+        }
+
+        console.log('Creating follow relationship...');
+        await this.followService.follow(req.user.id, targetUserId);
+        
+        console.log('Getting updated follow counts...');
+        const followCounts = await this.followService.getFollowCounts(targetUserId);
+        console.log('Updated follow counts:', followCounts);
+
+        this.logger.info('Follow successful:', {
+          followerId: req.user.id,
+          targetUserId,
+          followCounts
+        });
+
+        console.log('=== Follow Request End ===\n');
+        return res.status(200).json({
+          success: true,
+          message: 'フォローしました',
+          data: { followCounts }
+        });
+      } catch (error) {
+        console.error('Follow operation failed:', {
+          error: {
+            name: error.name,
+            message: error.message,
+            code: error.code,
+            stack: error.stack
+          },
+          followerId: req.user.id,
+          targetUserId
+        });
+
+        this.logger.error('Follow failed:', {
+          error: error.message,
+          stack: error.stack,
+          followerId: req.user.id,
+          targetUserId
+        });
+
+        if (error.code === 'P2002') {
+          console.log('Already following user');
+          return res.status(400).json({
+            success: false,
+            message: 'すでにフォローしています'
+          });
+        }
+
+        console.log('=== Follow Request End (with error) ===\n');
+        return res.status(500).json({
+          success: false,
+          message: 'フォロー操作に失敗しました'
+        });
+      }
     });
   }
 
   async unfollow(req, res) {
     return this.handleRequest(req, res, async () => {
+      console.log('\n=== Unfollow Request Start ===');
+      console.log('Request:', {
+        method: req.method,
+        path: req.path,
+        params: req.params,
+        body: req.body,
+        headers: {
+          'content-type': req.headers['content-type'],
+          'x-csrf-token': req.headers['x-csrf-token']
+        },
+        user: req.user ? { id: req.user.id, email: req.user.email } : null
+      });
+
       if (!req.user) {
-        this.logger.debug('Unfollow attempt without authentication');
-        return this.errorHandler.handlePermissionError(req, res, 'ログインが必要です');
+        console.log('Authentication check failed: No user in request');
+        this.logger.warn('Unfollow attempt without authentication');
+        return res.status(403).json({
+          success: false,
+          message: 'ログインが必要です'
+        });
       }
 
-      const targetUserId = req.params.id;
+      const targetUserId = parseInt(req.params.id, 10);
+      console.log('Target user ID:', targetUserId);
+
+      if (isNaN(targetUserId)) {
+        console.log('Invalid target user ID:', req.params.id);
+        this.logger.warn('Invalid target user ID:', req.params.id);
+        return res.status(400).json({
+          success: false,
+          message: '無効なユーザーIDです'
+        });
+      }
+
       this.logger.debug('Unfollow request:', {
         followerId: req.user.id,
         targetUserId,
         path: req.path
       });
 
-      await this.service.unfollow(req.user.id, targetUserId);
-      const followCounts = await this.service.getFollowCounts(targetUserId);
+      try {
+        console.log('Checking target user existence...');
+        const targetUser = await this.profileService.getUserProfile(targetUserId);
+        console.log('Target user:', targetUser ? { 
+          id: targetUser.id, 
+          name: targetUser.name 
+        } : 'Not found');
 
-      this.logger.debug('Unfollow successful:', {
-        followCounts,
-        targetUserId
-      });
+        if (!targetUser) {
+          console.log('Target user not found');
+          this.logger.warn('Target user not found:', targetUserId);
+          return res.status(404).json({
+            success: false,
+            message: 'ユーザーが見つかりません'
+          });
+        }
 
-      this.sendResponse(req, res, {
-        status: 200,
-        message: 'フォロー解除しました',
-        data: { followCounts }
-      });
+        if (req.user.id === targetUserId) {
+          console.log('Self-unfollow attempt detected');
+          this.logger.warn('User attempted to unfollow themselves:', req.user.id);
+          return res.status(400).json({
+            success: false,
+            message: '自分自身のフォローを解除することはできません'
+          });
+        }
+
+        console.log('Removing follow relationship...');
+        await this.followService.unfollow(req.user.id, targetUserId);
+        
+        console.log('Getting updated follow counts...');
+        const followCounts = await this.followService.getFollowCounts(targetUserId);
+        console.log('Updated follow counts:', followCounts);
+
+        this.logger.info('Unfollow successful:', {
+          followerId: req.user.id,
+          targetUserId,
+          followCounts
+        });
+
+        console.log('=== Unfollow Request End ===\n');
+        return res.status(200).json({
+          success: true,
+          message: 'フォロー解除しました',
+          data: { followCounts }
+        });
+      } catch (error) {
+        console.error('Unfollow operation failed:', {
+          error: {
+            name: error.name,
+            message: error.message,
+            code: error.code,
+            stack: error.stack
+          },
+          followerId: req.user.id,
+          targetUserId
+        });
+
+        this.logger.error('Unfollow failed:', {
+          error: error.message,
+          stack: error.stack,
+          followerId: req.user.id,
+          targetUserId
+        });
+
+        if (error.code === 'P2025') {
+          console.log('Not following user');
+          return res.status(400).json({
+            success: false,
+            message: 'フォローしていません'
+          });
+        }
+
+        console.log('=== Unfollow Request End (with error) ===\n');
+        return res.status(500).json({
+          success: false,
+          message: 'フォロー解除に失敗しました'
+        });
+      }
     });
   }
 
@@ -716,6 +914,24 @@ class ProfileController extends BaseController {
       const following = await this.services.profile.getFollowing(profileUser.id);
       const followCounts = await this.services.profile.getFollowCounts(profileUser.id);
 
+      // 現在のユーザーが各フォロー中ユーザーをフォローしているかどうかを確認
+      let followingWithStatus = following.map(f => ({
+        ...f,
+        isFollowing: false
+      }));
+
+      if (req.user) {
+        const followingStatuses = await Promise.all(
+          following.map(f => 
+            this.services.profile.isFollowing(req.user.id, f.following.id)
+          )
+        );
+        followingWithStatus = following.map((f, i) => ({
+          ...f,
+          isFollowing: followingStatuses[i]
+        }));
+      }
+
       this.logger.debug('Following data:', {
         followingCount: following.length,
         followCounts
@@ -723,7 +939,10 @@ class ProfileController extends BaseController {
 
       this.renderWithUser(req, res, 'pages/public/users/following', {
         profileUser,
-        following: following.map(f => f.following),
+        following: followingWithStatus.map(f => ({
+          ...f.following,
+          isFollowing: f.isFollowing
+        })),
         followCounts,
         title: `${profileUser.name}のフォロー中`
       });
@@ -757,6 +976,24 @@ class ProfileController extends BaseController {
       const followers = await this.services.profile.getFollowers(profileUser.id);
       const followCounts = await this.services.profile.getFollowCounts(profileUser.id);
 
+      // 現在のユーザーが各フォロワーをフォローしているかどうかを確認
+      let followersWithStatus = followers.map(f => ({
+        ...f,
+        isFollowing: false
+      }));
+
+      if (req.user) {
+        const followingStatuses = await Promise.all(
+          followers.map(f => 
+            this.services.profile.isFollowing(req.user.id, f.follower.id)
+          )
+        );
+        followersWithStatus = followers.map((f, i) => ({
+          ...f,
+          isFollowing: followingStatuses[i]
+        }));
+      }
+
       this.logger.debug('Followers data:', {
         followersCount: followers.length,
         followCounts
@@ -764,7 +1001,10 @@ class ProfileController extends BaseController {
 
       this.renderWithUser(req, res, 'pages/public/users/followers', {
         profileUser,
-        followers: followers.map(f => f.follower),
+        followers: followersWithStatus.map(f => ({
+          ...f.follower,
+          isFollowing: f.isFollowing
+        })),
         followCounts,
         title: `${profileUser.name}のフォロワー`
       });

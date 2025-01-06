@@ -30,12 +30,13 @@
               </div>
               <% if (user && user.id !== followedUser.id) { %>
                 <button
-                  onclick="toggleFollow('<%= followedUser.id %>', this)"
-                  class="inline-flex items-center px-3 py-1 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
-                  data-following="true"
+                  class="follow-button inline-flex items-center px-3 py-1 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+                  data-following="<%= followedUser.isFollowing %>"
                   data-user-id="<%= followedUser.id %>"
                 >
-                  <span class="follow-text" data-following="true">フォロー中</span>
+                  <span class="follow-text" data-following="<%= followedUser.isFollowing %>">
+                    <%= followedUser.isFollowing ? 'フォロー中' : 'フォロー' %>
+                  </span>
                 </button>
               <% } %>
             </div>
@@ -51,8 +52,58 @@
 </div>
 
 <script>
-  // フォローボタンのホバー処理
+  // CSRFトークンをヘッダーに追加する関数
+  function getCSRFToken() {
+    return document.cookie.split('; ')
+      .find(row => row.startsWith('XSRF-TOKEN='))
+      ?.split('=')[1];
+  }
+
+  // フォロー状態を切り替える関数
+  async function toggleFollow(userId, button) {
+    try {
+      const isFollowing = button.getAttribute('data-following') === 'true';
+      const url = `/users/${userId}/${isFollowing ? 'unfollow' : 'follow'}`;
+      
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-CSRF-Token': getCSRFToken()
+        }
+      });
+
+      if (!response.ok) {
+        throw new Error('フォロー操作に失敗しました');
+      }
+
+      const data = await response.json();
+      
+      // ボタンの状態を更新
+      const newFollowingState = !isFollowing;
+      button.setAttribute('data-following', newFollowingState);
+      
+      const followText = button.querySelector('.follow-text');
+      followText.setAttribute('data-following', newFollowingState);
+      followText.textContent = newFollowingState ? 'フォロー中' : 'フォロー';
+
+    } catch (error) {
+      console.error('Error:', error);
+      alert('エラーが発生しました。もう一度お試しください。');
+    }
+  }
+
+  // フォローボタンのクリックイベントを設定
   document.addEventListener('DOMContentLoaded', () => {
+    // フォローボタンのクリックイベントを追加
+    document.querySelectorAll('.follow-button').forEach(button => {
+      button.addEventListener('click', () => {
+        const userId = button.getAttribute('data-user-id');
+        toggleFollow(userId, button);
+      });
+    });
+
+    // フォローボタンのホバー処理
     const followTexts = document.querySelectorAll('.follow-text');
     followTexts.forEach(text => {
       const button = text.closest('button');
