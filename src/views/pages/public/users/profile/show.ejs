@@ -1,253 +1,68 @@
 <%- contentFor('body') %>
 <div class="max-w-2xl mx-auto px-4">
-  <div class="bg-white dark:bg-gray-900 shadow overflow-hidden sm:rounded-lg">
-    <div class="px-4 py-5 sm:px-6">
-      <div class="flex items-center">
+  <div class="bg-white dark:bg-gray-900 shadow sm:rounded-lg">
+    <div class="px-4 py-5 sm:p-6">
+      <div class="flex items-center mb-6">
         <img 
           src="<%= userProfile?.avatarPath ? `/uploads/${userProfile.avatarPath}` : '/uploads/default_avatar.png' %>" 
-          alt="Profile Avatar" 
+          alt="プロフィール画像" 
           class="h-20 w-20 rounded-full object-cover mr-4"
         >
         <div>
-          <h3 class="text-lg leading-6 font-medium text-gray-900 dark:text-white">
-            <%= profileUser.name || 'ユーザー' %>
-          </h3>
-          <p class="mt-1 max-w-2xl text-sm text-gray-500 dark:text-gray-400">
+          <h1 class="text-2xl font-bold text-gray-900 dark:text-white">
+            <%= profileUser.name %>
+          </h1>
+          <p class="text-sm text-gray-500 dark:text-gray-400">
             <%= profileUser.email %>
           </p>
         </div>
+        <% if (user && (user.id === profileUser.id || user.userRoles.some(ur => ur.role.name === 'admin'))) { %>
+          <a href="/users/<%= profileUser.name %>/edit" class="ml-auto">
+            <button class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500">
+              編集
+            </button>
+          </a>
+        <% } %>
       </div>
-    </div>
-    <div class="border-t border-gray-200 dark:border-gray-800">
-      <dl>
-        <div class="bg-gray-50 dark:bg-gray-800 px-4 py-5 sm:grid sm:grid-cols-3 sm:gap-4 sm:px-6">
-          <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">メール</dt>
-          <dd class="mt-1 text-sm text-gray-900 dark:text-white sm:col-span-2 sm:mt-0">
-            <% profileUser.userRoles.forEach(userRole => { %>
-              <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800 mr-2">
-                <%= userRole.role.name %>
-              </span>
+
+      <div class="border-t border-gray-200 dark:border-gray-700 pt-4">
+        <div class="grid grid-cols-2 gap-4">
+          <div>
+            <h2 class="text-sm font-medium text-gray-500 dark:text-gray-400">フォロー中</h2>
+            <a href="/users/<%= profileUser.name %>/following" class="hover:opacity-75">
+              <p class="mt-1 text-2xl font-semibold text-gray-900 dark:text-white">
+                <%= followCounts.followingCount %>
+              </p>
+            </a>
+          </div>
+          <div>
+            <h2 class="text-sm font-medium text-gray-500 dark:text-gray-400">フォロワー</h2>
+            <a href="/users/<%= profileUser.name %>/followers" class="hover:opacity-75">
+              <p class="mt-1 text-2xl font-semibold text-gray-900 dark:text-white">
+                <%= followCounts.followersCount %>
+              </p>
+            </a>
+          </div>
+        </div>
+      </div>
+
+      <div class="border-t border-gray-200 dark:border-gray-700 mt-4 pt-4">
+        <h2 class="text-lg font-medium text-gray-900 dark:text-white mb-4">投稿一覧</h2>
+        <% if (microposts && microposts.length > 0) { %>
+          <div class="space-y-4">
+            <% microposts.forEach(post => { %>
+              <div class="bg-gray-50 dark:bg-gray-800 p-4 rounded-lg">
+                <p class="text-gray-900 dark:text-white"><%= post.title %></p>
+                <p class="text-sm text-gray-500 dark:text-gray-400">
+                  <%= new Date(post.createdAt).toLocaleString('ja-JP') %>
+                </p>
+              </div>
             <% }); %>
-          </dd>
-        </div>
-        <div class="bg-white dark:bg-gray-900 px-4 py-5 sm:grid sm:grid-cols-3 sm:gap-4 sm:px-6">
-          <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">自己紹介</dt>
-          <dd class="mt-1 text-sm text-gray-900 dark:text-white sm:col-span-2 sm:mt-0">
-            <%= userProfile?.bio || '未設定' %>
-          </dd>
-        </div>
-        <div class="bg-gray-50 dark:bg-gray-800 px-4 py-5 sm:grid sm:grid-cols-3 sm:gap-4 sm:px-6">
-          <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">場所</dt>
-          <dd class="mt-1 text-sm text-gray-900 dark:text-white sm:col-span-2 sm:mt-0">
-            <%= userProfile?.location || '未設定' %>
-          </dd>
-        </div>
-        <div class="bg-white dark:bg-gray-900 px-4 py-5 sm:grid sm:grid-cols-3 sm:gap-4 sm:px-6">
-          <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">ウェブサイト</dt>
-          <dd class="mt-1 text-sm text-gray-900 dark:text-white sm:col-span-2 sm:mt-0">
-            <% if (userProfile?.website) { %>
-              <a href="<%= userProfile.website %>" target="_blank" rel="noopener noreferrer" class="text-indigo-600 hover:text-indigo-500">
-                <%= userProfile.website %>
-              </a>
-            <% } else { %>
-              未設定
-            <% } %>
-          </dd>
-        </div>
-        <div class="bg-gray-50 dark:bg-gray-800 px-4 py-5 sm:grid sm:grid-cols-3 sm:gap-4 sm:px-6">
-          <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">生年月日</dt>
-          <dd class="mt-1 text-sm text-gray-900 dark:text-white sm:col-span-2 sm:mt-0">
-            <%= userProfile?.birthDate ? new Date(userProfile.birthDate).toLocaleDateString('ja-JP') : '未設定' %>
-          </dd>
-        </div>
-        <div class="bg-white dark:bg-gray-900 px-4 py-5 sm:grid sm:grid-cols-3 sm:gap-4 sm:px-6">
-          <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">登録日</dt>
-          <dd class="mt-1 text-sm text-gray-900 dark:text-white sm:col-span-2 sm:mt-0">
-            <%= new Date(profileUser.createdAt).toLocaleDateString('ja-JP') %>
-          </dd>
-        </div>
-      </dl>
-    </div>
-  </div>
-
-  <div class="mt-6 flex justify-end space-x-4">
-    <% if (user) { %>
-      <% if (profileUser.id === user.id || user.userRoles.some(ur => ur.role.name === 'admin')) { %>
-        <a
-          href="/users/<%= profileUser.name || profileUser.id %>/edit"
-          class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
-        >
-          編集
-        </a>
-      <% } else { %>
-        <button
-          onclick="toggleFollow('<%= profileUser.id %>', this)"
-          class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white <%= isFollowing ? 'bg-gray-600 hover:bg-gray-700' : 'bg-blue-600 hover:bg-blue-700' %> focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
-          data-following="<%= isFollowing %>"
-          data-user-id="<%= profileUser.id %>"
-        >
-          <span class="follow-text" data-following="<%= isFollowing %>">
-            <%= isFollowing ? 'フォロー中' : 'フォロー' %>
-          </span>
-        </button>
-      <% } %>
-    <% } %>
-  </div>
-  
-
-  <!-- フォロー状態 -->
-  <div class="mt-8 bg-white dark:bg-gray-900 shadow overflow-hidden sm:rounded-lg">
-    <div class="px-4 py-5 sm:p-6">
-      <div class="flex space-x-8">
-        <a href="/users/<%= profileUser.name || profileUser.id %>/following" class="text-center hover:opacity-75">
-          <div class="text-2xl font-semibold text-gray-900 dark:text-white following-count">
-            <%= followCounts.followingCount %>
           </div>
-          <div class="mt-1 text-sm text-gray-500 dark:text-gray-400">フォロー中</div>
-        </a>
-        <a href="/users/<%= profileUser.name || profileUser.id %>/followers" class="text-center hover:opacity-75">
-          <div class="text-2xl font-semibold text-gray-900 dark:text-white followers-count">
-            <%= followCounts.followersCount %>
-          </div>
-          <div class="mt-1 text-sm text-gray-500 dark:text-gray-400">フォロワー</div>
-        </a>
+        <% } else { %>
+          <p class="text-gray-500 dark:text-gray-400">投稿はありません</p>
+        <% } %>
       </div>
     </div>
-  </div>
-
-  <script>
-    async function toggleFollow(userId, button) {
-      if (!userId) {
-        console.error('Debug - Invalid userId:', userId);
-        alert('ユーザーIDが無効です');
-        return;
-      }
-
-      const isFollowing = button.getAttribute('data-following') === 'true';
-      const endpoint = isFollowing ? `/api/users/${userId}/unfollow` : `/api/users/${userId}/follow`;
-      
-      console.log('Debug - Toggle Follow:', {
-        userId,
-        isFollowing,
-        endpoint,
-        buttonState: button.getAttribute('data-following')
-      });
-      
-      try {
-        console.log('Debug - Sending request to:', endpoint);
-        const response = await fetch(endpoint, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Accept': 'application/json'
-          },
-          credentials: 'same-origin'
-        });
-        
-        console.log('Debug - Response status:', response.status);
-        
-        if (response.ok) {
-          const result = await response.json();
-          console.log('Debug - Response data:', result);
-          
-          if (!result.success) {
-            console.error('Debug - API returned success: false:', result);
-            alert(result.message || 'エラーが発生しました');
-            return;
-          }
-          
-          // ボタンの状態を更新
-          button.setAttribute('data-following', !isFollowing);
-          const followText = button.querySelector('.follow-text');
-          followText.textContent = isFollowing ? 'フォロー' : 'フォロー中';
-          followText.setAttribute('data-following', !isFollowing);
-          
-          // ボタンのスタイルを更新
-          button.classList.toggle('bg-gray-600');
-          button.classList.toggle('hover:bg-gray-700');
-          button.classList.toggle('bg-blue-600');
-          button.classList.toggle('hover:bg-blue-700');
-          
-          // フォロー数を非同期で更新
-          if (result.data && result.data.followCounts) {
-            console.log('Debug - Updating follow counts:', result.data.followCounts);
-            const { followingCount, followersCount } = result.data.followCounts;
-            const followingElement = document.querySelector('.following-count');
-            const followersElement = document.querySelector('.followers-count');
-            
-            if (followingElement && followersElement) {
-              followingElement.textContent = followingCount;
-              followersElement.textContent = followersCount;
-            } else {
-              console.warn('Debug - Could not find follow count elements');
-            }
-          } else {
-            console.warn('Debug - No follow counts in response:', result);
-          }
-        } else {
-          const errorText = await response.text();
-          console.error('Debug - Response not OK:', {
-            status: response.status,
-            statusText: response.statusText,
-            errorText
-          });
-          alert('エラーが発生しました');
-        }
-      } catch (error) {
-        console.error('Debug - Error details:', {
-          error: error.message,
-          stack: error.stack
-        });
-        alert('エラーが発生しました');
-      }
-    }
-
-    // フォローボタンのホバー処理
-    document.addEventListener('DOMContentLoaded', () => {
-      const followTexts = document.querySelectorAll('.follow-text');
-      followTexts.forEach(text => {
-        const button = text.closest('button');
-        
-        button.addEventListener('mouseenter', () => {
-          if (text.getAttribute('data-following') === 'true') {
-            text.textContent = 'フォロー解除';
-          }
-        });
-        
-        button.addEventListener('mouseleave', () => {
-          if (text.getAttribute('data-following') === 'true') {
-            text.textContent = 'フォロー中';
-          }
-        });
-      });
-    });
-  </script>
-
-  <!-- 投稿一覧 -->
-  <div class="mt-8">
-    <h2 class="text-lg font-medium text-gray-900 dark:text-white mb-4">投稿一覧</h2>
-    <% if (microposts && microposts.length > 0) { %>
-      <div class="space-y-4">
-        <% microposts.forEach(post => { %>
-          <div class="bg-white dark:bg-gray-900 shadow overflow-hidden sm:rounded-lg">
-            <div class="px-4 py-5 sm:p-6">
-              <div class="text-sm text-gray-900 dark:text-white">
-                <%= post.title %>
-              </div>
-              <% if (post.imageUrl) { %>
-                <div class="mt-2">
-                  <img src="<%= post.imageUrl %>" alt="Post image" class="max-h-48 rounded-lg">
-                </div>
-              <% } %>
-              <div class="mt-2 text-xs text-gray-500 dark:text-gray-400">
-                <%= new Date(post.createdAt).toLocaleString('ja-JP') %>
-              </div>
-            </div>
-          </div>
-        <% }); %>
-      </div>
-    <% } else { %>
-      <p class="text-gray-500 dark:text-gray-400">まだ投稿がありません。</p>
-    <% } %>
   </div>
 </div> 

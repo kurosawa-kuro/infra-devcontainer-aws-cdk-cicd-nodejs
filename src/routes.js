@@ -3,30 +3,23 @@ const asyncHandler = require('express-async-handler');
 const path = require('path');
 const { isAuthenticated, forwardAuthenticated, isAdmin, handle404Error, handle500Error } = require('./middleware');
 const fs = require('fs');
+const csrf = require('csurf');
 
 function setupRoutes(app, controllers, fileUploader) {
   const { auth, profile, micropost, system, dev, admin, category, like, notification } = controllers;
 
+  // CSRFミドルウェアの設定
+  const csrfProtection = csrf({
+    cookie: {
+      key: 'XSRF-TOKEN',
+      secure: process.env.NODE_ENV === 'production'
+    }
+  });
+
   // ===================================
-  // Public Routes
-  // ===================================
-
-  // Root and Home
-  app.get('/', (req, res) => res.redirect('/home'));
-  app.get('/home', asyncHandler((req, res) => micropost.index(req, res)));
-
-  // System Health
-  app.get('/health', asyncHandler((req, res) => system.getHealth(req, res)));
-  app.get('/health-db', asyncHandler((req, res) => system.getDbHealth(req, res)));
-
-  // Categories
-  const categoryRouter = express.Router();
-  categoryRouter.get('/', asyncHandler((req, res) => category.index(req, res)));
-  categoryRouter.get('/:id', asyncHandler((req, res) => category.show(req, res)));
-  app.use('/categories', categoryRouter);
-
   // Static Assets
-  if (!process.env.STORAGE_S3_BUCKET) {
+  // ===================================
+  if (process.env.STORAGE_PROVIDER !== 's3') {
     const uploadsPath = path.join(__dirname, 'public', 'uploads');
     app.use('/uploads', express.static(uploadsPath, {
       setHeaders: (res, path, stat) => {
@@ -43,6 +36,31 @@ function setupRoutes(app, controllers, fileUploader) {
       res.set('Cache-Control', 'public, max-age=31557600');
     }
   }));
+
+  app.use('/images', express.static(path.join(__dirname, 'public', 'images'), {
+    setHeaders: (res, path, stat) => {
+      res.set('Access-Control-Allow-Origin', '*');
+      res.set('Cache-Control', 'public, max-age=31557600');
+    }
+  }));
+
+  // ===================================
+  // Public Routes
+  // ===================================
+
+  // Root and Home
+  app.get('/', (req, res) => res.redirect('/home'));
+  app.get('/home', asyncHandler((req, res) => micropost.index(req, res)));
+
+  // System Health
+  app.get('/health', asyncHandler((req, res) => system.getHealth(req, res)));
+  app.get('/health-db', asyncHandler((req, res) => system.getDbHealth(req, res)));
+
+  // Categories
+  const categoryRouter = express.Router();
+  categoryRouter.get('/', asyncHandler((req, res) => category.index(req, res)));
+  categoryRouter.get('/:id([0-9]+)', asyncHandler((req, res) => category.show(req, res)));  // 数字のIDのみマッチ
+  app.use('/categories', categoryRouter);
 
   // ===================================
   // Authentication Routes
@@ -62,17 +80,72 @@ function setupRoutes(app, controllers, fileUploader) {
   // Microposts
   const micropostRouter = express.Router();
   micropostRouter.use(isAuthenticated);
+  
+  // リクエストロギングミドルウェア
+  micropostRouter.use((req, res, next) => {
+    console.log('\n=== Micropost Router ===');
+    console.log('Method:', req.method);
+    console.log('Path:', req.path);
+    console.log('User:', req.user ? { id: req.user.id, email: req.user.email } : 'Not logged in');
+    console.log('Headers:', {
+      'content-type': req.headers['content-type'],
+      'x-csrf-token': req.headers['x-csrf-token'],
+      'cookie': req.headers.cookie
+    });
+    next();
+  });
+  
+  // GETリクエストのルート
   micropostRouter.get('/', asyncHandler((req, res) => micropost.index(req, res)));
   micropostRouter.get('/:id', asyncHandler((req, res) => micropost.show(req, res)));
-  micropostRouter.post('/', fileUploader.getUploader().single('image'), asyncHandler((req, res) => micropost.create(req, res)));
+  
+  // ファイルアップロード用のミドルウェアを先に配置
+  const uploadMiddleware = fileUploader.getUploader().single('image');
+  
+  // POSTリクエストのルート
+  micropostRouter.post('/', uploadMiddleware, asyncHandler((req, res) => {
+    console.log('=== Micropost POST Request ===');
+    console.log('Headers:', {
+      'content-type': req.headers['content-type'],
+      'x-csrf-token': req.headers['x-csrf-token'],
+      'cookie': req.headers.cookie,
+      'xsrf-token': req.cookies['XSRF-TOKEN']
+    });
+    console.log('Body:', req.body);
+    console.log('File:', req.file);
+    console.log('CSRF Token:', req.csrfToken());
+
+    return micropost.create(req, res);
+  }));
   
   // いいね関連のルート
-  micropostRouter.post('/:id/like', asyncHandler((req, res) => like.like(req, res)));
-  micropostRouter.delete('/:id/like', asyncHandler((req, res) => like.unlike(req, res)));
+  micropostRouter.post('/:id/like', asyncHandler((req, res) => {
+    console.log('\n=== Like Request ===');
+    console.log('Params:', req.params);
+    console.log('User:', req.user ? { id: req.user.id } : null);
+    console.log('CSRF Token:', req.csrfToken());
+    return like.like(req, res);
+  }));
+  
+  micropostRouter.delete('/:id/like', asyncHandler((req, res) => {
+    console.log('\n=== Unlike Request ===');
+    console.log('Params:', req.params);
+    console.log('User:', req.user ? { id: req.user.id } : null);
+    console.log('CSRF Token:', req.csrfToken());
+    return like.unlike(req, res);
+  }));
+  
   micropostRouter.get('/:id/likes', asyncHandler((req, res) => like.getLikedUsers(req, res)));
   
   // コメント関連のルート
-  micropostRouter.post('/:micropostId/comments', asyncHandler((req, res) => controllers.comment.create(req, res)));
+  micropostRouter.post('/:micropostId/comments', asyncHandler((req, res) => {
+    console.log('\n=== Comment Request ===');
+    console.log('Params:', req.params);
+    console.log('Body:', req.body);
+    console.log('User:', req.user ? { id: req.user.id } : null);
+    console.log('CSRF Token:', req.csrfToken());
+    return controllers.comment.create(req, res);
+  }));
   
   app.use('/microposts', micropostRouter);
 
@@ -122,6 +195,10 @@ function setupRoutes(app, controllers, fileUploader) {
   profileRouter.get('/:id/edit', isAuthenticated, asyncHandler((req, res) => profile.getEditPage(req, res)));
   profileRouter.post('/:id/edit', isAuthenticated, fileUploader.getUploader().single('avatar'), asyncHandler((req, res) => profile.update(req, res)));
   app.use('/profile', profileRouter);
+
+  // Add additional routes for backward compatibility
+  app.get('/users/:id/edit', isAuthenticated, asyncHandler((req, res) => profile.getEditPage(req, res)));
+  app.post('/users/:id/edit', isAuthenticated, fileUploader.getUploader().single('avatar'), asyncHandler((req, res) => profile.update(req, res)));
 
   // ===================================
   // Error Handlers

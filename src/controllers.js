@@ -1,3 +1,7 @@
+const express = require('express');
+const path = require('path');
+const asyncHandler = require('express-async-handler');
+
 class BaseController {
   constructor(services, errorHandler, logger) {
     this.services = services;
@@ -7,18 +11,53 @@ class BaseController {
 
   async handleRequest(req, res, handler) {
     try {
-      await handler();
+      this.logger.debug('Request handling started', {
+        method: req.method,
+        path: req.path,
+        params: req.params,
+        query: req.query,
+        user: req.user ? { id: req.user.id } : null
+      });
+
+      return await handler();
     } catch (error) {
-      if (this.errorHandler && typeof this.errorHandler.handleError === 'function') {
-        this.errorHandler.handleError(error, req, res);
-      } else {
-        // フォールバックのエラーハンドリング
-        console.error('Error:', error);
-        res.status(500).json({
-          success: false,
-          message: 'サーバーエラーが発生しました'
+      this.logger.error('Unhandled error in request', {
+        error: {
+          name: error.name,
+          message: error.message,
+          stack: error.stack
+        },
+        request: {
+          method: req.method,
+          path: req.path,
+          params: req.params,
+          query: req.query
+        },
+        user: req.user ? { id: req.user.id } : null
+      });
+
+      // Prismaのエラーをより詳細にログ出力
+      if (error.code && error.meta) {
+        this.logger.error('Prisma error details', {
+          code: error.code,
+          meta: error.meta,
+          target: error.target
         });
       }
+
+      // エラーの種類に応じて適切なハンドリング
+      if (error.name === 'NotFoundError') {
+        return this.errorHandler.handleNotFoundError(req, res, error.message);
+      } else if (error.name === 'ValidationError') {
+        return this.errorHandler.handleValidationError(req, res, error.message);
+      } else if (error.name === 'PrismaClientValidationError') {
+        return this.errorHandler.handleValidationError(req, res, 'データベースクエリが無効です');
+      } else if (error.name === 'PrismaClientKnownRequestError') {
+        return this.errorHandler.handleDatabaseError(req, res, 'データベース操作でエラーが発生しました');
+      }
+
+      // その他の予期せぬエラー
+      return this.errorHandler.handleInternalError(req, res, error);
     }
   }
 
@@ -30,23 +69,40 @@ class BaseController {
     res.render(view, { ...defaultOptions, ...options });
   }
 
-  sendResponse(req, res, { status = 200, message, data, redirectUrl }) {
+  sendResponse(req, res, { status = 200, success = true, message = '', data = null, redirectUrl = null }) {
     const isApiRequest = req.xhr || 
                         req.headers.accept?.toLowerCase().includes('application/json') ||
                         req.headers['x-requested-with']?.toLowerCase() === 'xmlhttprequest';
-    
+
+    this.logger.debug('Sending response', {
+      status,
+      success,
+      message,
+      isApiRequest,
+      redirectUrl,
+      path: req.path
+    });
+
     if (isApiRequest) {
       return res.status(status).json({
-        success: status < 400,
+        success,
         message,
-        data
+        data,
+        redirectUrl
       });
     }
 
     if (message) {
-      req.flash('success', message);
+      const flashType = success ? 'success' : 'error';
+      req.flash(flashType, message);
     }
-    return res.redirect(redirectUrl);
+
+    if (redirectUrl) {
+      return res.redirect(redirectUrl);
+    }
+
+    // リダイレクトURLが指定されていない場合は、元のページにリダイレクト
+    return res.redirect('back');
   }
 }
 
@@ -77,48 +133,109 @@ class AuthController extends BaseController {
       await new Promise((resolve, reject) => {
         req.logIn(user, (err) => err ? reject(err) : resolve());
       });
-      this.sendResponse(req, res, {
+
+      this.logger.info('User signup successful', {
+        userId: user.id,
+        email: user.email
+      });
+
+      return this.sendResponse(req, res, {
+        success: true,
         message: 'ユーザー登録が完了しました',
-        redirectUrl: '/'
+        redirectUrl: '/',
+        data: { userId: user.id }
       });
     });
   }
 
   async login(req, res) {
     return this.handleRequest(req, res, async () => {
-      await this.services.login(req, res);
-      this.sendResponse(req, res, {
-        message: 'ログインしました',
-        redirectUrl: '/'
-      });
+      try {
+        const user = await this.services.login(req, res);
+        
+        this.logger.info('User login successful', {
+          userId: user.id,
+          email: user.email
+        });
+
+        const isApiRequest = req.xhr || 
+                           req.headers.accept?.toLowerCase().includes('application/json') ||
+                           req.headers['x-requested-with']?.toLowerCase() === 'xmlhttprequest';
+
+        const redirectUrl = req.session.returnTo || '/';
+        delete req.session.returnTo;
+
+        if (isApiRequest) {
+          return this.sendResponse(req, res, {
+            success: true,
+            message: 'ログインしました',
+            data: { userId: user.id },
+            redirectUrl
+          });
+        }
+
+        req.flash('success', 'ログインしました');
+        return res.redirect(redirectUrl);
+      } catch (error) {
+        this.logger.error('Login failed', {
+          error: error.message,
+          email: req.body.email
+        });
+
+        const isApiRequest = req.xhr || 
+                           req.headers.accept?.toLowerCase().includes('application/json') ||
+                           req.headers['x-requested-with']?.toLowerCase() === 'xmlhttprequest';
+
+        if (isApiRequest) {
+          return this.sendResponse(req, res, {
+            success: false,
+            message: 'ログインに失敗しました',
+            status: 401
+          });
+        }
+
+        req.flash('error', 'ログインに失敗しました');
+        return res.redirect('/auth/login');
+      }
     });
   }
 
   async logout(req, res) {
     return this.handleRequest(req, res, async () => {
       try {
+        const userId = req.user?.id;
         await this.services.logout(req);
-      } catch (error) {
-        // Continue with logout even if session destruction fails
-        console.error('Session destruction error:', error);
-      }
 
-      res.clearCookie('connect.sid', {
-        path: '/',
-        httpOnly: true,
-        secure: process.env.NODE_ENV === 'production',
-        sameSite: 'strict'
-      });
-      
-      const isApiRequest = req.xhr || req.headers.accept?.includes('application/json');
-      if (isApiRequest) {
-        return res.status(200).json({
-          success: true,
-          message: 'ログアウトしました'
+        this.logger.info('User logout successful', { userId });
+
+        res.clearCookie('connect.sid', {
+          path: '/',
+          httpOnly: true,
+          secure: process.env.NODE_ENV === 'production',
+          sameSite: 'strict'
         });
+
+        const isApiRequest = req.xhr || 
+                           req.headers.accept?.toLowerCase().includes('application/json') ||
+                           req.headers['x-requested-with']?.toLowerCase() === 'xmlhttprequest';
+
+        if (isApiRequest) {
+          return this.sendResponse(req, res, {
+            success: true,
+            message: 'ログアウトしました',
+            redirectUrl: '/auth/login'
+          });
+        }
+
+        req.flash('success', 'ログアウトしました');
+        return res.redirect('/auth/login');
+      } catch (error) {
+        this.logger.error('Logout failed', {
+          error: error.message,
+          userId: req.user?.id
+        });
+        throw error;
       }
-      
-      return res.redirect('/auth/login');
     });
   }
 }
@@ -134,74 +251,212 @@ class MicropostController extends BaseController {
 
   async index(req, res) {
     return this.handleRequest(req, res, async () => {
-      const [microposts, categories] = await Promise.all([
-        this.micropostService.getAllMicroposts(),
-        this.micropostService.prisma.category.findMany({
-          orderBy: { name: 'asc' }
-        })
-      ]);
+      console.log('=== Starting micropost index request ===');
+      console.log('Path:', req.path);
+      console.log('Query:', req.query);
+      console.log('User:', req.user ? { id: req.user.id, email: req.user.email } : 'Not logged in');
 
-      // 各投稿のいいね情報を取得
-      const micropostsWithLikes = await Promise.all(
-        microposts.map(async (micropost) => {
-          const [isLiked, likeCount] = await Promise.all([
-            req.user ? this.likeService.isLiked(req.user.id, micropost.id) : false,
-            this.likeService.getLikeCount(micropost.id)
-          ]);
-          return { ...micropost, isLiked, likeCount };
-        })
-      );
+      try {
+        console.log('Fetching microposts and categories...');
+        const [microposts, categories] = await Promise.all([
+          this.micropostService.getAllMicroposts(),
+          this.micropostService.prisma.category.findMany({
+            orderBy: { name: 'asc' },
+            include: {
+              _count: {
+                select: {
+                  microposts: true
+                }
+              }
+            }
+          })
+        ]);
 
-      res.render('pages/public/microposts/index', { 
-        microposts: micropostsWithLikes,
-        categories,
-        title: '投稿一覧',
-        path: req.path,
-        user: req.user
-      });
+        console.log('Initial data fetched:');
+        console.log('- Microposts count:', microposts?.length || 0);
+        console.log('- Categories count:', categories?.length || 0);
+        if (microposts?.[0]) {
+          console.log('- First micropost:', {
+            id: microposts[0].id,
+            title: microposts[0].title,
+            userId: microposts[0].userId
+          });
+        }
+
+        console.log('Processing likes for microposts...');
+        const micropostsWithLikes = await Promise.all(
+          microposts.map(async (micropost) => {
+            try {
+              const [isLiked, likeCount] = await Promise.all([
+                req.user ? this.likeService.isLiked(req.user.id, micropost.id) : false,
+                this.likeService.getLikeCount(micropost.id)
+              ]);
+              return { ...micropost, isLiked, likeCount };
+            } catch (error) {
+              console.error('Error processing likes for micropost:', {
+                micropostId: micropost.id,
+                error: error.message
+              });
+              return { ...micropost, isLiked: false, likeCount: 0 };
+            }
+          })
+        );
+
+        try {
+          res.render('pages/public/microposts/index', { 
+            microposts: micropostsWithLikes,
+            categories,
+            title: '投稿一覧',
+            path: req.path,
+            user: req.user,
+            csrfToken: req.csrfToken(),
+            currentPage: 1,
+            totalPages: 1
+          });
+          console.log('Micropost index rendered successfully');
+        } catch (renderError) {
+          console.error('Template rendering error:', {
+            error: renderError.message,
+            stack: renderError.stack,
+            templatePath: 'pages/public/microposts/index'
+          });
+          throw renderError;
+        }
+      } catch (error) {
+        console.error('Error in micropost index:', {
+          error: error.message,
+          stack: error.stack,
+          path: req.path,
+          query: req.query,
+          user: req.user ? { id: req.user.id } : null
+        });
+        throw error;
+      }
     });
   }
 
   async show(req, res) {
     return this.handleRequest(req, res, async () => {
+      console.log('\n=== Micropost Show Request ===');
+      console.log('Params:', req.params);
+      console.log('User:', req.user ? { id: req.user.id, email: req.user.email } : 'Not logged in');
+      console.log('CSRF Token:', req.csrfToken());
+
       const micropostId = parseInt(req.params.id, 10);
       if (isNaN(micropostId)) {
+        console.error('Invalid micropost ID:', req.params.id);
         return this.errorHandler.handleNotFoundError(req, res, '投稿が見つかりません');
       }
 
       // Get client's IP address
       const ipAddress = req.headers['x-forwarded-for']?.split(',')[0].trim() || 
                        req.socket.remoteAddress;
+      console.log('Client IP:', ipAddress);
 
-      // Track the view
-      await this.micropostService.trackView(micropostId, ipAddress);
+      try {
+        // Track the view
+        await this.micropostService.trackView(micropostId, ipAddress);
+        console.log('View tracked successfully');
 
-      // Get micropost with updated view count and check if user has liked it
-      const [micropost, isLiked, likeCount, comments] = await Promise.all([
-        this.micropostService.getMicropostWithViews(micropostId),
-        req.user ? this.likeService.isLiked(req.user.id, micropostId) : false,
-        this.likeService.getLikeCount(micropostId),
-        this.commentService.getCommentsByMicropostId(micropostId)
-      ]);
+        // Get micropost with updated view count and check if user has liked it
+        console.log('Fetching micropost data...');
+        const [micropost, isLiked, likeCount, comments, likedUsers] = await Promise.all([
+          this.micropostService.getMicropostWithViews(micropostId),
+          req.user ? this.likeService.isLiked(req.user.id, micropostId) : false,
+          this.likeService.getLikeCount(micropostId),
+          this.commentService.getCommentsByMicropostId(micropostId),
+          this.likeService.getLikedUsers(micropostId)
+        ]);
 
-      if (!micropost) {
-        return this.errorHandler.handleNotFoundError(req, res, '投稿が見つかりません');
+        if (!micropost) {
+          console.error('Micropost not found:', micropostId);
+          return this.errorHandler.handleNotFoundError(req, res, '投稿が見つかりません');
+        }
+
+        console.log('Micropost data:', {
+          id: micropost.id,
+          title: micropost.title,
+          userId: micropost.userId,
+          user: micropost.user,
+          categories: micropost.categories,
+          isLiked,
+          likeCount,
+          commentsCount: comments.length,
+          likedUsersCount: likedUsers.length,
+          _count: micropost._count
+        });
+
+        const templateData = {
+          micropost,
+          isLiked,
+          likeCount,
+          comments,
+          likedUsers,
+          title: micropost.title,
+          path: req.path,
+          user: req.user,
+          csrfToken: req.csrfToken(),
+          currentPage: 1,
+          totalPages: 1,
+          categories: micropost.categories.map(mc => mc.category)
+        };
+
+        console.log('Template data prepared:', JSON.stringify(templateData, (key, value) => {
+          if (key === 'comments' || key === 'categories' || key === 'likedUsers') {
+            return `[Array(${value.length})]`;
+          }
+          if (typeof value === 'object' && value !== null) {
+            return Object.keys(value).reduce((acc, k) => {
+              if (!['password', 'createdAt', 'updatedAt'].includes(k)) {
+                acc[k] = value[k];
+              }
+              return acc;
+            }, {});
+          }
+          return value;
+        }, 2));
+
+        try {
+          await res.render('pages/public/microposts/show', templateData);
+          console.log('Show template rendered successfully');
+        } catch (renderError) {
+          console.error('Template rendering error:', {
+            error: renderError.message,
+            stack: renderError.stack,
+            templatePath: 'pages/public/microposts/show',
+            templateData: JSON.stringify(templateData, (key, value) => {
+              if (key === 'comments' || key === 'categories' || key === 'likedUsers') {
+                return `[Array(${value.length})]`;
+              }
+              return value;
+            })
+          });
+          throw renderError;
+        }
+      } catch (error) {
+        console.error('Error in show method:', {
+          error: error.message,
+          stack: error.stack,
+          micropostId,
+          userId: req.user?.id
+        });
+        throw error;
       }
-
-      res.render('pages/public/microposts/show', {
-        micropost,
-        isLiked,
-        likeCount,
-        comments,
-        title: micropost.title,
-        path: req.path,
-        user: req.user
-      });
     });
   }
 
   async create(req, res) {
     return this.handleRequest(req, res, async () => {
+      console.log('=== Starting micropost create request ===');
+      console.log('Headers:', {
+        'content-type': req.headers['content-type'],
+        'x-csrf-token': req.headers['x-csrf-token'],
+        'cookie': req.headers['cookie']
+      });
+      console.log('Cookies:', req.cookies);
+      console.log('Body:', req.body);
+      console.log('File:', req.file);
+      
       const { title, categories } = req.body;
       if (!title?.trim()) {
         throw this.errorHandler.createValidationError('投稿内容を入力してください', {
@@ -214,14 +469,26 @@ class MicropostController extends BaseController {
 
       let imageUrl = null;
       if (req.file) {
+        console.log('Processing uploaded file:', {
+          originalname: req.file.originalname,
+          mimetype: req.file.mimetype,
+          size: req.file.size
+        });
         imageUrl = this.fileUploader.generateFileUrl(req.file);
       }
 
-      await this.micropostService.createMicropost({
+      const micropost = await this.micropostService.createMicropost({
         title: title.trim(),
         imageUrl,
         userId: req.user.id,
         categories: Array.isArray(categories) ? categories : categories ? [categories] : []
+      });
+
+      console.log('Created micropost:', {
+        id: micropost.id,
+        title: micropost.title,
+        imageUrl: micropost.imageUrl,
+        userId: micropost.userId
       });
       
       this.sendResponse(req, res, {
@@ -235,6 +502,18 @@ class MicropostController extends BaseController {
 class ProfileController extends BaseController {
   constructor(services, errorHandler, logger) {
     super(services, errorHandler, logger);
+    this.profileService = services.profile;
+    this.followService = services.follow;
+    this.logger = logger;
+
+    // サービスの存在確認
+    if (!this.profileService) {
+      throw new Error('Profile service is not initialized in ProfileController');
+    }
+
+    if (!this.followService) {
+      throw new Error('Follow service is not initialized in ProfileController');
+    }
   }
 
   async show(req, res) {
@@ -312,9 +591,11 @@ class ProfileController extends BaseController {
         return this.errorHandler.handlePermissionError(req, res, '他のユーザーのプロフィールは編集できません');
       }
 
-      this.renderWithUser(req, res, 'pages/public/profile/edit', {
+      this.renderWithUser(req, res, 'pages/public/users/profile/edit', {
         title: 'プロフィール編集',
-        profileUser: user
+        profileUser: user,
+        userProfile: user.profile,
+        req: req
       });
     });
   }
@@ -345,7 +626,7 @@ class ProfileController extends BaseController {
 
       let avatarPath = user.profile?.avatarPath;
       if (req.file) {
-        avatarPath = path.basename(req.file.path);
+        avatarPath = req.file.filename || path.basename(req.file.path);
       }
 
       const updatedUser = await this.services.profile.updateProfile(userId, {
@@ -355,68 +636,244 @@ class ProfileController extends BaseController {
       
       this.sendResponse(req, res, {
         message: 'プロフィールを更新しました',
-        redirectUrl: `/profile/${updatedUser.name || updatedUser.id}`
+        redirectUrl: `/profile/${updatedUser.name}`
       });
     });
   }
 
   async follow(req, res) {
     return this.handleRequest(req, res, async () => {
+      console.log('\n=== Follow Request Start ===');
+      console.log('Request:', {
+        method: req.method,
+        path: req.path,
+        params: req.params,
+        body: req.body,
+        headers: {
+          'content-type': req.headers['content-type'],
+          'x-csrf-token': req.headers['x-csrf-token']
+        },
+        user: req.user ? { id: req.user.id, email: req.user.email } : null
+      });
+
       if (!req.user) {
-        this.logger.debug('Follow attempt without authentication');
-        return this.errorHandler.handlePermissionError(req, res, 'ログインが必要です');
+        console.log('Authentication check failed: No user in request');
+        this.logger.warn('Follow attempt without authentication');
+        return res.status(403).json({
+          success: false,
+          message: 'ログインが必要です'
+        });
       }
 
-      const targetUserId = req.params.id;
+      const targetUserId = parseInt(req.params.id, 10);
+      console.log('Target user ID:', targetUserId);
+      
+      if (isNaN(targetUserId)) {
+        console.log('Invalid target user ID:', req.params.id);
+        this.logger.warn('Invalid target user ID:', req.params.id);
+        return res.status(400).json({
+          success: false,
+          message: '無効なユーザーIDです'
+        });
+      }
+
       this.logger.debug('Follow request:', {
         followerId: req.user.id,
         targetUserId,
         path: req.path
       });
 
-      await this.service.follow(req.user.id, targetUserId);
-      const followCounts = await this.service.getFollowCounts(targetUserId);
-      
-      this.logger.debug('Follow successful:', {
-        followCounts,
-        targetUserId
-      });
+      try {
+        console.log('Checking target user existence...');
+        const targetUser = await this.profileService.getUserProfile(targetUserId);
+        console.log('Target user:', targetUser ? { 
+          id: targetUser.id, 
+          name: targetUser.name 
+        } : 'Not found');
 
-      this.sendResponse(req, res, {
-        status: 200,
-        message: 'フォローしました',
-        data: { followCounts }
-      });
+        if (!targetUser) {
+          console.log('Target user not found');
+          this.logger.warn('Target user not found:', targetUserId);
+          return res.status(404).json({
+            success: false,
+            message: 'ユーザーが見つかりません'
+          });
+        }
+
+        if (req.user.id === targetUserId) {
+          console.log('Self-follow attempt detected');
+          this.logger.warn('User attempted to follow themselves:', req.user.id);
+          return res.status(400).json({
+            success: false,
+            message: '自分自身をフォローすることはできません'
+          });
+        }
+
+        console.log('Creating follow relationship...');
+        await this.followService.follow(req.user.id, targetUserId);
+        
+        console.log('Getting updated follow counts...');
+        const followCounts = await this.followService.getFollowCounts(targetUserId);
+        console.log('Updated follow counts:', followCounts);
+
+        this.logger.info('Follow successful:', {
+          followerId: req.user.id,
+          targetUserId,
+          followCounts
+        });
+
+        console.log('=== Follow Request End ===\n');
+        return res.status(200).json({
+          success: true,
+          message: 'フォローしました',
+          data: { followCounts }
+        });
+      } catch (error) {
+        console.error('Follow operation failed:', {
+          error: {
+            name: error.name,
+            message: error.message,
+            code: error.code,
+            stack: error.stack
+          },
+          followerId: req.user.id,
+          targetUserId
+        });
+
+        this.logger.error('Follow failed:', {
+          error: error.message,
+          stack: error.stack,
+          followerId: req.user.id,
+          targetUserId
+        });
+
+        if (error.code === 'P2002') {
+          console.log('Already following user');
+          return res.status(400).json({
+            success: false,
+            message: 'すでにフォローしています'
+          });
+        }
+
+        console.log('=== Follow Request End (with error) ===\n');
+        return res.status(500).json({
+          success: false,
+          message: 'フォロー操作に失敗しました'
+        });
+      }
     });
   }
 
   async unfollow(req, res) {
     return this.handleRequest(req, res, async () => {
+      console.log('\n=== Unfollow Request Start ===');
+      console.log('Request:', {
+        method: req.method,
+        path: req.path,
+        params: req.params,
+        body: req.body,
+        headers: {
+          'content-type': req.headers['content-type'],
+          'x-csrf-token': req.headers['x-csrf-token']
+        },
+        user: req.user ? { id: req.user.id, email: req.user.email } : null
+      });
+
       if (!req.user) {
-        this.logger.debug('Unfollow attempt without authentication');
-        return this.errorHandler.handlePermissionError(req, res, 'ログインが必要です');
+        console.log('Authentication check failed: No user in request');
+        this.logger.warn('Unfollow attempt without authentication');
+        return res.status(403).json({
+          success: false,
+          message: 'ログインが必要です'
+        });
       }
 
-      const targetUserId = req.params.id;
+      const targetUserId = parseInt(req.params.id, 10);
+      console.log('Target user ID:', targetUserId);
+
+      if (isNaN(targetUserId)) {
+        console.log('Invalid target user ID:', req.params.id);
+        this.logger.warn('Invalid target user ID:', req.params.id);
+        return res.status(400).json({
+          success: false,
+          message: '無効なユーザーIDです'
+        });
+      }
+
       this.logger.debug('Unfollow request:', {
         followerId: req.user.id,
         targetUserId,
         path: req.path
       });
 
-      await this.service.unfollow(req.user.id, targetUserId);
-      const followCounts = await this.service.getFollowCounts(targetUserId);
+      try {
 
-      this.logger.debug('Unfollow successful:', {
-        followCounts,
-        targetUserId
-      });
+        const targetUser = await this.profileService.getUserProfile(targetUserId);
 
-      this.sendResponse(req, res, {
-        status: 200,
-        message: 'フォロー解除しました',
-        data: { followCounts }
-      });
+        if (!targetUser) {
+          this.logger.warn('Target user not found:', targetUserId);
+          return res.status(404).json({
+            success: false,
+            message: 'ユーザーが見つかりません'
+          });
+        }
+
+        if (req.user.id === targetUserId) {
+          this.logger.warn('User attempted to unfollow themselves:', req.user.id);
+          return res.status(400).json({
+            success: false,
+            message: '自分自身のフォローを解除することはできません'
+          });
+        }
+
+        await this.followService.unfollow(req.user.id, targetUserId);
+        
+        const followCounts = await this.followService.getFollowCounts(targetUserId);
+
+        this.logger.info('Unfollow successful:', {
+          followerId: req.user.id,
+          targetUserId,
+          followCounts
+        });
+
+        return res.status(200).json({
+          success: true,
+          message: 'フォロー解除しました',
+          data: { followCounts }
+        });
+      } catch (error) {
+        console.error('Unfollow operation failed:', {
+          error: {
+            name: error.name,
+            message: error.message,
+            code: error.code,
+            stack: error.stack
+          },
+          followerId: req.user.id,
+          targetUserId
+        });
+
+        this.logger.error('Unfollow failed:', {
+          error: error.message,
+          stack: error.stack,
+          followerId: req.user.id,
+          targetUserId
+        });
+
+        if (error.code === 'P2025') {
+          console.log('Not following user');
+          return res.status(400).json({
+            success: false,
+            message: 'フォローしていません'
+          });
+        }
+
+        console.log('=== Unfollow Request End (with error) ===\n');
+        return res.status(500).json({
+          success: false,
+          message: 'フォロー解除に失敗しました'
+        });
+      }
     });
   }
 
@@ -432,7 +889,7 @@ class ProfileController extends BaseController {
       const identifier = req.params.id;
       this.logger.debug('Looking up user:', { identifier });
       
-      const profileUser = await this.service.findUserByIdentifier(identifier);
+      const profileUser = await this.services.profile.findUserByIdentifier(identifier);
 
       if (!profileUser) {
         this.logger.debug('Profile not found:', { identifier });
@@ -444,8 +901,26 @@ class ProfileController extends BaseController {
         name: profileUser.name
       });
 
-      const following = await this.service.getFollowing(profileUser.id);
-      const followCounts = await this.service.getFollowCounts(profileUser.id);
+      const following = await this.services.profile.getFollowing(profileUser.id);
+      const followCounts = await this.services.profile.getFollowCounts(profileUser.id);
+
+      // 現在のユーザーが各フォロー中ユーザーをフォローしているかどうかを確認
+      let followingWithStatus = following.map(f => ({
+        ...f,
+        isFollowing: false
+      }));
+
+      if (req.user) {
+        const followingStatuses = await Promise.all(
+          following.map(f => 
+            this.services.profile.isFollowing(req.user.id, f.following.id)
+          )
+        );
+        followingWithStatus = following.map((f, i) => ({
+          ...f,
+          isFollowing: followingStatuses[i]
+        }));
+      }
 
       this.logger.debug('Following data:', {
         followingCount: following.length,
@@ -454,7 +929,10 @@ class ProfileController extends BaseController {
 
       this.renderWithUser(req, res, 'pages/public/users/following', {
         profileUser,
-        following: following.map(f => f.following),
+        following: followingWithStatus.map(f => ({
+          ...f.following,
+          isFollowing: f.isFollowing
+        })),
         followCounts,
         title: `${profileUser.name}のフォロー中`
       });
@@ -473,7 +951,7 @@ class ProfileController extends BaseController {
       const identifier = req.params.id;
       this.logger.debug('Looking up user:', { identifier });
       
-      const profileUser = await this.service.findUserByIdentifier(identifier);
+      const profileUser = await this.services.profile.findUserByIdentifier(identifier);
 
       if (!profileUser) {
         this.logger.debug('Profile not found:', { identifier });
@@ -485,8 +963,26 @@ class ProfileController extends BaseController {
         name: profileUser.name
       });
 
-      const followers = await this.service.getFollowers(profileUser.id);
-      const followCounts = await this.service.getFollowCounts(profileUser.id);
+      const followers = await this.services.profile.getFollowers(profileUser.id);
+      const followCounts = await this.services.profile.getFollowCounts(profileUser.id);
+
+      // 現在のユーザーが各フォロワーをフォローしているかどうかを確認
+      let followersWithStatus = followers.map(f => ({
+        ...f,
+        isFollowing: false
+      }));
+
+      if (req.user) {
+        const followingStatuses = await Promise.all(
+          followers.map(f => 
+            this.services.profile.isFollowing(req.user.id, f.follower.id)
+          )
+        );
+        followersWithStatus = followers.map((f, i) => ({
+          ...f,
+          isFollowing: followingStatuses[i]
+        }));
+      }
 
       this.logger.debug('Followers data:', {
         followersCount: followers.length,
@@ -495,7 +991,10 @@ class ProfileController extends BaseController {
 
       this.renderWithUser(req, res, 'pages/public/users/followers', {
         profileUser,
-        followers: followers.map(f => f.follower),
+        followers: followersWithStatus.map(f => ({
+          ...f.follower,
+          isFollowing: f.isFollowing
+        })),
         followCounts,
         title: `${profileUser.name}のフォロワー`
       });
@@ -590,7 +1089,15 @@ class DevController extends BaseController {
       });
 
       if (!user) {
-        return this.errorHandler.handleNotFoundError(req, res, 'ユーザーが見つかりません');
+        const defaultUsers = {
+          'user@example.com': '一般ユーザー',
+          'admin@example.com': '管理者'
+        };
+        const userType = defaultUsers[email] || 'ユーザー';
+        return this.sendResponse(req, res, {
+          message: `${userType}アカウント（${email}）が存在しません。\nデータベースのセットアップを実行してください。`,
+          redirectUrl: '/dev'
+        });
       }
 
       await new Promise((resolve, reject) => {
@@ -666,33 +1173,152 @@ class AdminController extends BaseController {
 }
 
 class CategoryController extends BaseController {
-  constructor(services, errorHandler, logger) {
-    super(errorHandler, logger);
-    this.categoryService = services.category;
+  constructor(categoryService, errorHandler, logger) {
+    super({ category: categoryService }, errorHandler, logger);
+    this.categoryService = categoryService;
+    
+    if (!this.logger) {
+      throw new Error('Logger is not initialized in CategoryController');
+    }
   }
 
   async index(req, res) {
     return this.handleRequest(req, res, async () => {
-      const categories = await this.categoryService.getAllCategories();
-      res.render('pages/public/categories/index', {
-        categories,
-        title: 'カテゴリー一覧',
-        path: req.path
+      this.logger.info('Starting category index request', {
+        path: req.path,
+        query: req.query
       });
+
+      try {
+        const categories = await this.categoryService.getAllCategories();
+        
+        // データを整形
+        const formattedCategories = categories.map(category => ({
+          id: category.id,
+          name: category.name,
+          description: category.description,
+          micropostsCount: category._count.microposts,
+          recentMicroposts: category.microposts
+            .slice(0, 5)
+            .map(mc => ({
+              id: mc.micropost.id,
+              title: mc.micropost.title,
+              user: mc.micropost.user,
+              stats: {
+                likes: mc.micropost._count.likes,
+                comments: mc.micropost._count.comments,
+                views: mc.micropost._count.views
+              }
+            }))
+        }));
+
+        this.logger.info('Category index processed successfully', {
+          count: formattedCategories.length,
+          categories: formattedCategories.map(c => ({
+            id: c.id,
+            name: c.name,
+            postsCount: c.micropostsCount
+          }))
+        });
+
+        res.render('pages/public/categories/index', {
+          categories: formattedCategories,
+          title: 'カテゴリー一覧',
+          path: req.path,
+          user: req.user
+        });
+      } catch (error) {
+        this.logger.error('Error in category index', {
+          error: error.message,
+          stack: error.stack,
+          path: req.path
+        });
+        throw error;
+      }
     });
   }
 
   async show(req, res) {
     return this.handleRequest(req, res, async () => {
-      const category = await this.categoryService.getCategoryById(req.params.id);
-      if (!category) {
-        return this.errorHandler.handleNotFoundError(req, res, 'カテゴリーが見つかりません');
+
+      try {
+        const categoryId = parseInt(req.params.id, 10);
+        if (isNaN(categoryId)) {
+          console.error('Invalid category ID:', req.params.id);
+          return this.errorHandler.handleNotFoundError(req, res, 'カテゴリーが見つかりません');
+        }
+
+        const category = await this.categoryService.getCategoryById(categoryId);
+        if (!category) {
+          console.warn('Category not found:', categoryId);
+          return this.errorHandler.handleNotFoundError(req, res, 'カテゴリーが見つかりません');
+        }
+
+        // ビューの期待する形式に整形
+        const formattedCategory = {
+          id: category.id,
+          name: category.name,
+          description: category.description,
+          microposts: category.microposts.map(mc => ({
+            micropost: {
+              id: mc.micropost.id,
+              title: mc.micropost.title,
+              content: mc.micropost.content,
+              user: mc.micropost.user,
+              createdAt: mc.micropost.createdAt,
+              imageUrl: mc.micropost.imageUrl
+            }
+          }))
+        };
+
+
+        res.render('pages/public/categories/show', {
+          category: formattedCategory,
+          title: `${formattedCategory.name}の投稿一覧`,
+          path: req.path,
+          user: req.user
+        });
+      } catch (error) {
+        console.error('Show error:', error);
+        throw error;
       }
-      res.render('pages/public/categories/show', {
-        category,
-        title: `カテゴリー: ${category.name}`,
-        path: req.path
+    });
+  }
+
+  async listCategories(req, res) {
+    return this.handleRequest(req, res, async () => {
+      this.logger.info('Starting categories API request', {
+        path: req.path,
+        query: req.query
       });
+
+      try {
+        const categories = await this.categoryService.getAllCategories();
+        
+        const formattedCategories = categories.map(category => ({
+          id: category.id,
+          name: category.name,
+          description: category.description,
+          micropostsCount: category._count.microposts
+        }));
+
+        this.logger.info('Categories API processed successfully', {
+          count: formattedCategories.length,
+          path: req.path
+        });
+
+        res.json({
+          success: true,
+          data: formattedCategories
+        });
+      } catch (error) {
+        this.logger.error('Error in categories API', {
+          error: error.message,
+          stack: error.stack,
+          path: req.path
+        });
+        throw error;
+      }
     });
   }
 }
