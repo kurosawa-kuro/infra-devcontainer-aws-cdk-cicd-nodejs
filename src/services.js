@@ -13,25 +13,37 @@ class BaseService {
   constructor(prisma, logger) {
     this.prisma = prisma;
     this.logger = logger;
+    
+    // ロガーが正しく初期化されているか確認
+    if (!this.logger) {
+      throw new Error('Logger is not initialized in BaseService');
+    }
+  }
+
+  validateId(id) {
+    const numId = parseInt(id, 10);
+    if (isNaN(numId)) {
+      const error = new Error(`Invalid ID: ${id}`);
+      this.logger.error('ID validation failed', {
+        inputId: id,
+        type: typeof id,
+        error: error.message
+      });
+      throw error;
+    }
+    return numId;
   }
 
   logError(error, context = {}) {
-    this.logger.error({
-      message: error.message,
+    this.logger.error('Service error occurred', {
+      ...context,
+      error: error.message,
       stack: error.stack,
-      ...context
+      name: error.name
     });
   }
 
   // 共通のユーティリティメソッド
-  validateId(id) {
-    const parsedId = parseInt(id, 10);
-    if (isNaN(parsedId)) {
-      throw new Error('Invalid ID format');
-    }
-    return parsedId;
-  }
-
   async findUserById(userId) {
     return this.prisma.user.findUnique({
       where: { id: this.validateId(userId) },
@@ -537,29 +549,126 @@ class MicropostService extends BaseService {
 // カテゴリ関連サービス
 class CategoryService extends BaseService {
   async getAllCategories() {
-    return this.prisma.category.findMany({
-      include: {
-        _count: {
-          select: { microposts: true }
+    this.logger.info('Starting getAllCategories');
+    try {
+      this.logger.debug('Executing category query with includes');
+      const categories = await this.prisma.category.findMany({
+        include: {
+          microposts: {
+            include: {
+              micropost: {
+                include: {
+                  user: {
+                    select: {
+                      id: true,
+                      name: true,
+                      email: true
+                    }
+                  },
+                  _count: {
+                    select: {
+                      likes: true,
+                      comments: true,
+                      views: true
+                    }
+                  }
+                }
+              }
+            }
+          },
+          _count: {
+            select: {
+              microposts: true
+            }
+          }
+        },
+        orderBy: {
+          name: 'asc'
         }
-      },
-      orderBy: { name: 'asc' }
-    });
+      });
+
+      const hasRecords = categories.length > 0;
+      this.logger.info('Categories query completed', {
+        hasRecords,
+        count: categories.length,
+        recordIds: hasRecords ? categories.map(c => c.id) : [],
+        recordNames: hasRecords ? categories.map(c => c.name) : []
+      });
+
+      if (!hasRecords) {
+        this.logger.warn('No categories found in the database');
+        return [];
+      }
+
+      this.logger.info('Categories retrieved successfully', {
+        count: categories.length,
+        categoriesWithPosts: categories.map(c => ({
+          id: c.id,
+          name: c.name,
+          postsCount: c._count.microposts
+        }))
+      });
+
+      return categories;
+    } catch (error) {
+      this.logError(error, {
+        method: 'getAllCategories',
+        message: 'Failed to retrieve categories'
+      });
+      throw error;
+    }
   }
 
   async getCategoryById(id) {
-    return this.prisma.category.findUnique({
-      where: { id: this.validateId(id) },
-      include: {
-        microposts: {
-          include: {
-            micropost: {
-              include: { user: true }
+    console.log('=== CategoryService.getCategoryById Start ===');
+    console.log('Input ID:', id, 'Type:', typeof id);
+    
+    let validatedId;
+    try {
+      validatedId = this.validateId(id);
+      console.log('Validated ID:', validatedId);
+    } catch (error) {
+      console.error('ID validation failed:', {
+        inputId: id,
+        error: error.message,
+        stack: error.stack
+      });
+      throw error;
+    }
+
+    try {
+      console.log('Executing Prisma query for category:', validatedId);
+      const category = await this.prisma.category.findUnique({
+        where: { 
+          id: validatedId
+        },
+        include: {
+          microposts: {
+            include: {
+              micropost: {
+                include: {
+                  user: {
+                    include: {
+                      profile: true
+                    }
+                  }
+                }
+              }
             }
           }
         }
+      });
+
+      if (!category) {
+        console.warn('Category not found:', validatedId);
+        return null;
       }
-    });
+
+      return category;
+    } catch (error) {
+      console.error('Query error:', error);
+      throw error;
+    }
   }
 }
 
@@ -700,69 +809,60 @@ class PassportService extends BaseService {
     passport.use(new LocalStrategy(
       { 
         usernameField: 'email',
-        passwordField: 'password'
+        passwordField: 'password',
       },
       async (email, password, done) => {
         try {
-          console.log('Attempting to authenticate user:', { email });
-          
           const user = await this.prisma.user.findUnique({
             where: { email: email },
             include: {
               profile: true,
               userRoles: {
                 include: {
-                  role: true
-                }
-              }
-            }
+                  role: true,
+                },
+              },
+            },
           });
 
           if (!user) {
-            console.log('User not found:', { email });
             return done(null, false, { message: 'ユーザーが見つかりません' });
           }
 
           const isMatch = await bcrypt.compare(password, user.password);
-          console.log('Password verification result:', { isMatch });
           
           if (!isMatch) {
             return done(null, false, { message: 'パスワードが間違っています' });
           }
 
-          console.log('Authentication successful:', { userId: user.id, roles: user.userRoles.map(ur => ur.role.name) });
           return done(null, user);
         } catch (err) {
           console.error('Authentication error:', err);
           return done(err);
         }
-      }
+      },
     ));
 
     passport.serializeUser((user, done) => {
-      console.log('Serializing user:', { userId: user.id, roles: user.userRoles.map(ur => ur.role.name) });
       done(null, user.id);
     });
 
     passport.deserializeUser(async (id, done) => {
       try {
-        console.log('Deserializing user:', { userId: id });
         const user = await this.prisma.user.findUnique({
           where: { id: id },
           include: {
             profile: true,
             userRoles: {
               include: {
-                role: true
-              }
-            }
-          }
+                role: true,
+              },
+            },
+          },
         });
         if (!user) {
-          console.log('User not found during deserialization:', { userId: id });
           return done(null, false);
         }
-        console.log('Deserialization successful:', { userId: user.id, roles: user.userRoles.map(ur => ur.role.name) });
         done(null, user);
       } catch (err) {
         console.error('Deserialization error:', err);

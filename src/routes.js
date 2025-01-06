@@ -8,24 +8,8 @@ function setupRoutes(app, controllers, fileUploader) {
   const { auth, profile, micropost, system, dev, admin, category, like, notification } = controllers;
 
   // ===================================
-  // Public Routes
-  // ===================================
-
-  // Root and Home
-  app.get('/', (req, res) => res.redirect('/home'));
-  app.get('/home', asyncHandler((req, res) => micropost.index(req, res)));
-
-  // System Health
-  app.get('/health', asyncHandler((req, res) => system.getHealth(req, res)));
-  app.get('/health-db', asyncHandler((req, res) => system.getDbHealth(req, res)));
-
-  // Categories
-  const categoryRouter = express.Router();
-  categoryRouter.get('/', asyncHandler((req, res) => category.index(req, res)));
-  categoryRouter.get('/:id', asyncHandler((req, res) => category.show(req, res)));
-  app.use('/categories', categoryRouter);
-
   // Static Assets
+  // ===================================
   if (process.env.STORAGE_PROVIDER !== 's3') {
     const uploadsPath = path.join(__dirname, 'public', 'uploads');
     app.use('/uploads', express.static(uploadsPath, {
@@ -43,6 +27,31 @@ function setupRoutes(app, controllers, fileUploader) {
       res.set('Cache-Control', 'public, max-age=31557600');
     }
   }));
+
+  app.use('/images', express.static(path.join(__dirname, 'public', 'images'), {
+    setHeaders: (res, path, stat) => {
+      res.set('Access-Control-Allow-Origin', '*');
+      res.set('Cache-Control', 'public, max-age=31557600');
+    }
+  }));
+
+  // ===================================
+  // Public Routes
+  // ===================================
+
+  // Root and Home
+  app.get('/', (req, res) => res.redirect('/home'));
+  app.get('/home', asyncHandler((req, res) => micropost.index(req, res)));
+
+  // System Health
+  app.get('/health', asyncHandler((req, res) => system.getHealth(req, res)));
+  app.get('/health-db', asyncHandler((req, res) => system.getDbHealth(req, res)));
+
+  // Categories
+  const categoryRouter = express.Router();
+  categoryRouter.get('/', asyncHandler((req, res) => category.index(req, res)));
+  categoryRouter.get('/:id([0-9]+)', asyncHandler((req, res) => category.show(req, res)));  // 数字のIDのみマッチ
+  app.use('/categories', categoryRouter);
 
   // ===================================
   // Authentication Routes

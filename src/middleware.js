@@ -65,6 +65,130 @@ const authMiddleware = {
   }
 };
 
+class ErrorHandler {
+  constructor(logger) {
+    this.logger = logger;
+  }
+
+  handleNotFoundError(req, res, message = 'リソースが見つかりません') {
+    this.logger.warn('Not Found Error', {
+      message,
+      path: req.path,
+      params: req.params,
+      user: req.user ? { id: req.user.id } : null
+    });
+
+    if (this.isApiRequest(req)) {
+      return res.status(404).json({
+        success: false,
+        message
+      });
+    }
+    return res.status(404).render('pages/errors/404', {
+      message,
+      path: req.path,
+      user: req.user
+    });
+  }
+
+  handleValidationError(req, res, message = 'バリデーションエラーが発生しました') {
+    this.logger.warn('Validation Error', {
+      message,
+      path: req.path,
+      params: req.params,
+      body: req.body,
+      user: req.user ? { id: req.user.id } : null
+    });
+
+    if (this.isApiRequest(req)) {
+      return res.status(400).json({
+        success: false,
+        message
+      });
+    }
+    req.flash('error', message);
+    return res.redirect('back');
+  }
+
+  handleDatabaseError(req, res, message = 'データベースエラーが発生しました') {
+    this.logger.error('Database Error', {
+      message,
+      path: req.path,
+      params: req.params,
+      query: req.query,
+      user: req.user ? { id: req.user.id } : null
+    });
+
+    if (this.isApiRequest(req)) {
+      return res.status(500).json({
+        success: false,
+        message
+      });
+    }
+    req.flash('error', message);
+    return res.redirect('back');
+  }
+
+  handlePermissionError(req, res, message = '権限がありません') {
+    this.logger.warn('Permission Error', {
+      message,
+      path: req.path,
+      user: req.user ? { id: req.user.id } : null
+    });
+
+    if (this.isApiRequest(req)) {
+      return res.status(403).json({
+        success: false,
+        message
+      });
+    }
+    req.flash('error', message);
+    return res.redirect('back');
+  }
+
+  handleInternalError(req, res, error) {
+    this.logger.error('Internal Server Error', {
+      error: {
+        name: error.name,
+        message: error.message,
+        stack: error.stack
+      },
+      request: {
+        path: req.path,
+        params: req.params,
+        query: req.query,
+        body: req.body
+      },
+      user: req.user ? { id: req.user.id } : null
+    });
+
+    const message = process.env.NODE_ENV === 'production' 
+      ? 'サーバーエラーが発生しました'
+      : error.message;
+
+    if (this.isApiRequest(req)) {
+      return res.status(500).json({
+        success: false,
+        message,
+        ...(process.env.NODE_ENV !== 'production' && { error: error.stack })
+      });
+    }
+
+    return res.status(500).render('pages/errors/500', {
+      message,
+      error: process.env.NODE_ENV !== 'production' ? error : {},
+      path: req.path,
+      user: req.user
+    });
+  }
+
+  isApiRequest(req) {
+    return req.xhr || 
+           req.headers.accept?.toLowerCase().includes('application/json') ||
+           req.headers['x-requested-with']?.toLowerCase() === 'xmlhttprequest';
+  }
+}
+
 const errorMiddleware = {
   handle404Error: (req, res, next) => {
     if (req.xhr || req.headers.accept?.includes('application/json')) {
@@ -320,16 +444,35 @@ ${logMessage.error.stack ? `Stack: ${logMessage.error.stack}` : ''}
 };
 
 const addLocals = (req, res, next) => {
-  res.locals.user = req.user;
-  res.locals.error = req.flash('error');
   res.locals.success = req.flash('success');
-  res.locals.path = req.path;
+  res.locals.error = req.flash('error');
+  res.locals.user = req.user;
 
-  if (req.isAuthenticated() && req.user.userRoles?.some(ur => ur.role.name === 'admin')) {
-    res.locals.layout = 'layouts/admin';
+  const prisma = req.app.get('prisma');
+  if (prisma) {
+    prisma.category.findMany({
+      include: {
+        _count: {
+          select: {
+            microposts: true
+          }
+        }
+      },
+      orderBy: {
+        name: 'asc'
+      }
+    }).then(categories => {
+      res.locals.categories = categories;
+      next();
+    }).catch(err => {
+      console.error('カテゴリーの取得に失敗しました:', err);
+      res.locals.categories = [];
+      next();
+    });
+  } else {
+    res.locals.categories = [];
+    next();
   }
-
-  next();
 };
 
 module.exports = {

@@ -53,7 +53,7 @@ const CONFIG = {
     isTest: process.env.APP_ENV === 'test'
   },
   storage: {
-    useS3: process.env.STORAGE_PROVIDER === 's3',
+    useS3: process.env.USE_S3 === 'true',
     s3: {
       region: process.env.AWS_REGION,
       accessKey: process.env.AWS_ACCESS_KEY_ID,
@@ -478,6 +478,9 @@ class Application {
     this.setupDirectories();
     setupSecurity(this.app);
     this.app.use(express.static(path.join(__dirname, 'public')));
+    
+    // Prismaインスタンスを設定
+    this.app.set('prisma', this.prisma);
     
     this.initializeCore();
     this.services = this.initializeServices();

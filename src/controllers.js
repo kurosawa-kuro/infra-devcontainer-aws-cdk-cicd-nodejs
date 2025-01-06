@@ -11,18 +11,53 @@ class BaseController {
 
   async handleRequest(req, res, handler) {
     try {
-      await handler();
+      this.logger.debug('Request handling started', {
+        method: req.method,
+        path: req.path,
+        params: req.params,
+        query: req.query,
+        user: req.user ? { id: req.user.id } : null
+      });
+
+      return await handler();
     } catch (error) {
-      if (this.errorHandler && typeof this.errorHandler.handleError === 'function') {
-        this.errorHandler.handleError(error, req, res);
-      } else {
-        // フォールバックのエラーハンドリング
-        console.error('Error:', error);
-        res.status(500).json({
-          success: false,
-          message: 'サーバーエラーが発生しました'
+      this.logger.error('Unhandled error in request', {
+        error: {
+          name: error.name,
+          message: error.message,
+          stack: error.stack
+        },
+        request: {
+          method: req.method,
+          path: req.path,
+          params: req.params,
+          query: req.query
+        },
+        user: req.user ? { id: req.user.id } : null
+      });
+
+      // Prismaのエラーをより詳細にログ出力
+      if (error.code && error.meta) {
+        this.logger.error('Prisma error details', {
+          code: error.code,
+          meta: error.meta,
+          target: error.target
         });
       }
+
+      // エラーの種類に応じて適切なハンドリング
+      if (error.name === 'NotFoundError') {
+        return this.errorHandler.handleNotFoundError(req, res, error.message);
+      } else if (error.name === 'ValidationError') {
+        return this.errorHandler.handleValidationError(req, res, error.message);
+      } else if (error.name === 'PrismaClientValidationError') {
+        return this.errorHandler.handleValidationError(req, res, 'データベースクエリが無効です');
+      } else if (error.name === 'PrismaClientKnownRequestError') {
+        return this.errorHandler.handleDatabaseError(req, res, 'データベース操作でエラーが発生しました');
+      }
+
+      // その他の予期せぬエラー
+      return this.errorHandler.handleInternalError(req, res, error);
     }
   }
 
@@ -34,23 +69,40 @@ class BaseController {
     res.render(view, { ...defaultOptions, ...options });
   }
 
-  sendResponse(req, res, { status = 200, message, data, redirectUrl }) {
+  sendResponse(req, res, { status = 200, success = true, message = '', data = null, redirectUrl = null }) {
     const isApiRequest = req.xhr || 
                         req.headers.accept?.toLowerCase().includes('application/json') ||
                         req.headers['x-requested-with']?.toLowerCase() === 'xmlhttprequest';
-    
+
+    this.logger.debug('Sending response', {
+      status,
+      success,
+      message,
+      isApiRequest,
+      redirectUrl,
+      path: req.path
+    });
+
     if (isApiRequest) {
       return res.status(status).json({
-        success: status < 400,
+        success,
         message,
-        data
+        data,
+        redirectUrl
       });
     }
 
     if (message) {
-      req.flash('success', message);
+      const flashType = success ? 'success' : 'error';
+      req.flash(flashType, message);
     }
-    return res.redirect(redirectUrl);
+
+    if (redirectUrl) {
+      return res.redirect(redirectUrl);
+    }
+
+    // リダイレクトURLが指定されていない場合は、元のページにリダイレクト
+    return res.redirect('back');
   }
 }
 
@@ -81,48 +133,109 @@ class AuthController extends BaseController {
       await new Promise((resolve, reject) => {
         req.logIn(user, (err) => err ? reject(err) : resolve());
       });
-      this.sendResponse(req, res, {
+
+      this.logger.info('User signup successful', {
+        userId: user.id,
+        email: user.email
+      });
+
+      return this.sendResponse(req, res, {
+        success: true,
         message: 'ユーザー登録が完了しました',
-        redirectUrl: '/'
+        redirectUrl: '/',
+        data: { userId: user.id }
       });
     });
   }
 
   async login(req, res) {
     return this.handleRequest(req, res, async () => {
-      await this.services.login(req, res);
-      this.sendResponse(req, res, {
-        message: 'ログインしました',
-        redirectUrl: '/'
-      });
+      try {
+        const user = await this.services.login(req, res);
+        
+        this.logger.info('User login successful', {
+          userId: user.id,
+          email: user.email
+        });
+
+        const isApiRequest = req.xhr || 
+                           req.headers.accept?.toLowerCase().includes('application/json') ||
+                           req.headers['x-requested-with']?.toLowerCase() === 'xmlhttprequest';
+
+        const redirectUrl = req.session.returnTo || '/';
+        delete req.session.returnTo;
+
+        if (isApiRequest) {
+          return this.sendResponse(req, res, {
+            success: true,
+            message: 'ログインしました',
+            data: { userId: user.id },
+            redirectUrl
+          });
+        }
+
+        req.flash('success', 'ログインしました');
+        return res.redirect(redirectUrl);
+      } catch (error) {
+        this.logger.error('Login failed', {
+          error: error.message,
+          email: req.body.email
+        });
+
+        const isApiRequest = req.xhr || 
+                           req.headers.accept?.toLowerCase().includes('application/json') ||
+                           req.headers['x-requested-with']?.toLowerCase() === 'xmlhttprequest';
+
+        if (isApiRequest) {
+          return this.sendResponse(req, res, {
+            success: false,
+            message: 'ログインに失敗しました',
+            status: 401
+          });
+        }
+
+        req.flash('error', 'ログインに失敗しました');
+        return res.redirect('/auth/login');
+      }
     });
   }
 
   async logout(req, res) {
     return this.handleRequest(req, res, async () => {
       try {
+        const userId = req.user?.id;
         await this.services.logout(req);
-      } catch (error) {
-        // Continue with logout even if session destruction fails
-        console.error('Session destruction error:', error);
-      }
 
-      res.clearCookie('connect.sid', {
-        path: '/',
-        httpOnly: true,
-        secure: process.env.NODE_ENV === 'production',
-        sameSite: 'strict'
-      });
-      
-      const isApiRequest = req.xhr || req.headers.accept?.includes('application/json');
-      if (isApiRequest) {
-        return res.status(200).json({
-          success: true,
-          message: 'ログアウトしました'
+        this.logger.info('User logout successful', { userId });
+
+        res.clearCookie('connect.sid', {
+          path: '/',
+          httpOnly: true,
+          secure: process.env.NODE_ENV === 'production',
+          sameSite: 'strict'
         });
+
+        const isApiRequest = req.xhr || 
+                           req.headers.accept?.toLowerCase().includes('application/json') ||
+                           req.headers['x-requested-with']?.toLowerCase() === 'xmlhttprequest';
+
+        if (isApiRequest) {
+          return this.sendResponse(req, res, {
+            success: true,
+            message: 'ログアウトしました',
+            redirectUrl: '/auth/login'
+          });
+        }
+
+        req.flash('success', 'ログアウトしました');
+        return res.redirect('/auth/login');
+      } catch (error) {
+        this.logger.error('Logout failed', {
+          error: error.message,
+          userId: req.user?.id
+        });
+        throw error;
       }
-      
-      return res.redirect('/auth/login');
     });
   }
 }
@@ -687,52 +800,160 @@ class AdminController extends BaseController {
 }
 
 class CategoryController extends BaseController {
-  constructor(services, errorHandler, logger) {
-    super(errorHandler, logger);
-    this.categoryService = services.category;
+  constructor(categoryService, errorHandler, logger) {
+    super({ category: categoryService }, errorHandler, logger);
+    this.categoryService = categoryService;
+    
+    if (!this.logger) {
+      throw new Error('Logger is not initialized in CategoryController');
+    }
   }
 
   async index(req, res) {
     return this.handleRequest(req, res, async () => {
-      const categories = await this.categoryService.getAllCategories();
-      res.render('pages/public/categories/index', {
-        categories,
-        title: 'カテゴリー一覧',
-        path: req.path
+      this.logger.info('Starting category index request', {
+        path: req.path,
+        query: req.query
       });
+
+      try {
+        const categories = await this.categoryService.getAllCategories();
+        
+        // データを整形
+        const formattedCategories = categories.map(category => ({
+          id: category.id,
+          name: category.name,
+          description: category.description,
+          micropostsCount: category._count.microposts,
+          recentMicroposts: category.microposts
+            .slice(0, 5)
+            .map(mc => ({
+              id: mc.micropost.id,
+              title: mc.micropost.title,
+              user: mc.micropost.user,
+              stats: {
+                likes: mc.micropost._count.likes,
+                comments: mc.micropost._count.comments,
+                views: mc.micropost._count.views
+              }
+            }))
+        }));
+
+        this.logger.info('Category index processed successfully', {
+          count: formattedCategories.length,
+          categories: formattedCategories.map(c => ({
+            id: c.id,
+            name: c.name,
+            postsCount: c.micropostsCount
+          }))
+        });
+
+        res.render('pages/public/categories/index', {
+          categories: formattedCategories,
+          title: 'カテゴリー一覧',
+          path: req.path,
+          user: req.user
+        });
+      } catch (error) {
+        this.logger.error('Error in category index', {
+          error: error.message,
+          stack: error.stack,
+          path: req.path
+        });
+        throw error;
+      }
     });
   }
 
   async show(req, res) {
     return this.handleRequest(req, res, async () => {
-      const category = await this.categoryService.getCategoryById(req.params.id);
-      if (!category) {
-        return this.errorHandler.handleNotFoundError(req, res, 'カテゴリーが見つかりません');
+      console.log('=== Category Show Request Start ===');
+      console.log('Request params:', req.params);
+
+      try {
+        const categoryId = parseInt(req.params.id, 10);
+        if (isNaN(categoryId)) {
+          console.error('Invalid category ID:', req.params.id);
+          return this.errorHandler.handleNotFoundError(req, res, 'カテゴリーが見つかりません');
+        }
+
+        const category = await this.categoryService.getCategoryById(categoryId);
+        if (!category) {
+          console.warn('Category not found:', categoryId);
+          return this.errorHandler.handleNotFoundError(req, res, 'カテゴリーが見つかりません');
+        }
+
+        // ビューの期待する形式に整形
+        const formattedCategory = {
+          id: category.id,
+          name: category.name,
+          description: category.description,
+          microposts: category.microposts.map(mc => ({
+            micropost: {
+              id: mc.micropost.id,
+              title: mc.micropost.title,
+              content: mc.micropost.content,
+              user: mc.micropost.user,
+              createdAt: mc.micropost.createdAt,
+              imageUrl: mc.micropost.imageUrl
+            }
+          }))
+        };
+
+        console.log('Rendering category:', {
+          id: formattedCategory.id,
+          name: formattedCategory.name,
+          postsCount: formattedCategory.microposts.length
+        });
+
+        res.render('pages/public/categories/show', {
+          category: formattedCategory,
+          title: `${formattedCategory.name}の投稿一覧`,
+          path: req.path,
+          user: req.user
+        });
+      } catch (error) {
+        console.error('Show error:', error);
+        throw error;
       }
-      res.render('pages/public/categories/show', {
-        category,
-        title: `カテゴリー: ${category.name}`,
-        path: req.path
-      });
     });
   }
 
   async listCategories(req, res) {
-    try {
-      const categories = await prisma.category.findMany({
-        include: {
-          _count: {
-            select: {
-              microposts: true
-            }
-          }
-        }
+    return this.handleRequest(req, res, async () => {
+      this.logger.info('Starting categories API request', {
+        path: req.path,
+        query: req.query
       });
-      return categories;
-    } catch (error) {
-      console.error('Error fetching categories:', error);
-      throw error;
-    }
+
+      try {
+        const categories = await this.categoryService.getAllCategories();
+        
+        const formattedCategories = categories.map(category => ({
+          id: category.id,
+          name: category.name,
+          description: category.description,
+          micropostsCount: category._count.microposts
+        }));
+
+        this.logger.info('Categories API processed successfully', {
+          count: formattedCategories.length,
+          path: req.path
+        });
+
+        res.json({
+          success: true,
+          data: formattedCategories
+        });
+      } catch (error) {
+        this.logger.error('Error in categories API', {
+          error: error.message,
+          stack: error.stack,
+          path: req.path
+        });
+        throw error;
+      }
+    });
   }
 }
 
