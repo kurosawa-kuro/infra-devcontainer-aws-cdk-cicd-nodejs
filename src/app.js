@@ -134,7 +134,12 @@ class LoggingSystem {
       const cloudWatchTransport = new WinstonCloudWatch({
         logGroupName: '/aws/CdkJavascript01/myapp',
         logStreamName: logStreamName,
-        awsRegion: 'ap-northeast-1'
+        awsRegion: 'ap-northeast-1',
+        messageFormatter: ({ level, message }) => JSON.stringify({
+          ts: new Date().toISOString(),
+          lv: level,
+          msg: message
+        })
       });
 
       cloudWatchTransport.on('error', (err) => {
@@ -152,143 +157,107 @@ class LoggingSystem {
 
   // ユーザーアクションのログ
   logUserAction(action, user, value = 0, additionalData = {}) {
-    this.logger.info(action, {
-      metadata: {
-        category: 'User',
-        action,
-        value,
-        quantity: 1,
-        userId: user.id,
-        userEmail: user.email,
-        userName: user.name,
-        userRole: user.userRoles?.[0]?.role?.name,
-        additionalData
-      }
+    this.logger.info('USER_ACTION', {
+      category: 'User',
+      action,
+      value,
+      userId: user.id,
+      userName: user.name,
+      role: user.userRoles?.[0]?.role?.name,
+      ...additionalData
     });
   }
 
   // コンテンツ関連アクションのログ
   logContentAction(action, content, user, value = 0, additionalData = {}) {
-    this.logger.info(action, {
-      metadata: {
-        category: 'Content',
-        action,
-        value,
-        quantity: 1,
-        contentId: content.id,
-        contentType: 'Micropost',
-        contentTitle: content.title,
-        userId: user?.id,
-        userName: user?.name,
-        categoryName: content.categories?.[0]?.category?.name,
-        additionalData
-      }
+    this.logger.info('CONTENT_ACTION', {
+      category: 'Content',
+      action,
+      value,
+      contentId: content.id,
+      contentType: 'Micropost',
+      contentTitle: content.title,
+      userId: user?.id,
+      userName: user?.name,
+      categoryName: content.categories?.[0]?.category?.name,
+      ...additionalData
     });
   }
 
   // インタラクションのログ
   logInteraction(action, type, user, target, value = 0, additionalData = {}) {
-    this.logger.info(action, {
-      metadata: {
-        category: 'Interaction',
-        action,
-        value,
-        quantity: 1,
-        interactionType: type,
-        userId: user.id,
-        userName: user.name,
-        targetUserId: target.userId,
-        targetContentId: target.contentId,
-        additionalData
-      }
+    this.logger.info('INTERACTION', {
+      category: 'Interaction',
+      action,
+      value,
+      interactionType: type,
+      userId: user.id,
+      userName: user.name,
+      targetUserId: target.userId,
+      targetContentId: target.contentId,
+      ...additionalData
     });
   }
 
   // 通知のログ
   logNotification(action, notification, additionalData = {}) {
-    this.logger.info(action, {
-      metadata: {
-        category: 'Notification',
-        action,
-        value: 1,
-        quantity: 1,
-        notificationType: notification.type,
-        notificationStatus: notification.read ? 'READ' : 'UNREAD',
-        userId: notification.recipientId,
-        targetUserId: notification.actorId,
-        contentId: notification.micropostId,
-        additionalData
-      }
+    this.logger.info('NOTIFICATION', {
+      category: 'Notification',
+      action,
+      value: 1,
+      notificationType: notification.type,
+      notificationStatus: notification.read ? 'READ' : 'UNREAD',
+      userId: notification.recipientId,
+      targetUserId: notification.actorId,
+      contentId: notification.micropostId,
+      ...additionalData
     });
   }
 
   // エラーログ
   logError(category, action, error, metadata = {}) {
-    this.logger.error(action, {
-      metadata: {
-        category,
-        action,
-        value: error.code || 500,
-        quantity: 1,
-        errorCode: error.code,
-        errorMessage: error.message,
-        errorStack: error.stack,
-        ...metadata
-      }
+    this.logger.error('ERROR', {
+      category,
+      action,
+      value: error.code || 500,
+      errorCode: error.code,
+      errorMessage: error.message,
+      errorStack: error.stack,
+      ...metadata
     });
   }
 
   // ビジネスアクションのログ
   logBusinessAction(action, data) {
-    this.logger.info(action, {
-      metadata: {
-        timestamp: new Date().toISOString(),
-        Category: data.category || 'Business',
-        Action: action,
-        Value: data.value || 0,
-        Quantity: data.quantity || 1,
-        Environment: process.env.NODE_ENV || 'development',
-        ErrorMessage: '',
-        Details: {
-          actionType: data.actionType,
-          targetType: data.targetType,
-          targetId: data.targetId,
-          result: data.result
-        },
-        Actor: data.actor ? {
-          id: data.actor.id,
-          name: data.actor.name
-        } : null,
-        Target: data.target ? {
-          id: data.target.id,
-          name: data.target.name
-        } : null
-      }
+    this.logger.info('BUSINESS_ACTION', {
+      category: data.category || 'Business',
+      action,
+      value: data.value || 0,
+      environment: process.env.NODE_ENV || 'development',
+      actionType: data.actionType,
+      targetType: data.targetType,
+      targetId: data.targetId,
+      result: data.result,
+      actorId: data.actor?.id,
+      actorName: data.actor?.name,
+      targetUserId: data.target?.id,
+      targetUserName: data.target?.name
     });
   }
 
   // HTTPリクエストのログ
   logHttpRequest(req, res, responseTime) {
-    this.logger.info(`${req.method} ${res.statusCode} ${req.originalUrl}`, {
-      metadata: {
-        timestamp: new Date().toISOString(),
-        Category: 'Http',
-        Action: `${req.method} ${res.statusCode} ${req.originalUrl}`,
-        Value: responseTime,
-        Quantity: 1,
-        Environment: process.env.NODE_ENV || 'development',
-        ErrorMessage: '',
-        RequestInfo: {
-          method: req.method,
-          path: req.originalUrl,
-          statusCode: res.statusCode,
-          responseTime: responseTime
-        },
-        User: req.user ? {
-          id: req.user.id,
-          name: req.user.name
-        } : null
-      }
+    this.logger.info('HTTP_REQUEST', {
+      category: 'Http',
+      action: `${req.method} ${res.statusCode} ${req.originalUrl}`,
+      value: responseTime,
+      environment: process.env.NODE_ENV || 'development',
+      method: req.method,
+      path: req.originalUrl,
+      statusCode: res.statusCode,
+      responseTime: responseTime,
+      userId: req.user?.id,
+      userName: req.user?.name
     });
   }
 }
