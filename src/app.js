@@ -130,7 +130,8 @@ class LoggingSystem {
 
       
       const cloudWatchTransport = new WinstonCloudWatch({
-        logGroupName: '/aws/CdkJavascript01/myapp',
+        // CLOUDWATCH_LOG_GROUP
+        logGroupName: process.env.CLOUDWATCH_LOG_GROUP,
         logStreamName: logStreamName,
         awsRegion: 'ap-northeast-1',
         messageFormatter: ({ level, message }) => JSON.stringify({
