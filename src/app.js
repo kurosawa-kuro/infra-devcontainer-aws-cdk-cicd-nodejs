@@ -113,8 +113,8 @@ class LoggingSystem {
       new winston.transports.Console({
         format: winston.format.combine(
           winston.format.timestamp(),
-          winston.format.printf(({ timestamp, level, message }) => {
-            return `${timestamp} ${level}: ${message}`;
+          winston.format.printf(({ timestamp, message }) => {
+            return `${timestamp}: ${message}`;
           })
         )
       })
@@ -126,18 +126,13 @@ class LoggingSystem {
       const year = date.getFullYear();
       const month = String(date.getMonth() + 1).padStart(2, '0');
       const day = String(date.getDate()).padStart(2, '0');
-      const logStreamName = `express-${year}-${month}-${day}`;
+      const logStreamName = `CdkJavascript01-${year}-${month}-${day}`;
 
-      
       const cloudWatchTransport = new WinstonCloudWatch({
         logGroupName: process.env.CLOUDWATCH_LOG_GROUP,
         logStreamName: logStreamName,
         awsRegion: 'ap-northeast-1',
-        messageFormatter: ({ level, message }) => JSON.stringify({
-          timestamp: new Date().toISOString(),
-          level: level,
-          message: message
-        })
+        messageFormatter: ({ message }) => message
       });
 
       cloudWatchTransport.on('error', (err) => {
