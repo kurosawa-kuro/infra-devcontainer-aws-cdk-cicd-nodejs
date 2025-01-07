@@ -143,11 +143,7 @@ mark-success:
 #---------------------------------
 .PHONY: port-check port-kill
 
-port-check:
-	@echo "=== Checking port 8080 usage ==="
-	lsof -i :8080 | cat
-
-port-kill:
+clear-port-and-restart:
 	@echo "=== Killing process on port 8080 ==="
 	-lsof -ti :8080 | xargs kill -9
 	make dev
