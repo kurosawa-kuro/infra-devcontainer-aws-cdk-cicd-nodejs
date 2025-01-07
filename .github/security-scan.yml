@@ -1,0 +1,107 @@
+name: Security Scan
+
+on:
+  schedule:
+    - cron: '0 0 * * *'  # 毎日深夜0時
+  push:
+    branches: [ main ]
+  workflow_dispatch:  # 手動実行用
+
+jobs:
+  security-scan:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+
+    # Node.js/TypeScript/JavaScript
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '18'
+        cache: 'npm'
+
+    - name: Install Node.js dependencies
+      run: npm ci
+
+    - name: NPM Audit
+      run: |
+        npm audit --json > npm-audit.json || true
+        echo "NPM Vulnerabilities found: $(cat npm-audit.json | grep -c "critical" || echo '0')"
+
+    # ESLint Security Plugin
+    - name: ESLint Security Check
+      run: |
+        npm install eslint @typescript-eslint/parser eslint-plugin-security
+        npx eslint . -c .eslintrc --ext .js,.ts -f json > eslint-results.json || true
+
+    # Python
+    - name: Setup Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.x'
+        cache: 'pip'
+
+    - name: Python Security Checks
+      run: |
+        pip install safety bandit
+        safety check --json > safety-report.json || true
+        bandit -r . -f json -o bandit-report.json || true
+
+    # Go
+    - name: Setup Go
+      uses: actions/setup-go@v4
+      with:
+        go-version: '1.21'
+        cache: true
+
+    - name: Go Security Check
+      run: |
+        go install golang.org/x/vuln/cmd/govulncheck@latest
+        govulncheck ./... > govuln-report.txt || true
+        
+    - name: Run gosec
+      run: |
+        go install github.com/securego/gosec/v2/cmd/gosec@latest
+        gosec -fmt=json -out=gosec-report.json ./... || true
+
+    # レポートのアップロード
+    - name: Upload Security Reports
+      uses: actions/upload-artifact@v3
+      with:
+        name: security-reports
+        path: |
+          npm-audit.json
+          eslint-results.json
+          safety-report.json
+          bandit-report.json
+          govuln-report.txt
+          gosec-report.json
+
+    # Slack通知（オプショナル）
+    - name: Send Slack Notification
+      if: env.SLACK_WEBHOOK_URL != ''  # Webhook URLが設定されている場合のみ実行
+      uses: 8398a7/action-slack@v3
+      with:
+        status: ${{ job.status }}
+        fields: repo,message,commit,author,action,eventName,ref,workflow
+        text: |
+          Security Scan Completed
+          Repository: ${{ github.repository }}
+          Branch: ${{ github.ref }}
+          Triggered by: ${{ github.event_name }}
+      env:
+        SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+      continue-on-error: true  # Slack通知が失敗してもワークフローは続行
+
+    # 重要な脆弱性が見つかった場合にワークフローを失敗させる
+    - name: Check for Critical Vulnerabilities
+      run: |
+        if [ "$(cat npm-audit.json | grep -c "critical")" -gt 0 ]; then
+          echo "Critical NPM vulnerabilities found!"
+          exit 1
+        fi
+        if [ "$(cat safety-report.json | grep -c "high")" -gt 0 ]; then
+          echo "High severity Python vulnerabilities found!"
+          exit 1
+        fi
