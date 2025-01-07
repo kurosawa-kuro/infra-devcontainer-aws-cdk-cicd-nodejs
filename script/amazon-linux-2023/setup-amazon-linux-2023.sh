@@ -1,5 +1,7 @@
 #!/bin/bash
 
+# touch setup.sh && chmod u+x setup.sh && vi setup.sh
+
 #=========================================
 # 設定と定数
 #=========================================
@@ -246,8 +248,7 @@ install_cloudwatch_agent() {
     cat > "${config_dir}/config.json" << 'EOF'
 {
   "agent": {
-    "metrics_collection_interval": 60,
-    "run_as_user": "root"
+    "metrics_collection_interval": 60
   },
   "metrics": {
     "metrics_collected": {
@@ -257,21 +258,13 @@ install_cloudwatch_agent() {
         ],
         "resources": [
           "/"
-        ],
-        "ignore_file_system_types": [
-          "sysfs",
-          "devtmpfs"
         ]
       },
       "mem": {
         "measurement": [
-          "mem_used_percent",
-          "swap_used_percent"
+          "mem_used_percent"
         ]
       }
-    },
-    "append_dimensions": {
-      "InstanceId": "${aws:InstanceId}"
     }
   }
 }
@@ -289,8 +282,12 @@ CloudWatch Agent情報:
 - メトリクス:
   - ディスク使用率 (/)
   - メモリ使用率
-  - SWAP使用率
+- ログ収集:
+  - /var/log/messages
 - 収集間隔: 60秒
+- 必要なIAMロール権限:
+  - CloudWatchAgentServerPolicy
+注意: EC2インスタンスにCloudWatchAgentServerPolicyがアタッチされていることを確認してください
 EOF
 )
 }
