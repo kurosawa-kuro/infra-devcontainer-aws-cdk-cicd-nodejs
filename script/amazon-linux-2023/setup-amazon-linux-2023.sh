@@ -13,6 +13,7 @@ declare -A INSTALL_FLAGS=(
     [NODEJS]=true
     [GO]=true
     [POSTGRESQL]=true
+    [CLOUDWATCH_AGENT]=true
 )
 
 # データベース設定
@@ -230,6 +231,71 @@ EOL
 }
 
 #=========================================
+# CloudWatch Agent
+#=========================================
+install_cloudwatch_agent() {
+    check_command amazon-cloudwatch-agent-ctl && { log "CloudWatch Agent is already installed"; return 0; }
+
+    log "Installing CloudWatch Agent..."
+    dnf install -y amazon-cloudwatch-agent
+
+    # 設定ファイルの作成
+    local config_dir="/opt/aws/amazon-cloudwatch-agent/bin"
+    mkdir -p "$config_dir"
+    
+    cat > "${config_dir}/config.json" << 'EOF'
+{
+  "agent": {
+    "metrics_collection_interval": 60,
+    "run_as_user": "root"
+  },
+  "metrics": {
+    "metrics_collected": {
+      "disk": {
+        "measurement": [
+          "disk_used_percent"
+        ],
+        "resources": [
+          "/"
+        ],
+        "ignore_file_system_types": [
+          "sysfs",
+          "devtmpfs"
+        ]
+      },
+      "mem": {
+        "measurement": [
+          "mem_used_percent",
+          "swap_used_percent"
+        ]
+      }
+    },
+    "append_dimensions": {
+      "InstanceId": "${aws:InstanceId}"
+    }
+  }
+}
+EOF
+
+    # CloudWatch Agentの起動と自動起動の設定
+    /opt/aws/amazon-cloudwatch-agent/bin/amazon-cloudwatch-agent-ctl -a fetch-config -m ec2 -s -c file:/opt/aws/amazon-cloudwatch-agent/bin/config.json
+    systemctl start amazon-cloudwatch-agent
+    systemctl enable amazon-cloudwatch-agent
+
+    INSTALL_INFO[CLOUDWATCH_AGENT]=$(cat << EOF
+CloudWatch Agent情報:
+- Status: $(systemctl is-active amazon-cloudwatch-agent)
+- Config: ${config_dir}/config.json
+- メトリクス:
+  - ディスク使用率 (/)
+  - メモリ使用率
+  - SWAP使用率
+- 収集間隔: 60秒
+EOF
+)
+}
+
+#=========================================
 # バージョン確認
 #=========================================
 check_installed_versions() {
@@ -307,6 +373,11 @@ Go言語情報:
 - 注意: 新しいシェルを開くか、source /etc/profile.d/go.shを実行してください
 EOF
 )
+    }
+
+    [[ "${INSTALL_FLAGS[CLOUDWATCH_AGENT]}" = true ]] && {
+        install_cloudwatch_agent
+        # install_cloudwatch_agent関数内で既にINSTALL_INFOを設定しているため、ここでは何もしない
     }
 
     # インストール結果の表示
