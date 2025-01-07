@@ -121,7 +121,6 @@ class LoggingSystem {
     ];
 
     if (CONFIG.logging.useCloudWatch) {
-      console.log('Setting up CloudWatch logging...');
       // 日付ベースのログストリーム名を生成
       const date = new Date();
       const year = date.getFullYear();
@@ -129,16 +128,15 @@ class LoggingSystem {
       const day = String(date.getDate()).padStart(2, '0');
       const logStreamName = `express-${year}-${month}-${day}`;
 
-      console.log('Using log stream:', logStreamName);
       
       const cloudWatchTransport = new WinstonCloudWatch({
         logGroupName: '/aws/CdkJavascript01/myapp',
         logStreamName: logStreamName,
         awsRegion: 'ap-northeast-1',
         messageFormatter: ({ level, message }) => JSON.stringify({
-          ts: new Date().toISOString(),
-          lv: level,
-          msg: message
+          timestamp: new Date().toISOString(),
+          level: level,
+          message: message
         })
       });
 

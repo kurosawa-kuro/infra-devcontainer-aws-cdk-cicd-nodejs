@@ -627,7 +627,6 @@ class MicropostService extends BaseService {
   }
 
   async getMicropostWithViews(micropostId) {
-    console.log('Fetching micropost with views:', micropostId);
     try {
       const micropost = await this.prisma.micropost.findUnique({
         where: { id: this.validateId(micropostId) },
@@ -677,19 +676,6 @@ class MicropostService extends BaseService {
         return null;
       }
 
-      console.log('Micropost fetched successfully:', {
-        id: micropost.id,
-        title: micropost.title,
-        userId: micropost.userId,
-        user: {
-          id: micropost.user.id,
-          name: micropost.user.name
-        },
-        categoriesCount: micropost.categories.length,
-        commentsCount: micropost._count.comments,
-        viewsCount: micropost._count.views,
-        likesCount: micropost._count.likes
-      });
 
       return micropost;
     } catch (error) {
@@ -777,13 +763,10 @@ class CategoryService extends BaseService {
   }
 
   async getCategoryById(id) {
-    console.log('=== CategoryService.getCategoryById Start ===');
-    console.log('Input ID:', id, 'Type:', typeof id);
     
     let validatedId;
     try {
       validatedId = this.validateId(id);
-      console.log('Validated ID:', validatedId);
     } catch (error) {
       console.error('ID validation failed:', {
         inputId: id,
@@ -794,7 +777,6 @@ class CategoryService extends BaseService {
     }
 
     try {
-      console.log('Executing Prisma query for category:', validatedId);
       const category = await this.prisma.category.findUnique({
         where: { 
           id: validatedId
@@ -1125,7 +1107,6 @@ class LikeService extends BaseService {
   }
 
   async getLikedUsers(micropostId) {
-    console.log('Fetching liked users for micropost:', micropostId);
     try {
       const likes = await this.prisma.like.findMany({
         where: { micropostId },
@@ -1140,7 +1121,6 @@ class LikeService extends BaseService {
           createdAt: 'desc'
         }
       });
-      console.log(`Found ${likes.length} likes for micropost ${micropostId}`);
       return likes;
     } catch (error) {
       console.error('Error fetching liked users:', {

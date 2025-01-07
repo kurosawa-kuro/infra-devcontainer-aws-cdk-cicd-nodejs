@@ -553,7 +553,6 @@ ${logMessage.error.stack ? `Stack: ${logMessage.error.stack}` : ''}
             next();
           });
         } else {
-          console.log('Handling non-GET request');
           csrfMiddleware(req, res, (err) => {
             if (err) {
               console.error('CSRF validation failed:', {

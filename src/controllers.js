@@ -253,7 +253,6 @@ class MicropostController extends BaseController {
     return this.handleRequest(req, res, async () => {
 
       try {
-        console.log('Fetching microposts and categories...');
         const [microposts, categories] = await Promise.all([
           this.micropostService.getAllMicroposts(),
           this.micropostService.prisma.category.findMany({
@@ -268,18 +267,6 @@ class MicropostController extends BaseController {
           })
         ]);
 
-        console.log('Initial data fetched:');
-        console.log('- Microposts count:', microposts?.length || 0);
-        console.log('- Categories count:', categories?.length || 0);
-        if (microposts?.[0]) {
-          console.log('- First micropost:', {
-            id: microposts[0].id,
-            title: microposts[0].title,
-            userId: microposts[0].userId
-          });
-        }
-
-        console.log('Processing likes for microposts...');
         const micropostsWithLikes = await Promise.all(
           microposts.map(async (micropost) => {
             try {
@@ -309,7 +296,6 @@ class MicropostController extends BaseController {
             currentPage: 1,
             totalPages: 1
           });
-          console.log('Micropost index rendered successfully');
         } catch (renderError) {
           console.error('Template rendering error:', {
             error: renderError.message,
@@ -333,10 +319,6 @@ class MicropostController extends BaseController {
 
   async show(req, res) {
     return this.handleRequest(req, res, async () => {
-      console.log('\n=== Micropost Show Request ===');
-      console.log('Params:', req.params);
-      console.log('User:', req.user ? { id: req.user.id, email: req.user.email } : 'Not logged in');
-      console.log('CSRF Token:', req.csrfToken());
 
       const micropostId = parseInt(req.params.id, 10);
       if (isNaN(micropostId)) {
@@ -347,15 +329,12 @@ class MicropostController extends BaseController {
       // Get client's IP address
       const ipAddress = req.headers['x-forwarded-for']?.split(',')[0].trim() || 
                        req.socket.remoteAddress;
-      console.log('Client IP:', ipAddress);
 
       try {
         // Track the view
         await this.micropostService.trackView(micropostId, ipAddress);
-        console.log('View tracked successfully');
 
         // Get micropost with updated view count and check if user has liked it
-        console.log('Fetching micropost data...');
         const [micropost, isLiked, likeCount, comments, likedUsers] = await Promise.all([
           this.micropostService.getMicropostWithViews(micropostId),
           req.user ? this.likeService.isLiked(req.user.id, micropostId) : false,
@@ -369,18 +348,7 @@ class MicropostController extends BaseController {
           return this.errorHandler.handleNotFoundError(req, res, '投稿が見つかりません');
         }
 
-        console.log('Micropost data:', {
-          id: micropost.id,
-          title: micropost.title,
-          userId: micropost.userId,
-          user: micropost.user,
-          categories: micropost.categories,
-          isLiked,
-          likeCount,
-          commentsCount: comments.length,
-          likedUsersCount: likedUsers.length,
-          _count: micropost._count
-        });
+
 
         const templateData = {
           micropost,
@@ -397,24 +365,8 @@ class MicropostController extends BaseController {
           categories: micropost.categories.map(mc => mc.category)
         };
 
-        console.log('Template data prepared:', JSON.stringify(templateData, (key, value) => {
-          if (key === 'comments' || key === 'categories' || key === 'likedUsers') {
-            return `[Array(${value.length})]`;
-          }
-          if (typeof value === 'object' && value !== null) {
-            return Object.keys(value).reduce((acc, k) => {
-              if (!['password', 'createdAt', 'updatedAt'].includes(k)) {
-                acc[k] = value[k];
-              }
-              return acc;
-            }, {});
-          }
-          return value;
-        }, 2));
-
         try {
           await res.render('pages/public/microposts/show', templateData);
-          console.log('Show template rendered successfully');
         } catch (renderError) {
           console.error('Template rendering error:', {
             error: renderError.message,
@@ -443,15 +395,6 @@ class MicropostController extends BaseController {
 
   async create(req, res) {
     return this.handleRequest(req, res, async () => {
-      console.log('=== Starting micropost create request ===');
-      console.log('Headers:', {
-        'content-type': req.headers['content-type'],
-        'x-csrf-token': req.headers['x-csrf-token'],
-        'cookie': req.headers['cookie']
-      });
-      console.log('Cookies:', req.cookies);
-      console.log('Body:', req.body);
-      console.log('File:', req.file);
       
       const { title, categories } = req.body;
       if (!title?.trim()) {
@@ -465,11 +408,6 @@ class MicropostController extends BaseController {
 
       let imageUrl = null;
       if (req.file) {
-        console.log('Processing uploaded file:', {
-          originalname: req.file.originalname,
-          mimetype: req.file.mimetype,
-          size: req.file.size
-        });
         imageUrl = this.fileUploader.generateFileUrl(req.file);
       }
 
@@ -480,13 +418,6 @@ class MicropostController extends BaseController {
         categories: Array.isArray(categories) ? categories : categories ? [categories] : []
       });
 
-      console.log('Created micropost:', {
-        id: micropost.id,
-        title: micropost.title,
-        imageUrl: micropost.imageUrl,
-        userId: micropost.userId
-      });
-      
       this.sendResponse(req, res, {
         message: '投稿が完了しました',
         redirectUrl: '/microposts'
