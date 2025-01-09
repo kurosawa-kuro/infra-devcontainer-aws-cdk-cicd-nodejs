@@ -692,12 +692,6 @@ class ProfileController extends BaseController {
         await this.followService.unfollow(req.user.id, targetUserId);
         const followCounts = await this.followService.getFollowCounts(targetUserId);
 
-        this.logger.info('Unfollow successful:', {
-          followerId: req.user.id,
-          targetUserId,
-          followCounts
-        });
-
         return res.status(200).json({
           success: true,
           message: 'フォロー解除しました',

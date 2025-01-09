@@ -126,12 +126,12 @@ class LoggingSystem {
       const year = date.getFullYear();
       const month = String(date.getMonth() + 1).padStart(2, '0');
       const day = String(date.getDate()).padStart(2, '0');
-      const logStreamName = `CdkJavascript01-${year}-${month}-${day}`;
+      const logStreamName = `${year}-${month}-${day}`;
 
       const cloudWatchTransport = new WinstonCloudWatch({
         logGroupName: process.env.CLOUDWATCH_LOG_GROUP,
         logStreamName: logStreamName,
-        awsRegion: 'ap-northeast-1',
+        awsRegion: process.env.AWS_REGION,
         messageFormatter: ({ message }) => message
       });
 
