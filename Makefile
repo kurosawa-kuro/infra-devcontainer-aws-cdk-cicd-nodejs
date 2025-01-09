@@ -6,7 +6,8 @@
         db-studio db-migrate db-reset db-generate db-deploy \
         docker-start \
         test \
-        batch-s3-log batch-s3-log-now
+        batch-s3-log batch-s3-log-now \
+        port-check port-kill
 
 # 変数定義
 #---------------------------------
@@ -137,3 +138,12 @@ mark-success:
 	@git tag -a "$(SUCCESS_TAG)" -m $(SUCCESS_MESSAGE)
 	@git push origin $(SUCCESS_TAG)
 	$(call log_section,Success marker added)
+
+# ポート管理
+#---------------------------------
+.PHONY: port-check port-kill
+
+clear-port-and-restart:
+	@echo "=== Killing process on port 8080 ==="
+	-lsof -ti :8080 | xargs kill -9
+	make dev

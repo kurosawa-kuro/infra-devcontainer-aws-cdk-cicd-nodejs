@@ -1,0 +1,1 @@
+aws ec2 monitor-instances --instance-ids i-05420accd1c0970f8

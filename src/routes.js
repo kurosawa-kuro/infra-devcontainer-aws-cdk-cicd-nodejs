@@ -83,15 +83,6 @@ function setupRoutes(app, controllers, fileUploader) {
   
   // リクエストロギングミドルウェア
   micropostRouter.use((req, res, next) => {
-    console.log('\n=== Micropost Router ===');
-    console.log('Method:', req.method);
-    console.log('Path:', req.path);
-    console.log('User:', req.user ? { id: req.user.id, email: req.user.email } : 'Not logged in');
-    console.log('Headers:', {
-      'content-type': req.headers['content-type'],
-      'x-csrf-token': req.headers['x-csrf-token'],
-      'cookie': req.headers.cookie
-    });
     next();
   });
   
@@ -104,34 +95,16 @@ function setupRoutes(app, controllers, fileUploader) {
   
   // POSTリクエストのルート
   micropostRouter.post('/', uploadMiddleware, asyncHandler((req, res) => {
-    console.log('=== Micropost POST Request ===');
-    console.log('Headers:', {
-      'content-type': req.headers['content-type'],
-      'x-csrf-token': req.headers['x-csrf-token'],
-      'cookie': req.headers.cookie,
-      'xsrf-token': req.cookies['XSRF-TOKEN']
-    });
-    console.log('Body:', req.body);
-    console.log('File:', req.file);
-    console.log('CSRF Token:', req.csrfToken());
 
     return micropost.create(req, res);
   }));
   
   // いいね関連のルート
   micropostRouter.post('/:id/like', asyncHandler((req, res) => {
-    console.log('\n=== Like Request ===');
-    console.log('Params:', req.params);
-    console.log('User:', req.user ? { id: req.user.id } : null);
-    console.log('CSRF Token:', req.csrfToken());
     return like.like(req, res);
   }));
   
   micropostRouter.delete('/:id/like', asyncHandler((req, res) => {
-    console.log('\n=== Unlike Request ===');
-    console.log('Params:', req.params);
-    console.log('User:', req.user ? { id: req.user.id } : null);
-    console.log('CSRF Token:', req.csrfToken());
     return like.unlike(req, res);
   }));
   
@@ -139,11 +112,6 @@ function setupRoutes(app, controllers, fileUploader) {
   
   // コメント関連のルート
   micropostRouter.post('/:micropostId/comments', asyncHandler((req, res) => {
-    console.log('\n=== Comment Request ===');
-    console.log('Params:', req.params);
-    console.log('Body:', req.body);
-    console.log('User:', req.user ? { id: req.user.id } : null);
-    console.log('CSRF Token:', req.csrfToken());
     return controllers.comment.create(req, res);
   }));
   

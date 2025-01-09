@@ -389,15 +389,55 @@ const setupMiddleware = {
     app.use(addLocals);
   },
 
-  setupRequestLogging: (app, logger) => {
-    app.use(expressWinston.logger({
-      winstonInstance: logger,
-      meta: true,
-      msg: (req, res) => loggingUtils.createRequestLogMessage(req, res, logger),
-      expressFormat: false,
-      colorize: true,
-      ignoreRoute: (req) => req.url === '/health' || req.url === '/health-db'
-    }));
+  setupRequestLogging: (app, loggingSystem) => {
+    // HTTPリクエストのログ
+    app.use((req, res, next) => {
+      const startTime = Date.now();
+      const originalEnd = res.end;
+
+      res.end = function(...args) {
+        const responseTime = Date.now() - startTime;
+        const logData = {
+          LogDate: new Date().toISOString().split('T')[0],
+          Category: 'Http',
+          Action: `${req.method} ${res.statusCode} ${req.originalUrl}`,
+          Value: responseTime,
+          Quantity: 1,
+          Environment: process.env.NODE_ENV || 'development',
+          ErrorMessage: '',
+          RequestInfo: {
+            method: req.method,
+            path: req.originalUrl,
+            statusCode: res.statusCode,
+            responseTime: responseTime
+          },
+          User: req.user ? {
+            id: req.user.id,
+            name: req.user.name
+          } : null
+        };
+
+        loggingSystem.getLogger().info(JSON.stringify(logData));
+        originalEnd.apply(res, args);
+      };
+
+      next();
+    });
+
+    // ビジネスアクションログのヘルパーをappに追加
+    app.set('logBusinessAction', (action, data) => {
+      const logData = {
+        LogDate: new Date().toISOString().split('T')[0],
+        Category: data.category || 'Business',
+        Action: action,
+        Value: data.value || 0,
+        Quantity: data.quantity || 1,
+        Environment: process.env.NODE_ENV || 'development',
+        ErrorMessage: '',
+        Details: data
+      };
+      loggingSystem.getLogger().info(JSON.stringify(logData));
+    });
   },
 
   setupErrorLogging: (app, logger) => {
@@ -483,16 +523,9 @@ ${logMessage.error.stack ? `Stack: ${logMessage.error.stack}` : ''}
 
     // CSRFトークンの処理を一元化
     app.use((req, res, next) => {
-      console.log('\n=== CSRF Middleware ===');
-      console.log('Request Method:', req.method);
-      console.log('Content-Type:', req.headers['content-type']);
-      console.log('CSRF Token in Cookie:', req.cookies['XSRF-TOKEN']);
-      console.log('CSRF Token in Header:', req.headers['x-csrf-token']);
-      console.log('CSRF Token in Body:', req.body?._csrf);
 
       // multipart/form-dataリクエストの特別処理
       if (req.headers['content-type']?.includes('multipart/form-data')) {
-        console.log('Handling multipart/form-data request');
         const token = req.cookies['XSRF-TOKEN'];
         if (!token) {
           console.error('No CSRF token found in cookies for multipart request');
@@ -501,7 +534,6 @@ ${logMessage.error.stack ? `Stack: ${logMessage.error.stack}` : ''}
             message: 'セッションが無効になりました。ページを再読み込みしてください。'
           });
         }
-        console.log('Using token from cookie for multipart request:', token);
         req.csrfToken = () => token;
         res.locals.csrfToken = token;
         return next();
@@ -509,10 +541,9 @@ ${logMessage.error.stack ? `Stack: ${logMessage.error.stack}` : ''}
 
       try {
         if (req.method === 'GET') {
-          console.log('Handling GET request');
           csrfMiddleware(req, res, () => {
             const token = req.csrfToken();
-            console.log('Generated new CSRF token for GET request:', token);
+
             res.cookie('XSRF-TOKEN', token, {
               secure: process.env.NODE_ENV === 'production',
               sameSite: 'Lax',
@@ -522,7 +553,6 @@ ${logMessage.error.stack ? `Stack: ${logMessage.error.stack}` : ''}
             next();
           });
         } else {
-          console.log('Handling non-GET request');
           csrfMiddleware(req, res, (err) => {
             if (err) {
               console.error('CSRF validation failed:', {
@@ -598,6 +628,85 @@ const addLocals = (req, res, next) => {
     res.locals.categories = [];
     next();
   }
+};
+
+// ビジネスアクションのログ用ヘルパー関数
+const logBusinessAction = (logger, action, data) => {
+  const logData = {
+    timestamp: new Date().toISOString(),
+    level: 'info',
+    service: 'web-app',
+    
+    // アクション情報
+    category: data.category || 'User',  // User, Content, Interaction等
+    action: action,                     // Follow, Post, Like等
+    status: data.status || 'success',   // success, failed等
+    
+    // アクション詳細
+    details: {
+      actionType: data.actionType,      // create, delete等
+      targetType: data.targetType,      // user, post等
+      targetId: data.targetId,
+      result: data.result
+    },
+
+    // メトリクス
+    value: data.value || 1,
+    quantity: data.quantity || 1,
+
+    // 関連ユーザー情報
+    actor: data.actor ? {
+      id: data.actor.id,
+      name: data.actor.name,
+      role: data.actor.role
+    } : null,
+    
+    target: data.target ? {
+      id: data.target.id,
+      name: data.target.name,
+      type: data.target.type
+    } : null,
+
+    // 環境情報
+    environment: process.env.NODE_ENV || 'development'
+  };
+
+  // nullの項目を削除
+  Object.keys(logData).forEach(key => {
+    if (logData[key] === null || logData[key] === undefined) {
+      delete logData[key];
+    }
+  });
+
+  logger.info(JSON.stringify(logData));
+};
+
+// HTTPリクエストログ用の関数（既存のものを改名）
+const logHttpRequest = (logger, req, res, responseTime) => {
+  const logData = {
+    timestamp: new Date().toISOString(),
+    level: 'info',
+    service: 'web-app',
+    category: 'Http',
+    method: req.method,
+    path: req.originalUrl,
+    statusCode: res.statusCode,
+    responseTime,
+    environment: process.env.NODE_ENV || 'development',
+    user: req.user ? {
+      id: req.user.id,
+      name: req.user.name
+    } : null
+  };
+
+  // nullの項目を削除
+  Object.keys(logData).forEach(key => {
+    if (logData[key] === null || logData[key] === undefined) {
+      delete logData[key];
+    }
+  });
+
+  logger.info(JSON.stringify(logData));
 };
 
 module.exports = {

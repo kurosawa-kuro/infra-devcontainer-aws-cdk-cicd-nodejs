@@ -73,7 +73,7 @@ const CONFIG = {
   logging: {
     useCloudWatch: process.env.USE_CLOUDWATCH === 'true',
     cloudwatch: {
-      logGroupName: process.env.CLOUDWATCH_LOG_GROUP,
+      logGroupName: '/aws/CdkJavascript01/myapp',
       region: process.env.AWS_REGION,
       accessKeyId: process.env.AWS_ACCESS_KEY_ID,
       secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY
@@ -103,82 +103,155 @@ class LoggingSystem {
     }
   }
 
+  // ロガーインスタンスを取得するメソッド
+  getLogger() {
+    return this.logger;
+  }
+
   createLogger() {
     const transports = [
-      this.createConsoleTransport(),
-      this.createErrorFileTransport(),
-      this.createCombinedFileTransport()
+      new winston.transports.Console({
+        format: winston.format.combine(
+          winston.format.timestamp(),
+          winston.format.printf(({ timestamp, message }) => {
+            return `${timestamp}: ${message}`;
+          })
+        )
+      })
     ];
 
     if (CONFIG.logging.useCloudWatch) {
-      const cloudWatchTransport = this.createCloudWatchTransport();
-      if (cloudWatchTransport) {
-        transports.push(cloudWatchTransport);
-      }
+      // 日付ベースのログストリーム名を生成
+      const date = new Date();
+      const year = date.getFullYear();
+      const month = String(date.getMonth() + 1).padStart(2, '0');
+      const day = String(date.getDate()).padStart(2, '0');
+      const logStreamName = `${year}-${month}-${day}`;
+
+      const cloudWatchTransport = new WinstonCloudWatch({
+        logGroupName: process.env.CLOUDWATCH_LOG_GROUP,
+        logStreamName: logStreamName,
+        awsRegion: process.env.AWS_REGION,
+        messageFormatter: ({ message }) => message
+      });
+
+      cloudWatchTransport.on('error', (err) => {
+        console.error('CloudWatch logging error:', err);
+      });
+
+      transports.push(cloudWatchTransport);
     }
 
     return winston.createLogger({
-      format: winston.format.combine(
-        winston.format.timestamp(),
-        winston.format.json()
-      ),
+      format: winston.format.simple(),
       transports: transports
     });
   }
 
-  createConsoleTransport() {
-    return new winston.transports.Console({
-      format: winston.format.combine(
-        winston.format.colorize(),
-        winston.format.simple(),
-        winston.format.printf(({ level, message, timestamp }) => {
-          return `${timestamp} ${level}: ${message}`;
-        })
-      )
+  // ユーザーアクションのログ
+  logUserAction(action, user, value = 0, additionalData = {}) {
+    this.logger.info('USER_ACTION', {
+      category: 'User',
+      action,
+      value,
+      userId: user.id,
+      userName: user.name,
+      role: user.userRoles?.[0]?.role?.name,
+      ...additionalData
     });
   }
 
-  createErrorFileTransport() {
-    return new winston.transports.File({
-      filename: 'logs/error.log',
-      level: 'error',
-      format: winston.format.combine(
-        winston.format.timestamp(),
-        winston.format.json()
-      )
+  // コンテンツ関連アクションのログ
+  logContentAction(action, content, user, value = 0, additionalData = {}) {
+    this.logger.info('CONTENT_ACTION', {
+      category: 'Content',
+      action,
+      value,
+      contentId: content.id,
+      contentType: 'Micropost',
+      contentTitle: content.title,
+      userId: user?.id,
+      userName: user?.name,
+      categoryName: content.categories?.[0]?.category?.name,
+      ...additionalData
     });
   }
 
-  createCombinedFileTransport() {
-    return new winston.transports.File({
-      filename: 'logs/combined.log',
-      format: winston.format.combine(
-        winston.format.timestamp(),
-        winston.format.json()
-      )
+  // インタラクションのログ
+  logInteraction(action, type, user, target, value = 0, additionalData = {}) {
+    this.logger.info('INTERACTION', {
+      category: 'Interaction',
+      action,
+      value,
+      interactionType: type,
+      userId: user.id,
+      userName: user.name,
+      targetUserId: target.userId,
+      targetContentId: target.contentId,
+      ...additionalData
     });
   }
 
-  createCloudWatchTransport() {
-    if (!CONFIG.logging.useCloudWatch) {
-      return null;
-    }
-
-    return new WinstonCloudWatch({
-      logGroupName: CONFIG.logging.cloudwatch.logGroupName,
-      logStreamName: `express-${new Date().toISOString().slice(0, 10)}`,
-      awsRegion: CONFIG.logging.cloudwatch.region,
-      awsOptions: {
-        credentials: {
-          accessKeyId: CONFIG.logging.cloudwatch.accessKeyId,
-          secretAccessKey: CONFIG.logging.cloudwatch.secretAccessKey
-        }
-      }
+  // 通知のログ
+  logNotification(action, notification, additionalData = {}) {
+    this.logger.info('NOTIFICATION', {
+      category: 'Notification',
+      action,
+      value: 1,
+      notificationType: notification.type,
+      notificationStatus: notification.read ? 'READ' : 'UNREAD',
+      userId: notification.recipientId,
+      targetUserId: notification.actorId,
+      contentId: notification.micropostId,
+      ...additionalData
     });
   }
 
-  getLogger() {
-    return this.logger;
+  // エラーログ
+  logError(category, action, error, metadata = {}) {
+    this.logger.error('ERROR', {
+      category,
+      action,
+      value: error.code || 500,
+      errorCode: error.code,
+      errorMessage: error.message,
+      errorStack: error.stack,
+      ...metadata
+    });
+  }
+
+  // ビジネスアクションのログ
+  logBusinessAction(action, data) {
+    this.logger.info('BUSINESS_ACTION', {
+      category: data.category || 'Business',
+      action,
+      value: data.value || 0,
+      environment: process.env.NODE_ENV || 'development',
+      actionType: data.actionType,
+      targetType: data.targetType,
+      targetId: data.targetId,
+      result: data.result,
+      actorId: data.actor?.id,
+      actorName: data.actor?.name,
+      targetUserId: data.target?.id,
+      targetUserName: data.target?.name
+    });
+  }
+
+  // HTTPリクエストのログ
+  logHttpRequest(req, res, responseTime) {
+    this.logger.info('HTTP_REQUEST', {
+      category: 'Http',
+      action: `${req.method} ${res.statusCode} ${req.originalUrl}`,
+      value: responseTime,
+      environment: process.env.NODE_ENV || 'development',
+      method: req.method,
+      path: req.originalUrl,
+      statusCode: res.statusCode,
+      responseTime: responseTime,
+      userId: req.user?.id,
+      userName: req.user?.name
+    });
   }
 }
 
@@ -333,33 +406,22 @@ class ErrorHandler {
 
   createDetailedErrorLog(error, req, additionalInfo = {}) {
     const errorDetails = {
+      category: 'Error',
+      action: error.name || 'UnknownError',
+      value: error.code || 500,
+      quantity: 1,
       error: error.message,
-      name: error.name,
-      code: error.code,
-      stack: error.stack,
       details: error.details || {},
-      timestamp: new Date().toISOString(),
       userId: req.user?.id,
       requestInfo: {
         method: req.method,
         path: req.path,
-        url: req.url,
-        params: req.params,
-        query: req.query,
-        body: req.body,
-        headers: req.headers,
-        file: req.file,
-        session: req.session ? {
-          id: req.session.id,
-          cookie: req.session.cookie
-        } : undefined
-      },
-      ...additionalInfo
+        url: req.url
+      }
     };
 
-    console.error(`${error.name || 'Error'} Details:`, errorDetails);
     if (this.logger) {
-      this.logger.error(`${error.name || 'Error'} Details:`, errorDetails);
+      this.logger.logError('Error', error.name || 'UnknownError', error, errorDetails);
     }
 
     return errorDetails;
@@ -505,7 +567,9 @@ class Application {
 
   initializeCore() {
     const loggingSystem = new LoggingSystem();
+    // Winstonロガーインスタンスを取得
     this.logger = loggingSystem.getLogger();
+    // LoggingSystemインスタンスも保持
     this.loggingSystem = loggingSystem;
     
     this.storageConfig = new StorageConfig();
@@ -574,8 +638,8 @@ class Application {
   setupMiddleware() {
     setupBasicMiddleware(this.app);
     setupAuthMiddleware(this.app, CONFIG);
-    setupRequestLogging(this.app, this.logger);
-    setupErrorLogging(this.app, this.logger);
+    setupRequestLogging(this.app, this.loggingSystem);  // LoggingSystemインスタンスを渡す
+    setupErrorLogging(this.app, this.logger);           // Winstonロガーを渡す
   }
 
   setupRoutes() {

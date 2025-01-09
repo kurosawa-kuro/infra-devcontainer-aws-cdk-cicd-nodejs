@@ -9,26 +9,7 @@
      data-csrf-token="<%- csrfToken || '' %>"
 ></div>
 
-<script>
-// デバッグ情報の出力
-(function() {
-    const debugEl = document.getElementById('debug-info');
-    if (!debugEl) return;
 
-    console.group('=== Debug Info ===');
-    try {
-        console.log('User:', JSON.parse(decodeURIComponent(debugEl.dataset.user)));
-        console.log('Categories:', JSON.parse(decodeURIComponent(debugEl.dataset.categories)));
-        console.log('Microposts:', JSON.parse(decodeURIComponent(debugEl.dataset.microposts)));
-        console.log('Total Pages:', debugEl.dataset.totalPages);
-        console.log('Current Page:', debugEl.dataset.currentPage);
-        console.log('CSRF Token:', debugEl.dataset.csrfToken);
-    } catch (err) {
-        console.error('Debug info parse error:', err);
-    }
-    console.groupEnd();
-})();
-</script>
 
 <div class="max-w-4xl mx-auto px-4 py-8">
     <!-- 新規投稿フォーム -->
@@ -216,25 +197,3 @@
         <% } %>
     </div>
 </div> 
-
-<!-- デバッグ用のスクリプトのみ残す -->
-<script>
-// デバッグ情報の出力
-(function() {
-    const debugEl = document.getElementById('debug-info');
-    if (!debugEl) return;
-
-    console.group('=== Debug Info ===');
-    try {
-        console.log('User:', JSON.parse(decodeURIComponent(debugEl.dataset.user)));
-        console.log('Categories:', JSON.parse(decodeURIComponent(debugEl.dataset.categories)));
-        console.log('Microposts:', JSON.parse(decodeURIComponent(debugEl.dataset.microposts)));
-        console.log('Total Pages:', debugEl.dataset.totalPages);
-        console.log('Current Page:', debugEl.dataset.currentPage);
-        console.log('CSRF Token:', debugEl.dataset.csrfToken);
-    } catch (err) {
-        console.error('Debug info parse error:', err);
-    }
-    console.groupEnd();
-})();
-</script> 

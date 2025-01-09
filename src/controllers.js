@@ -251,13 +251,8 @@ class MicropostController extends BaseController {
 
   async index(req, res) {
     return this.handleRequest(req, res, async () => {
-      console.log('=== Starting micropost index request ===');
-      console.log('Path:', req.path);
-      console.log('Query:', req.query);
-      console.log('User:', req.user ? { id: req.user.id, email: req.user.email } : 'Not logged in');
 
       try {
-        console.log('Fetching microposts and categories...');
         const [microposts, categories] = await Promise.all([
           this.micropostService.getAllMicroposts(),
           this.micropostService.prisma.category.findMany({
@@ -272,18 +267,6 @@ class MicropostController extends BaseController {
           })
         ]);
 
-        console.log('Initial data fetched:');
-        console.log('- Microposts count:', microposts?.length || 0);
-        console.log('- Categories count:', categories?.length || 0);
-        if (microposts?.[0]) {
-          console.log('- First micropost:', {
-            id: microposts[0].id,
-            title: microposts[0].title,
-            userId: microposts[0].userId
-          });
-        }
-
-        console.log('Processing likes for microposts...');
         const micropostsWithLikes = await Promise.all(
           microposts.map(async (micropost) => {
             try {
@@ -313,7 +296,6 @@ class MicropostController extends BaseController {
             currentPage: 1,
             totalPages: 1
           });
-          console.log('Micropost index rendered successfully');
         } catch (renderError) {
           console.error('Template rendering error:', {
             error: renderError.message,
@@ -337,10 +319,6 @@ class MicropostController extends BaseController {
 
   async show(req, res) {
     return this.handleRequest(req, res, async () => {
-      console.log('\n=== Micropost Show Request ===');
-      console.log('Params:', req.params);
-      console.log('User:', req.user ? { id: req.user.id, email: req.user.email } : 'Not logged in');
-      console.log('CSRF Token:', req.csrfToken());
 
       const micropostId = parseInt(req.params.id, 10);
       if (isNaN(micropostId)) {
@@ -351,15 +329,12 @@ class MicropostController extends BaseController {
       // Get client's IP address
       const ipAddress = req.headers['x-forwarded-for']?.split(',')[0].trim() || 
                        req.socket.remoteAddress;
-      console.log('Client IP:', ipAddress);
 
       try {
         // Track the view
         await this.micropostService.trackView(micropostId, ipAddress);
-        console.log('View tracked successfully');
 
         // Get micropost with updated view count and check if user has liked it
-        console.log('Fetching micropost data...');
         const [micropost, isLiked, likeCount, comments, likedUsers] = await Promise.all([
           this.micropostService.getMicropostWithViews(micropostId),
           req.user ? this.likeService.isLiked(req.user.id, micropostId) : false,
@@ -373,18 +348,7 @@ class MicropostController extends BaseController {
           return this.errorHandler.handleNotFoundError(req, res, '投稿が見つかりません');
         }
 
-        console.log('Micropost data:', {
-          id: micropost.id,
-          title: micropost.title,
-          userId: micropost.userId,
-          user: micropost.user,
-          categories: micropost.categories,
-          isLiked,
-          likeCount,
-          commentsCount: comments.length,
-          likedUsersCount: likedUsers.length,
-          _count: micropost._count
-        });
+
 
         const templateData = {
           micropost,
@@ -401,24 +365,8 @@ class MicropostController extends BaseController {
           categories: micropost.categories.map(mc => mc.category)
         };
 
-        console.log('Template data prepared:', JSON.stringify(templateData, (key, value) => {
-          if (key === 'comments' || key === 'categories' || key === 'likedUsers') {
-            return `[Array(${value.length})]`;
-          }
-          if (typeof value === 'object' && value !== null) {
-            return Object.keys(value).reduce((acc, k) => {
-              if (!['password', 'createdAt', 'updatedAt'].includes(k)) {
-                acc[k] = value[k];
-              }
-              return acc;
-            }, {});
-          }
-          return value;
-        }, 2));
-
         try {
           await res.render('pages/public/microposts/show', templateData);
-          console.log('Show template rendered successfully');
         } catch (renderError) {
           console.error('Template rendering error:', {
             error: renderError.message,
@@ -447,15 +395,6 @@ class MicropostController extends BaseController {
 
   async create(req, res) {
     return this.handleRequest(req, res, async () => {
-      console.log('=== Starting micropost create request ===');
-      console.log('Headers:', {
-        'content-type': req.headers['content-type'],
-        'x-csrf-token': req.headers['x-csrf-token'],
-        'cookie': req.headers['cookie']
-      });
-      console.log('Cookies:', req.cookies);
-      console.log('Body:', req.body);
-      console.log('File:', req.file);
       
       const { title, categories } = req.body;
       if (!title?.trim()) {
@@ -469,11 +408,6 @@ class MicropostController extends BaseController {
 
       let imageUrl = null;
       if (req.file) {
-        console.log('Processing uploaded file:', {
-          originalname: req.file.originalname,
-          mimetype: req.file.mimetype,
-          size: req.file.size
-        });
         imageUrl = this.fileUploader.generateFileUrl(req.file);
       }
 
@@ -484,13 +418,6 @@ class MicropostController extends BaseController {
         categories: Array.isArray(categories) ? categories : categories ? [categories] : []
       });
 
-      console.log('Created micropost:', {
-        id: micropost.id,
-        title: micropost.title,
-        imageUrl: micropost.imageUrl,
-        userId: micropost.userId
-      });
-      
       this.sendResponse(req, res, {
         message: '投稿が完了しました',
         redirectUrl: '/microposts'
@@ -643,21 +570,7 @@ class ProfileController extends BaseController {
 
   async follow(req, res) {
     return this.handleRequest(req, res, async () => {
-      console.log('\n=== Follow Request Start ===');
-      console.log('Request:', {
-        method: req.method,
-        path: req.path,
-        params: req.params,
-        body: req.body,
-        headers: {
-          'content-type': req.headers['content-type'],
-          'x-csrf-token': req.headers['x-csrf-token']
-        },
-        user: req.user ? { id: req.user.id, email: req.user.email } : null
-      });
-
       if (!req.user) {
-        console.log('Authentication check failed: No user in request');
         this.logger.warn('Follow attempt without authentication');
         return res.status(403).json({
           success: false,
@@ -666,10 +579,8 @@ class ProfileController extends BaseController {
       }
 
       const targetUserId = parseInt(req.params.id, 10);
-      console.log('Target user ID:', targetUserId);
       
       if (isNaN(targetUserId)) {
-        console.log('Invalid target user ID:', req.params.id);
         this.logger.warn('Invalid target user ID:', req.params.id);
         return res.status(400).json({
           success: false,
@@ -684,15 +595,9 @@ class ProfileController extends BaseController {
       });
 
       try {
-        console.log('Checking target user existence...');
         const targetUser = await this.profileService.getUserProfile(targetUserId);
-        console.log('Target user:', targetUser ? { 
-          id: targetUser.id, 
-          name: targetUser.name 
-        } : 'Not found');
 
         if (!targetUser) {
-          console.log('Target user not found');
           this.logger.warn('Target user not found:', targetUserId);
           return res.status(404).json({
             success: false,
@@ -701,7 +606,6 @@ class ProfileController extends BaseController {
         }
 
         if (req.user.id === targetUserId) {
-          console.log('Self-follow attempt detected');
           this.logger.warn('User attempted to follow themselves:', req.user.id);
           return res.status(400).json({
             success: false,
@@ -709,37 +613,15 @@ class ProfileController extends BaseController {
           });
         }
 
-        console.log('Creating follow relationship...');
         await this.followService.follow(req.user.id, targetUserId);
-        
-        console.log('Getting updated follow counts...');
         const followCounts = await this.followService.getFollowCounts(targetUserId);
-        console.log('Updated follow counts:', followCounts);
 
-        this.logger.info('Follow successful:', {
-          followerId: req.user.id,
-          targetUserId,
-          followCounts
-        });
-
-        console.log('=== Follow Request End ===\n');
         return res.status(200).json({
           success: true,
           message: 'フォローしました',
           data: { followCounts }
         });
       } catch (error) {
-        console.error('Follow operation failed:', {
-          error: {
-            name: error.name,
-            message: error.message,
-            code: error.code,
-            stack: error.stack
-          },
-          followerId: req.user.id,
-          targetUserId
-        });
-
         this.logger.error('Follow failed:', {
           error: error.message,
           stack: error.stack,
@@ -748,14 +630,12 @@ class ProfileController extends BaseController {
         });
 
         if (error.code === 'P2002') {
-          console.log('Already following user');
           return res.status(400).json({
             success: false,
             message: 'すでにフォローしています'
           });
         }
 
-        console.log('=== Follow Request End (with error) ===\n');
         return res.status(500).json({
           success: false,
           message: 'フォロー操作に失敗しました'
@@ -766,21 +646,7 @@ class ProfileController extends BaseController {
 
   async unfollow(req, res) {
     return this.handleRequest(req, res, async () => {
-      console.log('\n=== Unfollow Request Start ===');
-      console.log('Request:', {
-        method: req.method,
-        path: req.path,
-        params: req.params,
-        body: req.body,
-        headers: {
-          'content-type': req.headers['content-type'],
-          'x-csrf-token': req.headers['x-csrf-token']
-        },
-        user: req.user ? { id: req.user.id, email: req.user.email } : null
-      });
-
       if (!req.user) {
-        console.log('Authentication check failed: No user in request');
         this.logger.warn('Unfollow attempt without authentication');
         return res.status(403).json({
           success: false,
@@ -789,10 +655,8 @@ class ProfileController extends BaseController {
       }
 
       const targetUserId = parseInt(req.params.id, 10);
-      console.log('Target user ID:', targetUserId);
-
+      
       if (isNaN(targetUserId)) {
-        console.log('Invalid target user ID:', req.params.id);
         this.logger.warn('Invalid target user ID:', req.params.id);
         return res.status(400).json({
           success: false,
@@ -807,7 +671,6 @@ class ProfileController extends BaseController {
       });
 
       try {
-
         const targetUser = await this.profileService.getUserProfile(targetUserId);
 
         if (!targetUser) {
@@ -827,14 +690,7 @@ class ProfileController extends BaseController {
         }
 
         await this.followService.unfollow(req.user.id, targetUserId);
-        
         const followCounts = await this.followService.getFollowCounts(targetUserId);
-
-        this.logger.info('Unfollow successful:', {
-          followerId: req.user.id,
-          targetUserId,
-          followCounts
-        });
 
         return res.status(200).json({
           success: true,
@@ -842,17 +698,6 @@ class ProfileController extends BaseController {
           data: { followCounts }
         });
       } catch (error) {
-        console.error('Unfollow operation failed:', {
-          error: {
-            name: error.name,
-            message: error.message,
-            code: error.code,
-            stack: error.stack
-          },
-          followerId: req.user.id,
-          targetUserId
-        });
-
         this.logger.error('Unfollow failed:', {
           error: error.message,
           stack: error.stack,
@@ -861,14 +706,12 @@ class ProfileController extends BaseController {
         });
 
         if (error.code === 'P2025') {
-          console.log('Not following user');
           return res.status(400).json({
             success: false,
             message: 'フォローしていません'
           });
         }
 
-        console.log('=== Unfollow Request End (with error) ===\n');
         return res.status(500).json({
           success: false,
           message: 'フォロー解除に失敗しました'
