@@ -16,7 +16,7 @@
           <li class="p-4">
             <div class="flex items-center space-x-4">
               <img 
-                src="<%= followedUser.profile?.avatarPath ? `/uploads/${followedUser.profile.avatarPath}` : '/uploads/default_avatar.png' %>"
+                src="<%= followedUser.profile?.avatarPath || PATHS.DEFAULT_AVATAR %>"
                 alt="Profile Avatar"
                 class="h-12 w-12 rounded-full object-cover"
               >

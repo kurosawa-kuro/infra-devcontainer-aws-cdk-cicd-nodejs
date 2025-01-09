@@ -2,7 +2,7 @@
 <div class="<%= isMobile ? 'col-span-full mt-4 pt-4' : 'mt-6 pt-6' %> border-t border-gray-200 dark:border-gray-800">
     <div class="flex items-center <%= isMobile ? 'px-3 py-2' : 'px-4 py-3' %>">
         <% if (user.profile?.avatarPath) { %>
-            <img class="h-10 w-10 rounded-full" src="/uploads/<%= user.profile.avatarPath %>" alt="">
+            <img class="h-10 w-10 rounded-full" src="<%= user.profile?.avatarPath || PATHS.DEFAULT_AVATAR %>" alt="">
         <% } else { %>
             <div class="h-10 w-10 rounded-full bg-gray-200 dark:bg-gray-700 flex items-center justify-center">
                 <svg class="h-6 w-6 text-gray-500 dark:text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">

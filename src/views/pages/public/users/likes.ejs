@@ -19,7 +19,7 @@
               <div class="d-flex align-items-center">
                 <a href="/<%= like.micropost.user.name %>" class="text-decoration-none">
                   <img 
-                    src="/uploads/<%= like.micropost.user.profile?.avatarPath || 'default_avatar.png' %>" 
+                    src="<%= like.micropost.user.profile?.avatarPath || PATHS.DEFAULT_AVATAR %>" 
                     alt="<%= like.micropost.user.name %>" 
                     class="rounded-circle me-2"
                     style="width: 32px; height: 32px; object-fit: cover;"

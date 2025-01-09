@@ -8,6 +8,12 @@ const fs = require('fs').promises;
 const path = require('path');
 require('dotenv').config({ path: path.join(__dirname, '../.env') });
 
+const PATHS = {
+  DEFAULT_AVATAR: process.env.DEFAULT_AVATAR_PATH,
+  UPLOAD_DIR: process.env.UPLOAD_DIR_PATH,
+  PUBLIC_DIR: process.env.PUBLIC_DIR_PATH
+};
+
 // 共通のユーティリティ関数
 const ValidationUtils = {
   validateId(id) {
@@ -94,28 +100,51 @@ class BaseService {
 
   // 通知作成の共通メソッド
   async createNotification(type, recipientId, actorId, data = {}) {
+    
     if (!Object.values(NotificationType).includes(type)) {
       throw new Error('Invalid notification type');
     }
 
-    return this.prisma.notification.create({
-      data: {
-        type,
-        recipientId: this.validateId(recipientId),
-        actorId: this.validateId(actorId),
-        micropostId: data.micropostId ? this.validateId(data.micropostId) : null,
-        commentId: data.commentId ? this.validateId(data.commentId) : null,
-        read: false
-      },
-      include: {
-        actor: {
-          include: {
-            profile: true
-          }
+    return this.executeTransaction(async (prisma) => {
+      // アクターのプロフィルが存在することを確認
+      const actor = await prisma.user.findUnique({
+        where: { id: this.validateId(actorId) },
+        include: { profile: true }
+      });
+
+      // if (!actor.profile) {
+      //   console.log('Creating profile for actor:', actorId);
+      //   // プロフィルが存在しない場合は作成
+      //   await prisma.userProfile.create({
+      //     data: {
+      //       userId: actor.id,
+      //       avatarPath: PATHS.DEFAULT_AVATAR
+      //     }
+      //   });
+      // }
+
+      const notification = await prisma.notification.create({
+        data: {
+          type,
+          recipientId: this.validateId(recipientId),
+          actorId: this.validateId(actorId),
+          micropostId: data.micropostId ? this.validateId(data.micropostId) : null,
+          commentId: data.commentId ? this.validateId(data.commentId) : null,
+          read: false
         },
-        micropost: true,
-        comment: true
-      }
+        include: {
+          actor: {
+            include: {
+              profile: true
+            }
+          },
+          micropost: true,
+          comment: true
+        }
+      });
+
+
+      return notification;
     });
   }
 
@@ -287,6 +316,13 @@ class ProfileService extends BaseService {
     this.followService = new FollowService(prisma, logger);
   }
 
+  // プロフィールのアバターパスを正規化する
+  normalizeAvatarPath(avatarPath) {
+    if (!avatarPath) return PATHS.DEFAULT_AVATAR;
+    if (avatarPath.startsWith('/uploads/')) return avatarPath;
+    return `/uploads/${avatarPath.replace(/^\//, '')}`;
+  }
+
   async getUserProfile(userId) {
     return this.findUserById(userId);
   }
@@ -344,7 +380,7 @@ class ProfileService extends BaseService {
           location: profileData.location || '',
           website: profileData.website || '',
           birthDate: profileData.birthDate ? new Date(profileData.birthDate) : null,
-          avatarPath: profileData.avatarPath || 'default_avatar.png'
+          avatarPath: this.normalizeAvatarPath(profileData.avatarPath)
         },
         update: {
           bio: profileData.bio || '',
@@ -411,6 +447,16 @@ class ProfileService extends BaseService {
     } else {
       return this.getUserProfileByName(identifier);
     }
+  }
+
+  async createProfile(userId, profileData) {
+    return await this.prisma.userProfile.create({
+      data: {
+        userId,
+        avatarPath: profileData.avatarPath || PATHS.DEFAULT_AVATAR,
+        // ... rest of the code ...
+      }
+    });
   }
 }
 
@@ -1209,22 +1255,61 @@ class CommentService extends BaseService {
 
 class NotificationService extends BaseService {
   async getNotifications(userId) {
-    return this.prisma.notification.findMany({
-      where: {
-        recipientId: this.validateId(userId)
-      },
-      include: {
-        actor: {
-          include: {
-            profile: true
-          }
+
+    try {
+      const notifications = await this.prisma.notification.findMany({
+        where: {
+          recipientId: this.validateId(userId)
         },
-        micropost: true
-      },
-      orderBy: {
-        createdAt: 'desc'
-      }
-    });
+        include: {
+          actor: {
+            include: {
+              profile: true
+            }
+          },
+          micropost: true
+        },
+        orderBy: {
+          createdAt: 'desc'
+        }
+      });
+
+
+      // プロフィルが存在しない通知アクターのプロフィルを作成
+      const updatedNotifications = await Promise.all(
+        notifications.map(async (notification) => {
+          if (!notification.actor.profile) {
+
+            await this.prisma.userProfile.create({
+              data: {
+                userId: notification.actorId,
+                avatarPath: PATHS.DEFAULT_AVATAR
+              }
+            });
+
+            // プロフィル作成後の通知を再取得
+            return await this.prisma.notification.findUnique({
+              where: { id: notification.id },
+              include: {
+                actor: {
+                  include: {
+                    profile: true
+                  }
+                },
+                micropost: true
+              }
+            });
+          }
+          return notification;
+        })
+      );
+
+
+      return updatedNotifications;
+    } catch (error) {
+      console.error('Error in getNotifications:', error);
+      throw error;
+    }
   }
 
   async markAsRead(notificationId, userId) {

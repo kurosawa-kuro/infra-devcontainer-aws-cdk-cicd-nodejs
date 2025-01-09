@@ -7,7 +7,7 @@
     <% category.microposts.forEach(relation => { %>
       <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
         <div class="flex items-center mb-4">
-          <img src="<%= relation.micropost.user.profile?.avatarPath || '/images/default_avatar.png' %>" alt="Avatar" class="w-10 h-10 rounded-full mr-4">
+          <img src="<%= relation.micropost.user.profile?.avatarPath || PATHS.DEFAULT_AVATAR %>" alt="Avatar" class="w-10 h-10 rounded-full mr-4">
           <div>
             <h3 class="font-medium text-gray-900 dark:text-white"><%= relation.micropost.user.name %></h3>
             <p class="text-sm text-gray-500 dark:text-gray-400"><%= new Date(relation.micropost.createdAt).toLocaleDateString() %></p>
