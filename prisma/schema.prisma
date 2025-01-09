@@ -46,7 +46,7 @@ model UserProfile {
   // Core fields
   id          Int       @id @default(autoincrement())
   userId      Int       @unique
-  avatarPath  String    @default("default_avatar.png")
+  avatarPath  String    @default("/uploads/default_avatar.png")
   
   // Optional profile fields
   bio         String?

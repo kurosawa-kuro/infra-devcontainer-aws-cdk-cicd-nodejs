@@ -43,6 +43,7 @@ const {
   CommentController,
   NotificationController
 } = require('./controllers');
+const { PATHS, LIMITS } = require('./constants');
 
 // Constants and Configuration
 const CONFIG = {
@@ -421,7 +422,14 @@ class ErrorHandler {
     };
 
     if (this.logger) {
-      this.logger.logError('Error', error.name || 'UnknownError', error, errorDetails);
+      this.logger.error('Error occurred', {
+        ...errorDetails,
+        error: {
+          message: error.message,
+          stack: error.stack,
+          name: error.name
+        }
+      });
     }
 
     return errorDetails;
@@ -541,6 +549,7 @@ class Application {
     this.setupDirectories();
     setupSecurity(this.app);
     this.app.use(express.static(path.join(__dirname, 'public')));
+    this.app.use('/uploads', express.static(path.join(__dirname, 'public/uploads')));
     
     // Prismaインスタンスを設定
     this.app.set('prisma', this.prisma);
@@ -548,6 +557,10 @@ class Application {
     this.initializeCore();
     this.services = this.initializeServices();
     this.controllers = this.initializeControllers();
+
+    // グローバル変数の設定
+    this.app.locals.PATHS = PATHS;
+    this.app.locals.LIMITS = LIMITS;
   }
 
   setupDirectories() {

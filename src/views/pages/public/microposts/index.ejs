@@ -93,7 +93,7 @@
                         <div class="space-y-4">
                             <div class="flex items-center justify-between">
                                 <div class="flex items-center space-x-3">
-                                    <img src="<%= post.user?.profile?.avatarPath ? `/uploads/${post.user.profile.avatarPath}` : '/uploads/default_avatar.png' %>"
+                                    <img src="<%= post.user?.profile?.avatarPath || PATHS.DEFAULT_AVATAR %>"
                                          alt="<%= post.user?.name || 'User' %>"
                                          class="w-10 h-10 rounded-full object-cover">
                                     <div>

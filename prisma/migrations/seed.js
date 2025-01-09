@@ -1,5 +1,6 @@
 const { PrismaClient } = require('@prisma/client');
 const bcrypt = require('bcrypt');
+const { PATHS } = require('../../src/constants');
 const prisma = new PrismaClient();
 
 async function hashPassword(password) {
@@ -83,7 +84,8 @@ async function main() {
         create: {
           bio: 'I am a default user',
           location: 'Japan',
-          website: 'https://example.com'
+          website: 'https://example.com',
+          avatarPath: PATHS.DEFAULT_AVATAR
         }
       },
       userRoles: {
@@ -142,7 +144,8 @@ async function main() {
         create: {
           bio: 'I am the system administrator',
           location: 'Japan',
-          website: 'https://example.com'
+          website: 'https://example.com',
+          avatarPath: PATHS.DEFAULT_AVATAR
         }
       },
       userRoles: {
@@ -164,7 +167,8 @@ async function main() {
       profile: {
         bio: '趣味は読書とプログラミングです',
         location: '東京',
-        website: 'https://tanaka-blog.example.com'
+        website: 'https://tanaka-blog.example.com',
+        avatarPath: PATHS.DEFAULT_AVATAR
       },
       microposts: [
         { 
@@ -184,7 +188,8 @@ async function main() {
       profile: {
         bio: 'デザイナーをしています',
         location: '大阪',
-        website: 'https://yamada-design.example.com'
+        website: 'https://yamada-design.example.com',
+        avatarPath: PATHS.DEFAULT_AVATAR
       },
       microposts: [
         { 
@@ -204,7 +209,8 @@ async function main() {
       profile: {
         bio: 'エンジニア歴5年目です',
         location: '福岡',
-        website: 'https://suzuki-tech.example.com'
+        website: 'https://suzuki-tech.example.com',
+        avatarPath: PATHS.DEFAULT_AVATAR
       },
       microposts: [
         { 
