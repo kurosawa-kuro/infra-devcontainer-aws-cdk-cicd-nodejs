@@ -1,181 +1,232 @@
 const winston = require('winston');
+const WinstonCloudWatch = require('winston-cloudwatch');
 const path = require('path');
+const fs = require('fs');
 
-// 起動時に環境をチェック
-const validateEnvironment = () => {
-  const env = process.env.NODE_ENV;
-  if (!['development', 'production', 'test'].includes(env)) {
-    throw new Error(`Invalid NODE_ENV: ${env}`);
+class Logger {
+  constructor() {
+    this.env = this.validateEnvironment();
+    this.setupLogDirectory();
+    this.logger = this.createLogger();
   }
-  return env;
-};
 
-// 環境に基づいてログディレクトリを設定
-const getLogDir = () => {
-  const env = validateEnvironment();
-  return path.join('logs', env);
-};
-
-// 基本的なログフォーマット
-const logFormat = winston.format.combine(
-  winston.format.timestamp({
-    format: 'YYYY-MM-DD HH:mm:ss'
-  }),
-  winston.format.errors({ stack: true }),
-  winston.format.json()
-);
-
-// ログファイルの設定
-const logDir = getLogDir();
-const logger = winston.createLogger({
-  level: process.env.LOG_LEVEL || 'info',
-  format: logFormat,
-  transports: [
-    new winston.transports.File({
-      filename: path.join(logDir, 'error.log'),
-      level: 'error',
-      maxsize: 5242880,
-      maxFiles: 5,
-    }),
-    new winston.transports.File({
-      filename: path.join(logDir, 'combined.log'),
-      maxsize: 5242880,
-      maxFiles: 5,
-    })
-  ]
-});
-
-if (process.env.NODE_ENV !== 'production') {
-  logger.add(new winston.transports.Console({
-    format: winston.format.simple()
-  }));
-}
-
-// 共通のメタデータを作成する関数
-const createBaseMetadata = () => ({
-  timestamp: new Date().toISOString()
-});
-
-// HTTPリクエストログ
-const logHttpRequest = (req, res, responseTime) => {
-  const metadata = {
-    ...createBaseMetadata(),
-    method: req.method,
-    path: req.originalUrl,
-    statusCode: res.statusCode,
-    responseTime,
-    userId: req.user?.id
-  };
-
-  logger.info('HTTP Request', metadata);
-};
-
-// ビジネスアクションログ
-const logBusinessAction = (action, data) => {
-  const metadata = {
-    ...createBaseMetadata(),
-    action,
-    category: data.category,
-    userId: data.userId,
-    details: data.details
-  };
-
-  logger.info('Business Action', metadata);
-};
-
-// エラーログ
-const logError = (err, req = null) => {
-  const metadata = {
-    ...createBaseMetadata(),
-    error: {
-      name: err.name,
-      message: err.message,
-      stack: err.stack
+  validateEnvironment() {
+    const env = process.env.NODE_ENV;
+    if (!['development', 'production', 'test'].includes(env)) {
+      throw new Error(`Invalid NODE_ENV: ${env}`);
     }
-  };
+    return env;
+  }
 
-  if (req) {
-    metadata.request = {
+  setupLogDirectory() {
+    const logDir = path.join(process.cwd(), 'logs', this.env);
+    if (!fs.existsSync(logDir)) {
+      fs.mkdirSync(logDir, { recursive: true });
+    }
+    this.logDir = logDir;
+  }
+
+  createCloudWatchTransport() {
+    if (process.env.USE_CLOUDWATCH !== 'true') return null;
+
+    const date = new Date();
+    const logStreamName = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+
+    const transport = new WinstonCloudWatch({
+      name: 'cloudwatch',
+      logGroupName: process.env.CLOUDWATCH_LOG_GROUP,
+      logStreamName: logStreamName,
+      awsRegion: process.env.AWS_REGION,
+      awsAccessKeyId: process.env.AWS_ACCESS_KEY_ID,
+      awsSecretKey: process.env.AWS_SECRET_ACCESS_KEY,
+      messageFormatter: ({ level, message, timestamp, ...meta }) => {
+        return JSON.stringify({
+          level,
+          message,
+          timestamp,
+          environment: process.env.NODE_ENV,
+          ...meta
+        });
+      },
+      uploadRate: 2000,
+      retentionInDays: 14,
+      jsonMessage: true
+    });
+
+    transport.on('error', (err) => {
+      console.error('CloudWatch Transport Error:', {
+        message: err.message,
+        code: err.code,
+        time: new Date().toISOString()
+      });
+    });
+
+    return transport;
+  }
+
+  createLogger() {
+    const transports = [
+      // File transports
+      new winston.transports.File({
+        filename: path.join(this.logDir, 'error.log'),
+        level: 'error',
+        maxsize: 5242880,
+        maxFiles: 5,
+      }),
+      new winston.transports.File({
+        filename: path.join(this.logDir, 'combined.log'),
+        maxsize: 5242880,
+        maxFiles: 5,
+      }),
+      // Console transport
+      new winston.transports.Console({
+        format: winston.format.combine(
+          winston.format.colorize(),
+          winston.format.simple()
+        )
+      })
+    ];
+
+    // Add CloudWatch transport if enabled
+    const cloudWatchTransport = this.createCloudWatchTransport();
+    if (cloudWatchTransport) {
+      transports.push(cloudWatchTransport);
+    }
+
+    return winston.createLogger({
+      level: process.env.LOG_LEVEL || 'info',
+      format: winston.format.combine(
+        winston.format.timestamp(),
+        winston.format.errors({ stack: true }),
+        winston.format.json()
+      ),
+      defaultMeta: {
+        environment: this.env,
+        service: 'app'
+      },
+      transports,
+      exitOnError: false
+    });
+  }
+
+  // Base logging methods
+  log(level, message, meta = {}) {
+    const timestamp = new Date().toISOString();
+    this.logger.log(level, message, { timestamp, ...meta });
+  }
+
+  info(message, meta = {}) {
+    this.log('info', message, meta);
+  }
+
+  error(message, meta = {}) {
+    this.log('error', message, meta);
+  }
+
+  warn(message, meta = {}) {
+    this.log('warn', message, meta);
+  }
+
+  debug(message, meta = {}) {
+    this.log('debug', message, meta);
+  }
+
+  // Specialized logging methods
+  logHttpRequest(req, res, responseTime) {
+    this.info('HTTP Request', {
       method: req.method,
       path: req.originalUrl,
-      userId: req.user?.id
-    };
+      statusCode: res.statusCode,
+      responseTime,
+      userId: req.user?.id,
+      ip: req.ip,
+      userAgent: req.get('user-agent')
+    });
   }
 
-  logger.error('Error', metadata);
-};
+  logApiRequest(req, res, responseTime) {
+    this.info('API Request', {
+      method: req.method,
+      path: req.originalUrl,
+      statusCode: res.statusCode,
+      responseTime,
+      userId: req.user?.id,
+      isXHR: req.xhr || false,
+      acceptHeader: req.headers.accept,
+      ip: req.ip
+    });
+  }
 
-// システムエラーログ
-const logSystemError = (message, error, context = {}) => {
-  const metadata = {
-    ...createBaseMetadata(),
-    ...context,
-    error: error ? {
-      name: error.name,
-      message: error.message,
-      stack: error.stack
-    } : null
-  };
+  logError(err, req = null) {
+    const meta = {
+      error: {
+        name: err.name,
+        message: err.message,
+        stack: err.stack,
+        code: err.code
+      }
+    };
 
-  logger.error(message, metadata);
-};
-
-// データベースエラーログ
-const logDatabaseError = (operation, error, context = {}) => {
-  const metadata = {
-    ...createBaseMetadata(),
-    operation,
-    ...context,
-    error: {
-      name: error.name,
-      message: error.message,
-      stack: error.stack
+    if (req) {
+      meta.request = {
+        method: req.method,
+        path: req.originalUrl,
+        userId: req.user?.id,
+        ip: req.ip
+      };
     }
-  };
 
-  logger.error('Database Error', metadata);
-};
+    this.error('Error Occurred', meta);
+  }
 
-// APIリクエストログ
-const logApiRequest = (req, res, responseTime) => {
-  const metadata = {
-    ...createBaseMetadata(),
-    method: req.method,
-    path: req.originalUrl,
-    statusCode: res.statusCode,
-    responseTime,
-    userId: req.user?.id,
-    isXHR: req.xhr || false,
-    acceptHeader: req.headers.accept
-  };
+  logBusinessAction(action, data = {}) {
+    this.info('Business Action', {
+      action,
+      ...data,
+      userId: data.userId,
+      targetId: data.targetId,
+      result: data.result
+    });
+  }
 
-  logger.info('API Request', metadata);
-};
+  logSystemAction(action, data = {}) {
+    this.info('System Action', {
+      action,
+      ...data,
+      hostname: require('os').hostname()
+    });
+  }
 
-// 基本的なログレベル関数
-const info = (message, meta = {}) => logger.info(message, { ...createBaseMetadata(), ...meta });
-const error = (message, meta = {}) => logger.error(message, { ...createBaseMetadata(), ...meta });
-const warn = (message, meta = {}) => logger.warn(message, { ...createBaseMetadata(), ...meta });
-const debug = (message, meta = {}) => logger.debug(message, { ...createBaseMetadata(), ...meta });
+  logDatabaseAction(action, data = {}) {
+    this.info('Database Action', {
+      action,
+      ...data,
+      duration: data.duration
+    });
+  }
 
-// APIリクエストの判定
-const isApiRequest = (req) => {
-  return req.xhr || 
-         req.headers.accept?.toLowerCase().includes('application/json') ||
-         req.headers['x-requested-with']?.toLowerCase() === 'xmlhttprequest';
-};
+  logUserAction(action, user, data = {}) {
+    this.info('User Action', {
+      action,
+      userId: user.id,
+      userName: user.name,
+      userRole: user.userRoles?.[0]?.role?.name,
+      ...data
+    });
+  }
 
-module.exports = {
-  logger,
-  info,
-  error,
-  warn,
-  debug,
-  logHttpRequest,
-  logBusinessAction,
-  logError,
-  logSystemError,
-  logDatabaseError,
-  logApiRequest,
-  isApiRequest
-};
+  logAuthAction(action, user, success, data = {}) {
+    this.info('Auth Action', {
+      action,
+      userId: user?.id,
+      success,
+      ...data
+    });
+  }
+}
+
+// Create singleton instance
+const loggerInstance = new Logger();
+
+// Export the singleton instance
+module.exports = loggerInstance;

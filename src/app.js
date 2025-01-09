@@ -1,6 +1,4 @@
 const express = require('express');
-const winston = require('winston');
-const WinstonCloudWatch = require('winston-cloudwatch');
 const path = require('path');
 const multer = require('multer');
 const { PrismaClient } = require('@prisma/client');
@@ -9,6 +7,7 @@ const multerS3 = require('multer-s3');
 const fs = require('fs');
 require('dotenv').config();
 const passport = require('passport');
+const logger = require('./logger');
 
 const setupRoutes = require('./routes');
 const {
@@ -82,192 +81,8 @@ const CONFIG = {
       fileSize: 5 * 1024 * 1024,
       allowedMimeTypes: ['image/jpeg', 'image/png', 'image/gif']
     }
-  },
-  logging: {
-    useCloudWatch: process.env.USE_CLOUDWATCH === 'true',
-    cloudwatch: {
-      logGroupName: '/aws/CdkJavascript01/myapp',
-      region: process.env.AWS_REGION,
-      accessKeyId: process.env.AWS_ACCESS_KEY_ID,
-      secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY
-    }
-  },
-  auth: {
-    sessionSecret: process.env.SESSION_SECRET || 'your-session-secret',
-    sessionMaxAge: parseInt(process.env.SESSION_MAX_AGE, 10) || 24 * 60 * 60 * 1000
   }
 };
-
-// ロギングシステムの設定と管理
-class LoggingSystem {
-  constructor() {
-    this.setupLogDirectory();
-    this.logger = this.createLogger();
-  }
-
-  isEnabled() {
-    return CONFIG.logging.useCloudWatch;
-  }
-
-  setupLogDirectory() {
-    const logDir = path.join(__dirname, '..', 'logs');
-    if (!fs.existsSync(logDir)) {
-      fs.mkdirSync(logDir, { recursive: true });
-    }
-  }
-
-  // ロガーインスタンスを取得するメソッド
-  getLogger() {
-    return this.logger;
-  }
-
-  createLogger() {
-    const transports = [
-      new winston.transports.Console({
-        format: winston.format.combine(
-          winston.format.timestamp(),
-          winston.format.printf(({ timestamp, message }) => {
-            return `${timestamp}: ${message}`;
-          })
-        )
-      })
-    ];
-
-    if (CONFIG.logging.useCloudWatch) {
-      // 日付ベースのログストリーム名を生成
-      const date = new Date();
-      const year = date.getFullYear();
-      const month = String(date.getMonth() + 1).padStart(2, '0');
-      const day = String(date.getDate()).padStart(2, '0');
-      const logStreamName = `${year}-${month}-${day}`;
-
-      const cloudWatchTransport = new WinstonCloudWatch({
-        logGroupName: process.env.CLOUDWATCH_LOG_GROUP,
-        logStreamName: logStreamName,
-        awsRegion: process.env.AWS_REGION,
-        messageFormatter: ({ message }) => message
-      });
-
-      cloudWatchTransport.on('error', (err) => {
-        console.error('CloudWatch logging error:', err);
-      });
-
-      transports.push(cloudWatchTransport);
-    }
-    
-
-    return winston.createLogger({
-      format: winston.format.simple(),
-      transports: transports
-    });
-  }
-
-  // ユーザーアクションのログ
-  logUserAction(action, user, value = 0, additionalData = {}) {
-    this.logger.info('USER_ACTION', {
-      category: 'User',
-      action,
-      value,
-      userId: user.id,
-      userName: user.name,
-      role: user.userRoles?.[0]?.role?.name,
-      ...additionalData
-    });
-  }
-
-  // コンテンツ関連アクションのログ
-  logContentAction(action, content, user, value = 0, additionalData = {}) {
-    this.logger.info('CONTENT_ACTION', {
-      category: 'Content',
-      action,
-      value,
-      contentId: content.id,
-      contentType: 'Micropost',
-      contentTitle: content.title,
-      userId: user?.id,
-      userName: user?.name,
-      categoryName: content.categories?.[0]?.category?.name,
-      ...additionalData
-    });
-  }
-
-  // インタラクションのログ
-  logInteraction(action, type, user, target, value = 0, additionalData = {}) {
-    this.logger.info('INTERACTION', {
-      category: 'Interaction',
-      action,
-      value,
-      interactionType: type,
-      userId: user.id,
-      userName: user.name,
-      targetUserId: target.userId,
-      targetContentId: target.contentId,
-      ...additionalData
-    });
-  }
-
-  // 通知のログ
-  logNotification(action, notification, additionalData = {}) {
-    this.logger.info('NOTIFICATION', {
-      category: 'Notification',
-      action,
-      value: 1,
-      notificationType: notification.type,
-      notificationStatus: notification.read ? 'READ' : 'UNREAD',
-      userId: notification.recipientId,
-      targetUserId: notification.actorId,
-      contentId: notification.micropostId,
-      ...additionalData
-    });
-  }
-
-  // エラーログ
-  logError(category, action, error, metadata = {}) {
-    this.logger.error('ERROR', {
-      category,
-      action,
-      value: error.code || 500,
-      errorCode: error.code,
-      errorMessage: error.message,
-      errorStack: error.stack,
-      ...metadata
-    });
-  }
-
-  // ビジネスアクションのログ
-  logBusinessAction(action, data) {
-    this.logger.info('BUSINESS_ACTION', {
-      category: data.category || 'Business',
-      action,
-      value: data.value || 0,
-      environment: process.env.NODE_ENV || 'development',
-      actionType: data.actionType,
-      targetType: data.targetType,
-      targetId: data.targetId,
-      result: data.result,
-      actorId: data.actor?.id,
-      actorName: data.actor?.name,
-      targetUserId: data.target?.id,
-      targetUserName: data.target?.name
-    });
-  }
-
-  // HTTPリクエストのログ
-  logHttpRequest(req, res, responseTime) {
-    this.logger.info('HTTP_REQUEST', {
-      category: 'Http',
-      action: `${req.method} ${res.statusCode} ${req.originalUrl}`,
-      value: responseTime,
-      environment: process.env.NODE_ENV || 'development',
-      method: req.method,
-      path: req.originalUrl,
-      statusCode: res.statusCode,
-      responseTime: responseTime,
-      userId: req.user?.id,
-      userName: req.user?.name
-    });
-  }
-}
 
 // ストレージ設定を管理するクラス
 class StorageConfig {
@@ -413,9 +228,8 @@ class FileUploader {
 
 // エラーハンドリングを管理するクラス
 class ErrorHandler {
-  constructor(uploadLimits, logger) {
+  constructor(uploadLimits) {
     this.uploadLimits = uploadLimits;
-    this.logger = logger;
   }
 
   createDetailedErrorLog(error, req, additionalInfo = {}) {
@@ -434,16 +248,7 @@ class ErrorHandler {
       }
     };
 
-    if (this.logger) {
-      this.logger.error('Error occurred', {
-        ...errorDetails,
-        error: {
-          message: error.message,
-          stack: error.stack,
-          name: error.name
-        }
-      });
-    }
+    logger.logError(error, req);
 
     return errorDetails;
   }
@@ -592,38 +397,32 @@ class Application {
   }
 
   initializeCore() {
-    const loggingSystem = new LoggingSystem();
-    // Winstonロガーインスタンスを取得
-    this.logger = loggingSystem.getLogger();
-    // LoggingSystemインスタンスも保持
-    this.loggingSystem = loggingSystem;
-    
     this.storageConfig = new StorageConfig();
     this.fileUploader = new FileUploader(this.storageConfig);
-    this.errorHandler = new ErrorHandler(this.storageConfig.getUploadLimits(), this.logger);
+    this.errorHandler = new ErrorHandler(this.storageConfig.getUploadLimits());
 
-    const passportService = new PassportService(this.prisma, this.logger);
+    const passportService = new PassportService(this.prisma, logger);
     passportService.configurePassport(passport);
   }
 
   initializeServices() {
     return {
-      auth: new AuthService(this.prisma, this.logger),
-      profile: new ProfileService(this.prisma, this.logger),
-      micropost: new MicropostService(this.prisma, this.logger),
-      system: new SystemService(this.prisma, this.logger),
-      category: new CategoryService(this.prisma, this.logger),
-      passport: new PassportService(this.prisma, this.logger),
-      like: new LikeService(this.prisma, this.logger),
-      comment: new CommentService(this.prisma, this.logger),
-      notification: new NotificationService(this.prisma, this.logger),
-      follow: new FollowService(this.prisma, this.logger)
+      auth: new AuthService(this.prisma, logger),
+      profile: new ProfileService(this.prisma, logger),
+      micropost: new MicropostService(this.prisma, logger),
+      system: new SystemService(this.prisma, logger),
+      category: new CategoryService(this.prisma, logger),
+      passport: new PassportService(this.prisma, logger),
+      like: new LikeService(this.prisma, logger),
+      comment: new CommentService(this.prisma, logger),
+      notification: new NotificationService(this.prisma, logger),
+      follow: new FollowService(this.prisma, logger)
     };
   }
 
   initializeControllers() {
     return {
-      auth: new AuthController(this.services.auth, this.errorHandler, this.logger),
+      auth: new AuthController(this.services.auth, this.errorHandler, logger),
       profile: new ProfileController(
         { 
           profile: this.services.profile,
@@ -631,7 +430,7 @@ class Application {
           follow: this.services.follow
         },
         this.errorHandler,
-        this.logger
+        logger
       ),
       micropost: new MicropostController(
         { 
@@ -641,9 +440,9 @@ class Application {
         },
         this.fileUploader,
         this.errorHandler,
-        this.logger
+        logger
       ),
-      system: new SystemController(this.services.system, this.errorHandler, this.logger),
+      system: new SystemController(this.services.system, this.errorHandler, logger),
       dev: new DevController(
         { 
           system: this.services.system,
@@ -651,21 +450,21 @@ class Application {
           micropost: this.services.micropost
         },
         this.errorHandler,
-        this.logger
+        logger
       ),
-      admin: new AdminController(this.services, this.errorHandler, this.logger),
-      category: new CategoryController(this.services.category, this.errorHandler, this.logger),
-      like: new LikeController(this.services.like, this.errorHandler, this.logger),
-      comment: new CommentController(this.services, this.errorHandler, this.logger),
-      notification: new NotificationController(this.services, this.errorHandler, this.logger)
+      admin: new AdminController(this.services, this.errorHandler, logger),
+      category: new CategoryController(this.services.category, this.errorHandler, logger),
+      like: new LikeController(this.services.like, this.errorHandler, logger),
+      comment: new CommentController(this.services, this.errorHandler, logger),
+      notification: new NotificationController(this.services, this.errorHandler, logger)
     };
   }
 
   setupMiddleware() {
     setupBasicMiddleware(this.app);
     setupAuthMiddleware(this.app, CONFIG);
-    setupRequestLogging(this.app, this.loggingSystem);  // LoggingSystemインスタンスを渡す
-    setupErrorLogging(this.app, this.logger);           // Winstonロガーを渡す
+    setupRequestLogging(this.app, logger);
+    setupErrorLogging(this.app, logger);
   }
 
   setupRoutes() {
@@ -688,18 +487,17 @@ class Application {
         });
       }
     } catch (err) {
-      this.logger.error('Application startup error:', err);
+      logger.error('Application startup error:', { error: err });
       process.exit(1);
     }
   }
 
   logServerStartup() {
-    console.log('\n=== Server Information ===');
-    console.log(`Environment: ${CONFIG.app.env}`);
-    console.log(`Storage:     ${this.storageConfig.isEnabled() ? 'S3' : 'Local'}`);
-    console.log(`CloudWatch:  ${this.loggingSystem.isEnabled() ? 'Enabled' : 'Disabled'}`);
-    console.log(`Server:      http://${CONFIG.app.host}:${this.port}`);
-    console.log('\n=== Server is ready ===\n');
+    logger.info('Server Information', {
+      environment: CONFIG.app.env,
+      storage: this.storageConfig.isEnabled() ? 'S3' : 'Local',
+      server: `http://${CONFIG.app.host}:${this.port}`
+    });
   }
 
   async cleanup() {
@@ -709,18 +507,18 @@ class Application {
 
 const app = new Application();
 app.start().catch(err => {
-  console.error('Failed to start application:', err);
+  logger.error('Failed to start application:', { error: err });
   process.exit(1);
 });
 
 process.on('SIGINT', async () => {
-  console.log('\nReceived SIGINT, cleaning up...');
+  logger.info('Received SIGINT, cleaning up...');
   await app.cleanup();
   process.exit(0);
 });
 
 process.on('SIGTERM', async () => {
-  console.log('\nReceived SIGTERM, cleaning up...');
+  logger.info('Received SIGTERM, cleaning up...');
   await app.cleanup();
   process.exit(0);
 });
