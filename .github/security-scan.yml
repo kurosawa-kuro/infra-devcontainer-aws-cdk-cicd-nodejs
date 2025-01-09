@@ -1,0 +1,131 @@
+name: Security Scan
+
+on:
+  schedule:
+    - cron: '0 0 * * *'  # 毎日深夜0時（UTC）
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  node-security:
+    name: Node.js Security Scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run npm audit
+        run: npm audit --json > npm-audit.json || true
+
+      - name: Run ESLint security checks
+        run: |
+          npx eslint . \
+            -c .eslintrc \
+            --ext .js,.ts \
+            --plugin security \
+            --format json > eslint-results.json || true
+
+      - name: Upload Node.js reports
+        uses: actions/upload-artifact@v3
+        with:
+          name: node-security-reports
+          path: |
+            npm-audit.json
+            eslint-results.json
+
+  python-security:
+    name: Python Security Scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.x'
+          cache: 'pip'
+
+      - name: Install security tools
+        run: pip install safety bandit
+
+      - name: Run safety check
+        run: safety check --json > safety-report.json || true
+
+      - name: Run bandit
+        run: bandit -r . -f json -o bandit-report.json || true
+
+      - name: Upload Python reports
+        uses: actions/upload-artifact@v3
+        with:
+          name: python-security-reports
+          path: |
+            safety-report.json
+            bandit-report.json
+
+  go-security:
+    name: Go Security Scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: '1.21'
+          cache: true
+
+      - name: Install security tools
+        run: |
+          go install golang.org/x/vuln/cmd/govulncheck@latest
+          go install github.com/securego/gosec/v2/cmd/gosec@latest
+
+      - name: Run govulncheck
+        run: govulncheck ./... > govuln-report.txt || true
+
+      - name: Run gosec
+        run: gosec -fmt=json -out=gosec-report.json ./... || true
+
+      - name: Upload Go reports
+        uses: actions/upload-artifact@v3
+        with:
+          name: go-security-reports
+          path: |
+            govuln-report.txt
+            gosec-report.json
+
+  notify:
+    name: Notify Results
+    needs: [node-security, python-security, go-security]
+    runs-on: ubuntu-latest
+    if: always()
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v3
+
+      - name: Send Slack Notification
+        if: env.SLACK_WEBHOOK_URL != ''
+        uses: 8398a7/action-slack@v3
+        with:
+          status: ${{ job.status }}
+          fields: repo,message,commit,author,action,eventName,ref,workflow
+          text: |
+            Security Scan Summary
+            Repository: ${{ github.repository }}
+            Branch: ${{ github.ref }}
+            Event: ${{ github.event_name }}
+            
+            Check the artifacts for detailed reports.
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+        continue-on-error: true

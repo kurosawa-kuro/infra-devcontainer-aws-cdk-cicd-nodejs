@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="ja" class="h-full">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title><%= title %> - 検証用ウェブ アプリ</title>
+    <link rel="stylesheet" href="/css/styles.css">
+    <script>
+        // ダークモードの初期設定
+        if (localStorage.theme === 'dark' || (!('theme' in localStorage) && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+            document.documentElement.classList.add('dark');
+        } else {
+            document.documentElement.classList.remove('dark');
+        }
+    </script>
+</head>
+<body class="h-full antialiased bg-white dark:bg-gray-900 text-gray-900 dark:text-white">
+    <!-- テラッシュメッセージ -->
+    <% if (typeof error !== 'undefined' && error.length > 0) { %>
+        <div class="fixed top-4 left-1/2 transform -translate-x-1/2 z-50 w-full max-w-sm">
+            <div class="bg-red-50 dark:bg-red-900/50 text-red-600 dark:text-red-400 p-4 rounded-lg shadow-lg border border-red-100 dark:border-red-800">
+                <p class="text-sm font-medium"><%= error %></p>
+            </div>
+        </div>
+    <% } %>
+    <% if (typeof success !== 'undefined' && success.length > 0) { %>
+        <div class="fixed top-4 left-1/2 transform -translate-x-1/2 z-50 w-full max-w-sm">
+            <div class="bg-green-50 dark:bg-green-900/50 text-green-600 dark:text-green-400 p-4 rounded-lg shadow-lg border border-green-100 dark:border-green-800">
+                <p class="text-sm font-medium"><%= success %></p>
+            </div>
+        </div>
+    <% } %>
+
+    <div class="min-h-full">
+        <!-- 左サイドバー -->
+        <%- include('../components/navigation/sidebar') %>
+
+        <!-- 右サイドバー -->
+        <div class="fixed top-0 right-0 bottom-0 w-80 hidden lg:block bg-white dark:bg-gray-900 border-l border-gray-200 dark:border-gray-800">
+            <div class="px-4 py-4 h-full">
+                <!-- 検索と設定エリア -->
+                <div class="flex items-center gap-2 mb-6">
+                    <div class="flex-1">
+                        <form action="/search" method="GET">
+                            <div class="relative">
+                                <input type="text" 
+                                       name="q" 
+                                       placeholder="検索" 
+                                       class="w-full pl-10 pr-4 py-2 bg-gray-100 dark:bg-gray-800 border-0 rounded-full text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-rose-500 dark:focus:ring-rose-500">
+                                <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                                    <svg class="w-5 h-5 text-gray-500 dark:text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
+                                    </svg>
+                                </div>
+                            </div>
+                        </form>
+                    </div>
+                    <button id="theme-toggle" 
+                            class="p-2.5 rounded-full bg-white dark:bg-gray-800 shadow-lg ring-1 ring-gray-200 dark:ring-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-rose-500 dark:focus:ring-offset-gray-900 transition-all">
+                        <svg id="light-icon" class="w-5 h-5 hidden dark:block text-gray-600 dark:text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z" />
+                        </svg>
+                        <svg id="dark-icon" class="w-5 h-5 block dark:hidden text-gray-600 dark:text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" />
+                        </svg>
+                    </button>
+                </div>
+
+                <!-- カテゴリー一覧 -->
+                <div class="bg-white dark:bg-gray-900 rounded-xl">
+                    <h2 class="text-xl font-semibold mb-4 text-gray-900 dark:text-white">カテゴリー</h2>
+                    <div class="space-y-2">
+                        <% if (typeof categories !== 'undefined') { %>
+                            <% categories.forEach(category => { %>
+                                <a href="/categories/<%= category.id %>" 
+                                   class="flex items-center px-4 py-2 rounded-lg text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors">
+                                    <span class="text-sm"><%= category.name %></span>
+                                    <span class="ml-auto text-xs text-gray-500 dark:text-gray-400"><%= category._count?.microposts || 0 %></span>
+                                </a>
+                            <% }) %>
+                        <% } %>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- メインコンテンツ -->
+        <main class="lg:pl-72 lg:pr-80">
+            <div class="px-4 py-8 sm:px-6 lg:px-8">
+                <%- body %>
+            </div>
+        </main>
+    </div>
+
+    <script>
+        // テーマ切り替え機能
+        const themeToggle = document.getElementById('theme-toggle');
+        themeToggle.addEventListener('click', () => {
+            if (document.documentElement.classList.contains('dark')) {
+                document.documentElement.classList.remove('dark');
+                localStorage.theme = 'light';
+            } else {
+                document.documentElement.classList.add('dark');
+                localStorage.theme = 'dark';
+            }
+        });
+    </script>
+</body>
+</html>

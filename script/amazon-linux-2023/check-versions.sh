@@ -70,6 +70,7 @@ check_system_info() {
     check_component_version "npm" "npm --version"
     check_component_version "docker" "docker --version"
     check_component_version "git" "git --version"
+    check_component_version "cdk" "cdk --version"
 }
 
 # メインの実行関数

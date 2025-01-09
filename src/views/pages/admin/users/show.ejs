@@ -1,0 +1,136 @@
+<%- contentFor('body') %>
+<div class="max-w-7xl mx-auto px-4 py-8">
+    <div class="mb-8">
+        <a href="/admin/users" class="inline-flex items-center text-sm text-rose-600 dark:text-rose-400 hover:text-rose-700 dark:hover:text-rose-300">
+            <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/>
+            </svg>
+            ユーザー一覧に戻る
+        </a>
+    </div>
+
+    <div class="mb-12">
+        <h1 class="text-3xl font-semibold mb-3 text-gray-900 dark:text-white">ユーザー詳細</h1>
+        <p class="text-base text-gray-600 dark:text-gray-300">ユーザーの詳細情報を表示します</p>
+    </div>
+
+    <!-- ユーザー基本情報 -->
+    <div class="bg-white dark:bg-gray-900 rounded-xl shadow-sm border border-gray-200 dark:border-gray-800 p-6 mb-8">
+        <h2 class="text-xl font-semibold mb-6 text-gray-900 dark:text-white">基本情報</h2>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div>
+                <div class="flex items-center mb-6">
+                    <% if (user.profile?.avatarPath) { %>
+                        <img class="h-20 w-20 rounded-full mr-4" src="/uploads/<%= user.profile.avatarPath %>" alt="">
+                    <% } else { %>
+                        <div class="h-20 w-20 rounded-full bg-gray-200 dark:bg-gray-700 mr-4 flex items-center justify-center">
+                            <svg class="h-10 w-10 text-gray-500 dark:text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/>
+                            </svg>
+                        </div>
+                    <% } %>
+                    <div>
+                        <h3 class="text-lg font-medium text-gray-900 dark:text-white"><%= user.email %></h3>
+                        <div class="flex flex-wrap gap-2 mt-2">
+                            <% user.userRoles.forEach(ur => { %>
+                                <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-rose-100 dark:bg-rose-900/30 text-rose-800 dark:text-rose-400">
+                                    <%= ur.role.name %>
+                                </span>
+                            <% }) %>
+                        </div>
+                    </div>
+                </div>
+                <dl class="space-y-4">
+                    <div>
+                        <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">ユーザーID</dt>
+                        <dd class="mt-1 text-sm text-gray-900 dark:text-white"><%= user.id %></dd>
+                    </div>
+                    <div>
+                        <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">作成日時</dt>
+                        <dd class="mt-1 text-sm text-gray-900 dark:text-white"><%= new Date(user.createdAt).toLocaleString('ja-JP') %></dd>
+                    </div>
+                    <div>
+                        <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">更新日時</dt>
+                        <dd class="mt-1 text-sm text-gray-900 dark:text-white"><%= new Date(user.updatedAt).toLocaleString('ja-JP') %></dd>
+                    </div>
+                </dl>
+            </div>
+            <div>
+                <dl class="space-y-4">
+                    <div>
+                        <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">名前</dt>
+                        <dd class="mt-1 text-sm text-gray-900 dark:text-white"><%= user.profile?.name || '未設定' %></dd>
+                    </div>
+                    <div>
+                        <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">自己紹介</dt>
+                        <dd class="mt-1 text-sm text-gray-900 dark:text-white"><%= user.profile?.bio || '未設定' %></dd>
+                    </div>
+                    <div>
+                        <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">投稿数</dt>
+                        <dd class="mt-1 text-sm text-gray-900 dark:text-white"><%= user._count.microposts %></dd>
+                    </div>
+                </dl>
+            </div>
+        </div>
+    </div>
+
+    <!-- 権限管理 -->
+    <div class="bg-white dark:bg-gray-900 rounded-xl shadow-sm border border-gray-200 dark:border-gray-800 p-6 mb-8">
+        <h2 class="text-xl font-semibold mb-6 text-gray-900 dark:text-white">権限管理</h2>
+        <form action="/admin/users/<%= user.id %>/roles" method="POST" class="space-y-4">
+            <div class="space-y-2">
+                <div class="flex items-center">
+                    <input type="checkbox" id="role-user" name="roles[]" value="user" 
+                        <%= user.userRoles.some(ur => ur.role.name === 'user') ? 'checked' : '' %>
+                        class="h-4 w-4 text-rose-600 focus:ring-rose-500 border-gray-300 rounded">
+                    <label for="role-user" class="ml-2 block text-sm text-gray-900 dark:text-white">
+                        User
+                    </label>
+                </div>
+                <div class="flex items-center">
+                    <input type="checkbox" id="role-admin" name="roles[]" value="admin"
+                        <%= user.userRoles.some(ur => ur.role.name === 'admin') ? 'checked' : '' %>
+                        class="h-4 w-4 text-rose-600 focus:ring-rose-500 border-gray-300 rounded">
+                    <label for="role-admin" class="ml-2 block text-sm text-gray-900 dark:text-white">
+                        Admin
+                    </label>
+                </div>
+                <div class="flex items-center">
+                    <input type="checkbox" id="role-read-only-admin" name="roles[]" value="read-only-admin"
+                        <%= user.userRoles.some(ur => ur.role.name === 'read-only-admin') ? 'checked' : '' %>
+                        class="h-4 w-4 text-rose-600 focus:ring-rose-500 border-gray-300 rounded">
+                    <label for="role-read-only-admin" class="ml-2 block text-sm text-gray-900 dark:text-white">
+                        Read Only Admin
+                    </label>
+                </div>
+            </div>
+            <div class="pt-4">
+                <button type="submit" class="inline-flex justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-rose-600 hover:bg-rose-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-rose-500">
+                    権限を更新
+                </button>
+            </div>
+        </form>
+    </div>
+
+    <!-- 最近の投稿 -->
+    <div class="bg-white dark:bg-gray-900 rounded-xl shadow-sm border border-gray-200 dark:border-gray-800 p-6">
+        <h2 class="text-xl font-semibold mb-6 text-gray-900 dark:text-white">最近の投稿</h2>
+        <% if (microposts.length > 0) { %>
+            <div class="space-y-6">
+                <% microposts.forEach(post => { %>
+                    <div class="border-b border-gray-200 dark:border-gray-700 pb-6 last:border-b-0 last:pb-0">
+                        <p class="text-sm text-gray-900 dark:text-white mb-2"><%= post.title %></p>
+                        <% if (post.imageUrl) { %>
+                            <img src="<%= post.imageUrl %>" alt="" class="w-full max-w-md rounded-lg mb-2">
+                        <% } %>
+                        <div class="text-xs text-gray-500 dark:text-gray-400">
+                            <%= new Date(post.createdAt).toLocaleString('ja-JP') %>
+                        </div>
+                    </div>
+                <% }) %>
+            </div>
+        <% } else { %>
+            <p class="text-sm text-gray-500 dark:text-gray-400">投稿はありません</p>
+        <% } %>
+    </div>
+</div> 

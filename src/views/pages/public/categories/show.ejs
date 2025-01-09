@@ -1,0 +1,32 @@
+<div class="container mx-auto px-4 py-8">
+  <div class="mb-8">
+    <h1 class="text-3xl font-bold text-gray-900 dark:text-white mb-2"><%= category.name %></h1>
+  </div>
+
+  <div class="grid gap-6">
+    <% category.microposts.forEach(relation => { %>
+      <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
+        <div class="flex items-center mb-4">
+          <img src="<%= relation.micropost.user.profile?.avatarPath || '/images/default_avatar.png' %>" alt="Avatar" class="w-10 h-10 rounded-full mr-4">
+          <div>
+            <h3 class="font-medium text-gray-900 dark:text-white"><%= relation.micropost.user.name %></h3>
+            <p class="text-sm text-gray-500 dark:text-gray-400"><%= new Date(relation.micropost.createdAt).toLocaleDateString() %></p>
+          </div>
+        </div>
+        <h2 class="text-xl font-semibold mb-4 text-gray-900 dark:text-white"><%= relation.micropost.title %></h2>
+        <% if (relation.micropost.imageUrl) { %>
+          <img src="<%= relation.micropost.imageUrl %>" alt="Post image" class="w-full h-auto rounded-lg mb-4">
+        <% } %>
+      </div>
+    <% }) %>
+  </div>
+
+  <div class="mt-8">
+    <a href="/categories" class="inline-flex items-center text-blue-600 dark:text-blue-400 hover:underline">
+      <svg class="w-5 h-5 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18"></path>
+      </svg>
+      カテゴリー一覧に戻る
+    </a>
+  </div>
+</div> 
