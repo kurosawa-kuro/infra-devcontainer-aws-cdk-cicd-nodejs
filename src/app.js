@@ -154,6 +154,7 @@ class LoggingSystem {
 
       transports.push(cloudWatchTransport);
     }
+    
 
     return winston.createLogger({
       format: winston.format.simple(),
