@@ -1,5 +1,9 @@
 const { PrismaClient } = require('@prisma/client');
-const { PATHS } = require('../../src/constants');
+require('dotenv').config({ path: '../../.env' });
+
+const PATHS = {
+  DEFAULT_AVATAR: process.env.DEFAULT_AVATAR_PATH
+};
 const prisma = new PrismaClient();
 
 async function main() {

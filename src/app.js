@@ -43,7 +43,19 @@ const {
   CommentController,
   NotificationController
 } = require('./controllers');
-const { PATHS, LIMITS } = require('./constants');
+
+// 環境変数からパスと制限を設定
+const PATHS = {
+  DEFAULT_AVATAR: process.env.DEFAULT_AVATAR_PATH,
+  UPLOAD_DIR: process.env.UPLOAD_DIR_PATH,
+  PUBLIC_DIR: process.env.PUBLIC_DIR_PATH
+};
+
+const LIMITS = {
+  MAX_FILE_SIZE: parseInt(process.env.MAX_FILE_SIZE),
+  MAX_TITLE_LENGTH: parseInt(process.env.MAX_TITLE_LENGTH),
+  MAX_CONTENT_LENGTH: parseInt(process.env.MAX_CONTENT_LENGTH)
+};
 
 // Constants and Configuration
 const CONFIG = {

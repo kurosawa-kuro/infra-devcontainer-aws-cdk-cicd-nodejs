@@ -7,7 +7,12 @@ const { S3Client, PutObjectCommand } = require('@aws-sdk/client-s3');
 const fs = require('fs').promises;
 const path = require('path');
 require('dotenv').config({ path: path.join(__dirname, '../.env') });
-const { PATHS } = require('./constants');
+
+const PATHS = {
+  DEFAULT_AVATAR: process.env.DEFAULT_AVATAR_PATH,
+  UPLOAD_DIR: process.env.UPLOAD_DIR_PATH,
+  PUBLIC_DIR: process.env.PUBLIC_DIR_PATH
+};
 
 // 共通のユーティリティ関数
 const ValidationUtils = {

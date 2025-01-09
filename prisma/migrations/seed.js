@@ -1,6 +1,11 @@
 const { PrismaClient } = require('@prisma/client');
+require('dotenv').config({ path: '../../.env' });
 const bcrypt = require('bcrypt');
-const { PATHS } = require('../../src/constants');
+
+const PATHS = {
+  DEFAULT_AVATAR: process.env.DEFAULT_AVATAR_PATH
+};
+
 const prisma = new PrismaClient();
 
 async function hashPassword(password) {
