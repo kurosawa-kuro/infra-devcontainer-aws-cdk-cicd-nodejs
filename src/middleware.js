@@ -10,6 +10,7 @@ const csrf = require('csurf');
 const rateLimit = require('express-rate-limit');
 const xss = require('xss-clean');
 const cookieParser = require('cookie-parser');
+const logger = require('./logger');
 
 const authMiddleware = {
   isAuthenticated: (req, res, next) => {
@@ -71,14 +72,13 @@ class ErrorHandler {
   }
 
   handleNotFoundError(req, res, message = 'リソースが見つかりません') {
-    this.logger.warn('Not Found Error', {
-      message,
+    this.logger.warn('Not Found', {
       path: req.path,
       params: req.params,
       user: req.user ? { id: req.user.id } : null
     });
 
-    if (this.isApiRequest(req)) {
+    if (logger.isApiRequest(req)) {
       return res.status(404).json({
         success: false,
         message
@@ -93,14 +93,13 @@ class ErrorHandler {
 
   handleValidationError(req, res, message = 'バリデーションエラーが発生しました') {
     this.logger.warn('Validation Error', {
-      message,
       path: req.path,
       params: req.params,
       body: req.body,
       user: req.user ? { id: req.user.id } : null
     });
 
-    if (this.isApiRequest(req)) {
+    if (logger.isApiRequest(req)) {
       return res.status(400).json({
         success: false,
         message
@@ -112,14 +111,13 @@ class ErrorHandler {
 
   handleDatabaseError(req, res, message = 'データベースエラーが発生しました') {
     this.logger.error('Database Error', {
-      message,
       path: req.path,
       params: req.params,
       query: req.query,
       user: req.user ? { id: req.user.id } : null
     });
 
-    if (this.isApiRequest(req)) {
+    if (logger.isApiRequest(req)) {
       return res.status(500).json({
         success: false,
         message
@@ -131,12 +129,11 @@ class ErrorHandler {
 
   handlePermissionError(req, res, message = '権限がありません') {
     this.logger.warn('Permission Error', {
-      message,
       path: req.path,
       user: req.user ? { id: req.user.id } : null
     });
 
-    if (this.isApiRequest(req)) {
+    if (logger.isApiRequest(req)) {
       return res.status(403).json({
         success: false,
         message
@@ -147,12 +144,7 @@ class ErrorHandler {
   }
 
   handleInternalError(req, res, error) {
-    this.logger.error('Internal Server Error', {
-      error: {
-        name: error.name,
-        message: error.message,
-        stack: error.stack
-      },
+    this.logger.logSystemError('Internal Server Error', error, {
       request: {
         path: req.path,
         params: req.params,
@@ -166,7 +158,7 @@ class ErrorHandler {
       ? 'サーバーエラーが発生しました'
       : error.message;
 
-    if (this.isApiRequest(req)) {
+    if (logger.isApiRequest(req)) {
       return res.status(500).json({
         success: false,
         message,
@@ -181,16 +173,16 @@ class ErrorHandler {
       user: req.user
     });
   }
-
-  isApiRequest(req) {
-    return req.xhr || 
-           req.headers.accept?.toLowerCase().includes('application/json') ||
-           req.headers['x-requested-with']?.toLowerCase() === 'xmlhttprequest';
-  }
 }
 
 const errorMiddleware = {
   handle404Error: (req, res, next) => {
+    logger.warn('Not Found', {
+      path: req.originalUrl,
+      method: req.method,
+      userId: req.user?.id
+    });
+
     if (req.xhr || req.headers.accept?.includes('application/json')) {
       return res.status(404).json({
         error: 'Not Found',
@@ -204,20 +196,7 @@ const errorMiddleware = {
   },
 
   handle500Error: (err, req, res, next) => {
-    console.error('\n=== Internal Server Error ===');
-    console.error('Error:', {
-      message: err.message,
-      name: err.name,
-      stack: err.stack
-    });
-    console.error('Request:', {
-      method: req.method,
-      path: req.path,
-      params: req.params,
-      query: req.query,
-      body: req.body,
-      user: req.user ? { id: req.user.id, email: req.user.email } : null
-    });
+    logger.logError(err, req);
 
     const statusCode = err?.status || 500;
     const message = err?.message || 'Internal Server Error';
@@ -234,15 +213,6 @@ const errorMiddleware = {
       });
     }
 
-    // エラーページをレンダリングする前にデバッグ情報を出力
-    console.error('Attempting to render error page with:', {
-      message,
-      error: process.env.NODE_ENV === 'development' ? err : {},
-      title: `Error ${statusCode}`,
-      path: req.path,
-      user: req.user ? { id: req.user.id } : null
-    });
-
     try {
       res.status(statusCode).render('pages/errors/500', {
         message: message,
@@ -252,103 +222,9 @@ const errorMiddleware = {
         user: req.user
       });
     } catch (renderError) {
-      console.error('Error rendering error page:', {
-        originalError: err,
-        renderError: {
-          message: renderError.message,
-          stack: renderError.stack
-        }
-      });
-      // エラーページのレンダリングに失敗した場合は、シンプルなエラーレスポンスを返す
+      logger.logError(renderError);
       res.status(500).send('Internal Server Error');
     }
-  }
-};
-
-const loggingUtils = {
-  getStatusColor: (statusCode) => {
-    if (statusCode >= 500) return '\x1b[31m';
-    if (statusCode >= 400) return '\x1b[33m';
-    if (statusCode >= 300) return '\x1b[36m';
-    return '\x1b[32m';
-  },
-
-  getErrorInfo: (req, res) => {
-    let errorInfo = '';
-    if (res.locals.error) {
-      errorInfo = ` - Error: ${res.locals.error}`;
-    }
-    if (req.session && req.flash) {
-      try {
-        const flashErrors = req.flash('error');
-        if (flashErrors && flashErrors.length > 0) {
-          errorInfo += ` - Flash Errors: ${flashErrors.join(', ')}`;
-        }
-      } catch (e) {
-        // Ignore flash errors if session is not available
-      }
-    }
-    return errorInfo;
-  },
-
-  getRequestInfo: (req, res) => {
-    return {
-      method: req.method,
-      url: req.url,
-      params: req.params,
-      query: req.query,
-      body: req.body,
-      headers: req.headers,
-      statusCode: res.statusCode,
-      responseTime: res.responseTime
-    };
-  },
-
-  createRequestLogMessage: (req, res, logger) => {
-    const responseTime = res.responseTime || 0;
-    const statusCode = res.statusCode;
-    const statusColor = loggingUtils.getStatusColor(statusCode);
-    const reset = '\x1b[0m';
-    
-    const errorInfo = loggingUtils.getErrorInfo(req, res);
-    const requestInfo = loggingUtils.getRequestInfo(req, res);
-
-    if (statusCode >= 400) {
-      console.error('Request Details:', requestInfo);
-      logger.error('Request Details:', requestInfo);
-    }
-
-    return `${req.method.padEnd(6)} ${statusColor}${statusCode}${reset} ${req.url.padEnd(30)} ${responseTime}ms${errorInfo}`;
-  },
-
-  createErrorLogMessage: (err, req) => {
-    const baseInfo = {
-      url: req.url,
-      method: req.method,
-      ip: req.ip,
-      userId: req.user?.id,
-      headers: req.headers,
-      query: req.query,
-      body: req.body,
-      params: req.params
-    };
-
-    const errorInfo = {
-      message: err?.message || 'Unknown error',
-      name: err?.name || 'Error',
-      stack: err?.stack || '',
-      status: err?.status || 500,
-      code: err?.code,
-      type: err?.constructor?.name
-    };
-
-    return {
-      timestamp: new Date().toISOString(),
-      level: errorInfo.status >= 500 ? 'error' : 'warn',
-      environment: process.env.NODE_ENV || 'development',
-      ...baseInfo,
-      error: errorInfo
-    };
   }
 };
 
@@ -360,6 +236,11 @@ const setupMiddleware = {
     app.set('layout', 'layouts/public');
     app.set('view engine', 'ejs');
     app.set('views', path.join(__dirname, 'views'));
+    
+    // 静的ファイルの提供設定を追加
+    app.use(express.static(path.join(__dirname, 'public')));
+    app.use('/uploads', express.static(path.join(__dirname, 'public', 'uploads')));
+    
     app.use((req, res, next) => {
       res.locals.path = req.path;
       next();
@@ -389,77 +270,28 @@ const setupMiddleware = {
     app.use(addLocals);
   },
 
-  setupRequestLogging: (app, loggingSystem) => {
-    // HTTPリクエストのログ
+  setupRequestLogging: (app) => {
     app.use((req, res, next) => {
       const startTime = Date.now();
       const originalEnd = res.end;
 
       res.end = function(...args) {
         const responseTime = Date.now() - startTime;
-        const logData = {
-          LogDate: new Date().toISOString().split('T')[0],
-          Category: 'Http',
-          Action: `${req.method} ${res.statusCode} ${req.originalUrl}`,
-          Value: responseTime,
-          Quantity: 1,
-          Environment: process.env.NODE_ENV || 'development',
-          ErrorMessage: '',
-          RequestInfo: {
-            method: req.method,
-            path: req.originalUrl,
-            statusCode: res.statusCode,
-            responseTime: responseTime
-          },
-          User: req.user ? {
-            id: req.user.id,
-            name: req.user.name
-          } : null
-        };
-
-        loggingSystem.getLogger().info(JSON.stringify(logData));
+        logger.logHttpRequest(req, res, responseTime);
         originalEnd.apply(res, args);
       };
 
       next();
     });
 
-    // ビジネスアクションログのヘルパーをappに追加
     app.set('logBusinessAction', (action, data) => {
-      const logData = {
-        LogDate: new Date().toISOString().split('T')[0],
-        Category: data.category || 'Business',
-        Action: action,
-        Value: data.value || 0,
-        Quantity: data.quantity || 1,
-        Environment: process.env.NODE_ENV || 'development',
-        ErrorMessage: '',
-        Details: data
-      };
-      loggingSystem.getLogger().info(JSON.stringify(logData));
+      logger.logBusinessAction(action, data);
     });
   },
 
-  setupErrorLogging: (app, logger) => {
+  setupErrorLogging: (app) => {
     app.use((err, req, res, next) => {
-      const logMessage = loggingUtils.createErrorLogMessage(err, req);
-      const logLevel = logMessage.level;
-
-      const formattedMessage = `
-[${logMessage.timestamp}] ${logLevel.toUpperCase()}: ${logMessage.error.name}
-URL: ${logMessage.method} ${logMessage.url}
-Status: ${logMessage.error.status}
-Message: ${logMessage.error.message}
-User ID: ${logMessage.userId || 'Not authenticated'}
-Environment: ${logMessage.environment}
-${logMessage.error.stack ? `Stack: ${logMessage.error.stack}` : ''}
-      `.trim();
-
-      logger[logLevel](formattedMessage, {
-        metadata: logMessage,
-        timestamp: logMessage.timestamp
-      });
-
+      logger.logError(err, req);
       next(err);
     });
   },
@@ -620,7 +452,9 @@ const addLocals = (req, res, next) => {
       res.locals.categories = categories;
       next();
     }).catch(err => {
-      console.error('カテゴリーの取得に失敗しました:', err);
+      logger.logDatabaseError('fetch_categories', err, {
+        user: req.user ? { id: req.user.id } : null
+      });
       res.locals.categories = [];
       next();
     });
@@ -630,89 +464,9 @@ const addLocals = (req, res, next) => {
   }
 };
 
-// ビジネスアクションのログ用ヘルパー関数
-const logBusinessAction = (logger, action, data) => {
-  const logData = {
-    timestamp: new Date().toISOString(),
-    level: 'info',
-    service: 'web-app',
-    
-    // アクション情報
-    category: data.category || 'User',  // User, Content, Interaction等
-    action: action,                     // Follow, Post, Like等
-    status: data.status || 'success',   // success, failed等
-    
-    // アクション詳細
-    details: {
-      actionType: data.actionType,      // create, delete等
-      targetType: data.targetType,      // user, post等
-      targetId: data.targetId,
-      result: data.result
-    },
-
-    // メトリクス
-    value: data.value || 1,
-    quantity: data.quantity || 1,
-
-    // 関連ユーザー情報
-    actor: data.actor ? {
-      id: data.actor.id,
-      name: data.actor.name,
-      role: data.actor.role
-    } : null,
-    
-    target: data.target ? {
-      id: data.target.id,
-      name: data.target.name,
-      type: data.target.type
-    } : null,
-
-    // 環境情報
-    environment: process.env.NODE_ENV || 'development'
-  };
-
-  // nullの項目を削除
-  Object.keys(logData).forEach(key => {
-    if (logData[key] === null || logData[key] === undefined) {
-      delete logData[key];
-    }
-  });
-
-  logger.info(JSON.stringify(logData));
-};
-
-// HTTPリクエストログ用の関数（既存のものを改名）
-const logHttpRequest = (logger, req, res, responseTime) => {
-  const logData = {
-    timestamp: new Date().toISOString(),
-    level: 'info',
-    service: 'web-app',
-    category: 'Http',
-    method: req.method,
-    path: req.originalUrl,
-    statusCode: res.statusCode,
-    responseTime,
-    environment: process.env.NODE_ENV || 'development',
-    user: req.user ? {
-      id: req.user.id,
-      name: req.user.name
-    } : null
-  };
-
-  // nullの項目を削除
-  Object.keys(logData).forEach(key => {
-    if (logData[key] === null || logData[key] === undefined) {
-      delete logData[key];
-    }
-  });
-
-  logger.info(JSON.stringify(logData));
-};
-
 module.exports = {
   ...authMiddleware,
   ...errorMiddleware,
   ...setupMiddleware,
-  addLocals,
-  ...loggingUtils
+  addLocals
 }; 

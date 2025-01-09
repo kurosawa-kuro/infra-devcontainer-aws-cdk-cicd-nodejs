@@ -44,6 +44,19 @@ const {
   NotificationController
 } = require('./controllers');
 
+// 環境変数からパスと制限を設定
+const PATHS = {
+  DEFAULT_AVATAR: process.env.DEFAULT_AVATAR_PATH,
+  UPLOAD_DIR: process.env.UPLOAD_DIR_PATH,
+  PUBLIC_DIR: process.env.PUBLIC_DIR_PATH
+};
+
+const LIMITS = {
+  MAX_FILE_SIZE: parseInt(process.env.MAX_FILE_SIZE),
+  MAX_TITLE_LENGTH: parseInt(process.env.MAX_TITLE_LENGTH),
+  MAX_CONTENT_LENGTH: parseInt(process.env.MAX_CONTENT_LENGTH)
+};
+
 // Constants and Configuration
 const CONFIG = {
   app: {
@@ -141,6 +154,7 @@ class LoggingSystem {
 
       transports.push(cloudWatchTransport);
     }
+    
 
     return winston.createLogger({
       format: winston.format.simple(),
@@ -421,7 +435,14 @@ class ErrorHandler {
     };
 
     if (this.logger) {
-      this.logger.logError('Error', error.name || 'UnknownError', error, errorDetails);
+      this.logger.error('Error occurred', {
+        ...errorDetails,
+        error: {
+          message: error.message,
+          stack: error.stack,
+          name: error.name
+        }
+      });
     }
 
     return errorDetails;
@@ -541,6 +562,7 @@ class Application {
     this.setupDirectories();
     setupSecurity(this.app);
     this.app.use(express.static(path.join(__dirname, 'public')));
+    this.app.use('/uploads', express.static(path.join(__dirname, 'public/uploads')));
     
     // Prismaインスタンスを設定
     this.app.set('prisma', this.prisma);
@@ -548,6 +570,10 @@ class Application {
     this.initializeCore();
     this.services = this.initializeServices();
     this.controllers = this.initializeControllers();
+
+    // グローバル変数の設定
+    this.app.locals.PATHS = PATHS;
+    this.app.locals.LIMITS = LIMITS;
   }
 
   setupDirectories() {
