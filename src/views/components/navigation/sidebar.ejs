@@ -1,0 +1,35 @@
+<!-- デスクトップサイドバー -->
+<nav class="fixed top-0 left-0 bottom-0 w-72 hidden lg:block bg-white dark:bg-gray-900 border-r border-gray-200 dark:border-gray-800">
+    <div class="px-6 py-6">
+        <div class="flex items-center mb-8">
+            <svg class="w-8 h-8 text-rose-600 dark:text-rose-500" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M12 2L2 8.5V22H22V8.5L12 2ZM12 4.25L19.5 9.25V20H4.5V9.25L12 4.25Z"/>
+            </svg>
+            <h2 class="ml-3 text-xl font-semibold text-gray-900 dark:text-white">クラウドネイティブ アプリ</h2>
+        </div>
+        <ul class="space-y-1">
+            <%- include('nav-bar', { path, locals, user: locals.user }) %>
+        </ul>
+        <% if (locals.user) { %>
+            <%- include('../user/profile-card', { user: locals.user, isMobile: false }) %>
+        <% } %>
+    </div>
+</nav>
+
+<!-- モバイルメニュー -->
+<div class="lg:hidden bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-800">
+    <div class="px-4 py-4">
+        <div class="flex items-center mb-4">
+            <svg class="w-8 h-8 text-rose-600 dark:text-rose-500" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M12 2L2 8.5V22H22V8.5L12 2ZM12 4.25L19.5 9.25V20H4.5V9.25L12 4.25Z"/>
+            </svg>
+            <h2 class="ml-3 text-xl font-semibold text-gray-900 dark:text-white">クラウドネイティブ アプリ</h2>
+        </div>
+        <ul class="flex flex-wrap gap-2">
+            <%- include('nav-bar', { path, locals, user: locals.user }) %>
+        </ul>
+        <% if (locals.user) { %>
+            <%- include('../user/profile-card', { user: locals.user, isMobile: true }) %>
+        <% } %>
+    </div>
+</div> 

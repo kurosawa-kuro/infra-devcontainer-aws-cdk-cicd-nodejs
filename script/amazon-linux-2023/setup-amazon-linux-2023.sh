@@ -1,5 +1,7 @@
 #!/bin/bash
 
+# touch setup.sh && chmod u+x setup.sh && vi setup.sh
+
 #=========================================
 # 設定と定数
 #=========================================
@@ -13,6 +15,7 @@ declare -A INSTALL_FLAGS=(
     [NODEJS]=true
     [GO]=true
     [POSTGRESQL]=true
+    [CLOUDWATCH_AGENT]=true
 )
 
 # データベース設定
@@ -114,6 +117,7 @@ setup_postgresql_db() {
     sudo -u postgres bash -c "
         psql -c \"ALTER USER postgres WITH PASSWORD '${DB_CONFIG[PASSWORD]}';\"
         createdb ${DB_CONFIG[DB]}
+        createdb ${DB_CONFIG[DB]}_test
     "
 }
 
@@ -159,6 +163,32 @@ install_nodejs() {
     curl -fsSL https://rpm.nodesource.com/setup_20.x | bash -
     dnf install -y nodejs
     npm install -g npm@latest
+    sudo npm install -g aws-cdk
+
+    # Add npm global bin to PATH and create symlink for cdk
+    local npm_global_bin=$(npm config get prefix)/bin
+    ln -sf "${npm_global_bin}/cdk" /usr/local/bin/cdk
+
+    # Add npm global bin to system-wide PATH
+    if [ ! -f /etc/profile.d/npm-global.sh ]; then
+        echo "export PATH=\$PATH:${npm_global_bin}" > /etc/profile.d/npm-global.sh
+        chmod 644 /etc/profile.d/npm-global.sh
+    fi
+
+    # Add to current user's .bashrc if not already present
+    if ! grep -q "${npm_global_bin}" /home/ec2-user/.bashrc; then
+        echo "export PATH=\$PATH:${npm_global_bin}" >> /home/ec2-user/.bashrc
+    fi
+
+    INSTALL_INFO[NODEJS]=$(cat << EOF
+NodeJS情報:
+- Node Version: $(node -v)
+- NPM Version: $(npm -v)
+- AWS CDK Version: $(${npm_global_bin}/cdk --version)
+- Global bin path: ${npm_global_bin}
+- 注意: 新しいシェルを開くか、source ~/.bashrcを実行してください
+EOF
+)
 }
 
 #=========================================
@@ -203,6 +233,66 @@ EOL
 }
 
 #=========================================
+# CloudWatch Agent
+#=========================================
+install_cloudwatch_agent() {
+    check_command amazon-cloudwatch-agent-ctl && { log "CloudWatch Agent is already installed"; return 0; }
+
+    log "Installing CloudWatch Agent..."
+    dnf install -y amazon-cloudwatch-agent
+
+    # 設定ファイルの作成
+    local config_dir="/opt/aws/amazon-cloudwatch-agent/bin"
+    mkdir -p "$config_dir"
+    
+    cat > "${config_dir}/config.json" << 'EOF'
+{
+  "agent": {
+    "metrics_collection_interval": 60
+  },
+  "metrics": {
+    "metrics_collected": {
+      "disk": {
+        "measurement": [
+          "disk_used_percent"
+        ],
+        "resources": [
+          "/"
+        ]
+      },
+      "mem": {
+        "measurement": [
+          "mem_used_percent"
+        ]
+      }
+    }
+  }
+}
+EOF
+
+    # CloudWatch Agentの起動と自動起動の設定
+    /opt/aws/amazon-cloudwatch-agent/bin/amazon-cloudwatch-agent-ctl -a fetch-config -m ec2 -s -c file:/opt/aws/amazon-cloudwatch-agent/bin/config.json
+    systemctl start amazon-cloudwatch-agent
+    systemctl enable amazon-cloudwatch-agent
+
+    INSTALL_INFO[CLOUDWATCH_AGENT]=$(cat << EOF
+CloudWatch Agent情報:
+- Status: $(systemctl is-active amazon-cloudwatch-agent)
+- Config: ${config_dir}/config.json
+- メトリクス:
+  - ディスク使用率 (/)
+  - メモリ使用率
+- ログ収集:
+  - /var/log/messages
+- 収集間隔: 60秒
+- 必要なIAMロール権限:
+  - CloudWatchAgentServerPolicy
+注意: EC2インスタンスにCloudWatchAgentServerPolicyがアタッチされていることを確認してください
+EOF
+)
+}
+
+#=========================================
 # バージョン確認
 #=========================================
 check_installed_versions() {
@@ -223,7 +313,10 @@ check_installed_versions() {
                 make) log "Make version: $(make --version | head -n1)" ;;
                 docker) log "Docker version: $(docker --version)" ;;
                 docker-compose) log "Docker Compose version: $(docker-compose --version)" ;;
-                node) log "Node version: $(node -v)" ;;
+                node) 
+                    log "Node version: $(node -v)"
+                    log "AWS CDK version: $(cdk --version)"
+                ;;
                 psql) log "PostgreSQL version: $(psql --version)" ;;
             esac
         }
@@ -247,7 +340,8 @@ main() {
         install_postgresql
         INSTALL_INFO[POSTGRESQL]=$(cat << EOF
 PostgreSQL情報:
-- Database: ${DB_CONFIG[DB]}
+- Database (開発用): ${DB_CONFIG[DB]}
+- Database (テスト用): ${DB_CONFIG[DB]}_test
 - User: ${DB_CONFIG[USER]}
 - Password: ${DB_CONFIG[PASSWORD]}
 - Port: 5432
@@ -276,6 +370,11 @@ Go言語情報:
 - 注意: 新しいシェルを開くか、source /etc/profile.d/go.shを実行してください
 EOF
 )
+    }
+
+    [[ "${INSTALL_FLAGS[CLOUDWATCH_AGENT]}" = true ]] && {
+        install_cloudwatch_agent
+        # install_cloudwatch_agent関数内で既にINSTALL_INFOを設定しているため、ここでは何もしない
     }
 
     # インストール結果の表示

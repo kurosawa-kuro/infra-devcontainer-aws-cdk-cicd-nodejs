@@ -1,0 +1,73 @@
+<%- include('../../../layouts/public') %>
+
+<div class="container mt-4">
+  <div class="card">
+    <div class="card-header d-flex justify-content-between align-items-center">
+      <h5 class="mb-0"><%= profileUser.name %>さんのいいねした投稿</h5>
+      <small class="text-muted"><%= likes.length %>件</small>
+    </div>
+
+    <div class="list-group list-group-flush">
+      <% if (likes.length === 0) { %>
+        <div class="list-group-item text-center text-muted py-4">
+          まだいいねした投稿がありません
+        </div>
+      <% } else { %>
+        <% likes.forEach(like => { %>
+          <div class="list-group-item">
+            <div class="d-flex justify-content-between align-items-start mb-2">
+              <div class="d-flex align-items-center">
+                <a href="/<%= like.micropost.user.name %>" class="text-decoration-none">
+                  <img 
+                    src="/uploads/<%= like.micropost.user.profile?.avatarPath || 'default_avatar.png' %>" 
+                    alt="<%= like.micropost.user.name %>" 
+                    class="rounded-circle me-2"
+                    style="width: 32px; height: 32px; object-fit: cover;"
+                  >
+                </a>
+                <div>
+                  <a href="/<%= like.micropost.user.name %>" class="text-decoration-none text-dark">
+                    <strong><%= like.micropost.user.name %></strong>
+                  </a>
+                  <small class="text-muted d-block">
+                    <%= new Date(like.micropost.createdAt).toLocaleDateString('ja-JP') %>
+                  </small>
+                </div>
+              </div>
+              
+              <%- include('../../../components/micropost/like-button', {
+                micropost: like.micropost,
+                user: user,
+                isLiked: true,
+                likeCount: like.micropost._count.likes
+              }) %>
+            </div>
+
+            <a href="/microposts/<%= like.micropost.id %>" class="text-decoration-none text-dark">
+              <h6 class="card-title mb-2"><%= like.micropost.title %></h6>
+              
+              <% if (like.micropost.imageUrl) { %>
+                <img 
+                  src="<%= like.micropost.imageUrl %>" 
+                  alt="投稿画像" 
+                  class="img-fluid rounded mb-2"
+                  style="max-height: 200px; width: auto;"
+                >
+              <% } %>
+            </a>
+          </div>
+        <% }); %>
+      <% } %>
+    </div>
+  </div>
+</div>
+
+<style>
+.list-group-item:hover {
+  background-color: rgba(0, 0, 0, 0.01);
+}
+
+.list-group-item img.rounded-circle {
+  border: 1px solid #eee;
+}
+</style> 

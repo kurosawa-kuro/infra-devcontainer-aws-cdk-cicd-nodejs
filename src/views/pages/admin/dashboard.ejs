@@ -1,0 +1,28 @@
+<%- contentFor('body') %>
+<div class="max-w-7xl mx-auto px-4 py-8">
+    <div class="mb-12">
+        <h1 class="text-3xl font-semibold mb-3 text-gray-900 dark:text-white">管理者ダッシュボード</h1>
+        <p class="text-base text-gray-600 dark:text-gray-300">システムの管理と監視を行います</p>
+    </div>
+
+    <!-- 統計情報 -->
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+        <div class="bg-white dark:bg-gray-900 rounded-xl shadow-sm border border-gray-200 dark:border-gray-800 p-6">
+            <h2 class="text-xl font-semibold mb-4 text-gray-900 dark:text-white">サイト統計</h2>
+            <div class="space-y-4">
+                <div class="flex justify-between items-center">
+                    <span class="text-gray-600 dark:text-gray-300">総ユーザー数</span>
+                    <span class="bg-rose-100 dark:bg-rose-900/50 text-rose-600 dark:text-rose-400 px-3 py-1 rounded-full text-sm font-medium">
+                        <%= stats.totalUsers %>
+                    </span>
+                </div>
+                <div class="flex justify-between items-center">
+                    <span class="text-gray-600 dark:text-gray-300">総投稿数</span>
+                    <span class="bg-rose-100 dark:bg-rose-900/50 text-rose-600 dark:text-rose-400 px-3 py-1 rounded-full text-sm font-medium">
+                        <%= stats.totalPosts %>
+                    </span>
+                </div>
+            </div>
+        </div>
+    </div>
+</div> 

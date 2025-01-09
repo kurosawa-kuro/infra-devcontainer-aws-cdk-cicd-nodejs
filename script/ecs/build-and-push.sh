@@ -3,6 +3,8 @@
 # エラーが発生したら即座に終了
 set -e
 
+AWS_ACCOUNT_ID=448049833348
+
 # 環境変数のチェック
 if [ -z "$AWS_ACCOUNT_ID" ]; then
     echo "Error: AWS_ACCOUNT_ID is not set"

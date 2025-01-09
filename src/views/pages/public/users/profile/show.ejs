@@ -1,0 +1,68 @@
+<%- contentFor('body') %>
+<div class="max-w-2xl mx-auto px-4">
+  <div class="bg-white dark:bg-gray-900 shadow sm:rounded-lg">
+    <div class="px-4 py-5 sm:p-6">
+      <div class="flex items-center mb-6">
+        <img 
+          src="<%= userProfile?.avatarPath ? `/uploads/${userProfile.avatarPath}` : '/uploads/default_avatar.png' %>" 
+          alt="プロフィール画像" 
+          class="h-20 w-20 rounded-full object-cover mr-4"
+        >
+        <div>
+          <h1 class="text-2xl font-bold text-gray-900 dark:text-white">
+            <%= profileUser.name %>
+          </h1>
+          <p class="text-sm text-gray-500 dark:text-gray-400">
+            <%= profileUser.email %>
+          </p>
+        </div>
+        <% if (user && (user.id === profileUser.id || user.userRoles.some(ur => ur.role.name === 'admin'))) { %>
+          <a href="/users/<%= profileUser.name %>/edit" class="ml-auto">
+            <button class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500">
+              編集
+            </button>
+          </a>
+        <% } %>
+      </div>
+
+      <div class="border-t border-gray-200 dark:border-gray-700 pt-4">
+        <div class="grid grid-cols-2 gap-4">
+          <div>
+            <h2 class="text-sm font-medium text-gray-500 dark:text-gray-400">フォロー中</h2>
+            <a href="/users/<%= profileUser.name %>/following" class="hover:opacity-75">
+              <p class="mt-1 text-2xl font-semibold text-gray-900 dark:text-white">
+                <%= followCounts.followingCount %>
+              </p>
+            </a>
+          </div>
+          <div>
+            <h2 class="text-sm font-medium text-gray-500 dark:text-gray-400">フォロワー</h2>
+            <a href="/users/<%= profileUser.name %>/followers" class="hover:opacity-75">
+              <p class="mt-1 text-2xl font-semibold text-gray-900 dark:text-white">
+                <%= followCounts.followersCount %>
+              </p>
+            </a>
+          </div>
+        </div>
+      </div>
+
+      <div class="border-t border-gray-200 dark:border-gray-700 mt-4 pt-4">
+        <h2 class="text-lg font-medium text-gray-900 dark:text-white mb-4">投稿一覧</h2>
+        <% if (microposts && microposts.length > 0) { %>
+          <div class="space-y-4">
+            <% microposts.forEach(post => { %>
+              <div class="bg-gray-50 dark:bg-gray-800 p-4 rounded-lg">
+                <p class="text-gray-900 dark:text-white"><%= post.title %></p>
+                <p class="text-sm text-gray-500 dark:text-gray-400">
+                  <%= new Date(post.createdAt).toLocaleString('ja-JP') %>
+                </p>
+              </div>
+            <% }); %>
+          </div>
+        <% } else { %>
+          <p class="text-gray-500 dark:text-gray-400">投稿はありません</p>
+        <% } %>
+      </div>
+    </div>
+  </div>
+</div> 

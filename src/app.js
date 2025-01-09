@@ -1,6 +1,6 @@
 const express = require('express');
-const asyncHandler = require('express-async-handler');
-const morgan = require('morgan');
+const winston = require('winston');
+const WinstonCloudWatch = require('winston-cloudwatch');
 const path = require('path');
 const multer = require('multer');
 const { PrismaClient } = require('@prisma/client');
@@ -8,32 +8,273 @@ const { S3Client } = require('@aws-sdk/client-s3');
 const multerS3 = require('multer-s3');
 const fs = require('fs');
 require('dotenv').config();
+const passport = require('passport');
+
+const setupRoutes = require('./routes');
+const {
+  setupBasicMiddleware,
+  setupAuthMiddleware,
+  setupRequestLogging,
+  setupErrorLogging,
+  setupSecurity,
+  handle500Error
+} = require('./middleware');
+const {
+  AuthService,
+  ProfileService,
+  MicropostService,
+  SystemService,
+  CategoryService,
+  PassportService,
+  LikeService,
+  CommentService,
+  NotificationService,
+  FollowService
+} = require('./services');
+const {
+  AuthController,
+  ProfileController,
+  MicropostController,
+  SystemController,
+  DevController,
+  AdminController,
+  CategoryController,
+  LikeController,
+  CommentController,
+  NotificationController
+} = require('./controllers');
+
+// Constants and Configuration
+const CONFIG = {
+  app: {
+    port: process.env.APP_PORT || 8080,
+    host: process.env.APP_HOST || '0.0.0.0',
+    env: process.env.APP_ENV || 'development',
+    isProduction: process.env.NODE_ENV === 'production',
+    isTest: process.env.APP_ENV === 'test'
+  },
+  storage: {
+    useS3: process.env.USE_S3 === 'true',
+    s3: {
+      region: process.env.AWS_REGION,
+      accessKey: process.env.AWS_ACCESS_KEY_ID,
+      secretKey: process.env.AWS_SECRET_ACCESS_KEY,
+      bucket: process.env.STORAGE_S3_BUCKET
+    },
+    cloudfront: {
+      url: process.env.STORAGE_CDN_URL,
+      distributionId: process.env.STORAGE_CDN_DISTRIBUTION_ID
+    },
+    limits: {
+      fileSize: 5 * 1024 * 1024,
+      allowedMimeTypes: ['image/jpeg', 'image/png', 'image/gif']
+    }
+  },
+  logging: {
+    useCloudWatch: process.env.USE_CLOUDWATCH === 'true',
+    cloudwatch: {
+      logGroupName: '/aws/CdkJavascript01/myapp',
+      region: process.env.AWS_REGION,
+      accessKeyId: process.env.AWS_ACCESS_KEY_ID,
+      secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY
+    }
+  },
+  auth: {
+    sessionSecret: process.env.SESSION_SECRET || 'your-session-secret',
+    sessionMaxAge: parseInt(process.env.SESSION_MAX_AGE, 10) || 24 * 60 * 60 * 1000
+  }
+};
+
+// ロギングシステムの設定と管理
+class LoggingSystem {
+  constructor() {
+    this.setupLogDirectory();
+    this.logger = this.createLogger();
+  }
+
+  isEnabled() {
+    return CONFIG.logging.useCloudWatch;
+  }
+
+  setupLogDirectory() {
+    const logDir = path.join(__dirname, '..', 'logs');
+    if (!fs.existsSync(logDir)) {
+      fs.mkdirSync(logDir, { recursive: true });
+    }
+  }
+
+  // ロガーインスタンスを取得するメソッド
+  getLogger() {
+    return this.logger;
+  }
+
+  createLogger() {
+    const transports = [
+      new winston.transports.Console({
+        format: winston.format.combine(
+          winston.format.timestamp(),
+          winston.format.printf(({ timestamp, message }) => {
+            return `${timestamp}: ${message}`;
+          })
+        )
+      })
+    ];
+
+    if (CONFIG.logging.useCloudWatch) {
+      // 日付ベースのログストリーム名を生成
+      const date = new Date();
+      const year = date.getFullYear();
+      const month = String(date.getMonth() + 1).padStart(2, '0');
+      const day = String(date.getDate()).padStart(2, '0');
+      const logStreamName = `${year}-${month}-${day}`;
+
+      const cloudWatchTransport = new WinstonCloudWatch({
+        logGroupName: process.env.CLOUDWATCH_LOG_GROUP,
+        logStreamName: logStreamName,
+        awsRegion: process.env.AWS_REGION,
+        messageFormatter: ({ message }) => message
+      });
+
+      cloudWatchTransport.on('error', (err) => {
+        console.error('CloudWatch logging error:', err);
+      });
+
+      transports.push(cloudWatchTransport);
+    }
+
+    return winston.createLogger({
+      format: winston.format.simple(),
+      transports: transports
+    });
+  }
+
+  // ユーザーアクションのログ
+  logUserAction(action, user, value = 0, additionalData = {}) {
+    this.logger.info('USER_ACTION', {
+      category: 'User',
+      action,
+      value,
+      userId: user.id,
+      userName: user.name,
+      role: user.userRoles?.[0]?.role?.name,
+      ...additionalData
+    });
+  }
+
+  // コンテンツ関連アクションのログ
+  logContentAction(action, content, user, value = 0, additionalData = {}) {
+    this.logger.info('CONTENT_ACTION', {
+      category: 'Content',
+      action,
+      value,
+      contentId: content.id,
+      contentType: 'Micropost',
+      contentTitle: content.title,
+      userId: user?.id,
+      userName: user?.name,
+      categoryName: content.categories?.[0]?.category?.name,
+      ...additionalData
+    });
+  }
+
+  // インタラクションのログ
+  logInteraction(action, type, user, target, value = 0, additionalData = {}) {
+    this.logger.info('INTERACTION', {
+      category: 'Interaction',
+      action,
+      value,
+      interactionType: type,
+      userId: user.id,
+      userName: user.name,
+      targetUserId: target.userId,
+      targetContentId: target.contentId,
+      ...additionalData
+    });
+  }
+
+  // 通知のログ
+  logNotification(action, notification, additionalData = {}) {
+    this.logger.info('NOTIFICATION', {
+      category: 'Notification',
+      action,
+      value: 1,
+      notificationType: notification.type,
+      notificationStatus: notification.read ? 'READ' : 'UNREAD',
+      userId: notification.recipientId,
+      targetUserId: notification.actorId,
+      contentId: notification.micropostId,
+      ...additionalData
+    });
+  }
+
+  // エラーログ
+  logError(category, action, error, metadata = {}) {
+    this.logger.error('ERROR', {
+      category,
+      action,
+      value: error.code || 500,
+      errorCode: error.code,
+      errorMessage: error.message,
+      errorStack: error.stack,
+      ...metadata
+    });
+  }
+
+  // ビジネスアクションのログ
+  logBusinessAction(action, data) {
+    this.logger.info('BUSINESS_ACTION', {
+      category: data.category || 'Business',
+      action,
+      value: data.value || 0,
+      environment: process.env.NODE_ENV || 'development',
+      actionType: data.actionType,
+      targetType: data.targetType,
+      targetId: data.targetId,
+      result: data.result,
+      actorId: data.actor?.id,
+      actorName: data.actor?.name,
+      targetUserId: data.target?.id,
+      targetUserName: data.target?.name
+    });
+  }
+
+  // HTTPリクエストのログ
+  logHttpRequest(req, res, responseTime) {
+    this.logger.info('HTTP_REQUEST', {
+      category: 'Http',
+      action: `${req.method} ${res.statusCode} ${req.originalUrl}`,
+      value: responseTime,
+      environment: process.env.NODE_ENV || 'development',
+      method: req.method,
+      path: req.originalUrl,
+      statusCode: res.statusCode,
+      responseTime: responseTime,
+      userId: req.user?.id,
+      userName: req.user?.name
+    });
+  }
+}
 
 // ストレージ設定を管理するクラス
 class StorageConfig {
   constructor() {
     this.config = {
-      region: process.env.STORAGE_S3_REGION,
-      bucket: process.env.STORAGE_S3_BUCKET,
-      cloudfront: {
-        url: process.env.STORAGE_CDN_URL,
-        distributionId: process.env.STORAGE_CDN_DISTRIBUTION_ID
+      region: CONFIG.storage.s3.region,
+      bucket: CONFIG.storage.s3.bucket,
+      credentials: {
+        accessKeyId: CONFIG.storage.s3.accessKey,
+        secretAccessKey: CONFIG.storage.s3.secretKey
       },
-      uploadLimits: {
-        fileSize: 5 * 1024 * 1024, // 5MB
-        allowedMimeTypes: ['image/jpeg', 'image/png', 'image/gif']
-      }
+      cloudfront: {
+        url: CONFIG.storage.cloudfront.url,
+        distributionId: CONFIG.storage.cloudfront.distributionId
+      },
+      uploadLimits: CONFIG.storage.limits
     };
   }
 
   isEnabled() {
-    const isS3Enabled = process.env.STORAGE_PROVIDER !== 'local';
-    const hasRequiredConfig = this.config.region && 
-           process.env.STORAGE_S3_ACCESS_KEY && 
-           process.env.STORAGE_S3_SECRET_KEY &&
-           this.config.bucket;
-    
-    return isS3Enabled && hasRequiredConfig;
+    return CONFIG.storage.useS3;
   }
 
   getS3Client() {
@@ -41,10 +282,7 @@ class StorageConfig {
     
     return new S3Client({
       region: this.config.region,
-      credentials: {
-        accessKeyId: process.env.STORAGE_S3_ACCESS_KEY,
-        secretAccessKey: process.env.STORAGE_S3_SECRET_KEY
-      }
+      credentials: this.config.credentials
     });
   }
 
@@ -66,6 +304,7 @@ class FileUploader {
   constructor(storageConfig) {
     this.storageConfig = storageConfig;
     this.s3Client = storageConfig.getS3Client();
+    this.uploader = this.createUploader();
   }
 
   createFileFilter() {
@@ -79,6 +318,10 @@ class FileUploader {
     };
   }
 
+  getUploader() {
+    return this.uploader;
+  }
+
   createUploader() {
     if (this.storageConfig.isEnabled()) {
       return this.createS3Uploader();
@@ -88,7 +331,6 @@ class FileUploader {
   }
 
   createS3Uploader() {
-    console.log('Using S3 storage with CloudFront');
     return multer({
       storage: multerS3({
         s3: this.s3Client,
@@ -103,16 +345,22 @@ class FileUploader {
   }
 
   createLocalUploader() {
-    console.log('Using local storage for uploads');
-    const uploadDir = path.join(__dirname, '..', 'uploads');
+    const uploadDir = path.join(__dirname, 'public', 'uploads');
     if (!fs.existsSync(uploadDir)) {
       fs.mkdirSync(uploadDir, { recursive: true });
     }
     
     return multer({
       storage: multer.diskStorage({
-        destination: (req, file, cb) => cb(null, uploadDir),
-        filename: this.createKeyGenerator()
+        destination: (req, file, cb) => {
+          cb(null, uploadDir);
+        },
+        filename: (req, file, cb) => {
+          const uniqueSuffix = `${Date.now()}-${Math.round(Math.random() * 1E9)}`;
+          const fileExtension = path.extname(file.originalname);
+          const filename = `${uniqueSuffix}${fileExtension}`;
+          cb(null, filename);
+        }
       }),
       limits: this.storageConfig.getUploadLimits(),
       fileFilter: this.createFileFilter()
@@ -133,7 +381,7 @@ class FileUploader {
     return (req, file, cb) => {
       const uniqueSuffix = `${Date.now()}-${Math.round(Math.random() * 1E9)}`;
       const fileExtension = path.extname(file.originalname);
-      const fileName = `uploads/${uniqueSuffix}${fileExtension}`;
+      const fileName = `${uniqueSuffix}${fileExtension}`;
       cb(null, fileName);
     };
   }
@@ -141,43 +389,145 @@ class FileUploader {
   generateFileUrl(file) {
     if (!file) return null;
     
-    return this.storageConfig.isEnabled()
-      ? `${this.storageConfig.getCloudFrontUrl()}/${file.key}`
-      : `/uploads/${file.filename}`;
+    if (this.storageConfig.isEnabled()) {
+      return `${this.storageConfig.getCloudFrontUrl()}/${file.key}`;
+    } else {
+      return `/uploads/${file.filename}`;
+    }
   }
 }
 
 // エラーハンドリングを管理するクラス
 class ErrorHandler {
-  constructor(uploadLimits) {
+  constructor(uploadLimits, logger) {
     this.uploadLimits = uploadLimits;
+    this.logger = logger;
   }
 
-  handle(err, req, res, next) {
-    console.error('Application Error:', err);
+  createDetailedErrorLog(error, req, additionalInfo = {}) {
+    const errorDetails = {
+      category: 'Error',
+      action: error.name || 'UnknownError',
+      value: error.code || 500,
+      quantity: 1,
+      error: error.message,
+      details: error.details || {},
+      userId: req.user?.id,
+      requestInfo: {
+        method: req.method,
+        path: req.path,
+        url: req.url
+      }
+    };
+
+    if (this.logger) {
+      this.logger.logError('Error', error.name || 'UnknownError', error, errorDetails);
+    }
+
+    return errorDetails;
+  }
+
+  createValidationError(message, details = {}) {
+    const error = new Error(message);
+    error.name = 'ValidationError';
+    error.code = details.code || 'VALIDATION_ERROR';
+    error.details = {
+      field: details.field,
+      value: details.value,
+      constraint: details.constraint,
+      ...details
+    };
+    return error;
+  }
+
+  handle(err, req, res) {
+    this.createDetailedErrorLog(err, req);
     
     if (err instanceof multer.MulterError) {
-      return this.handleMulterError(err, res);
+      return this.handleMulterError(err, req, res);
     }
 
-    return this.handleGeneralError(err, res);
+    return this.handleGeneralError(err, req, res);
   }
 
-  handleMulterError(err, res) {
+  handleMulterError(err, req, res) {
     if (err.code === 'LIMIT_FILE_SIZE') {
-      return res.status(400).json({ 
-        error: `ファイルサイズが大きすぎます。${this.uploadLimits.fileSize / (1024 * 1024)}MB以下にしてください。` 
-      });
+      const error = this.createValidationError(
+        `ファイルサイズが大きすぎます。${this.uploadLimits.fileSize / (1024 * 1024)}MB以下にしてください。`,
+        { code: 'LIMIT_FILE_SIZE', field: err.field }
+      );
+      this.createDetailedErrorLog(error, req);
+      return this.sendErrorResponse(req, res, 400, error.message);
     }
-    return res.status(400).json({ error: 'ファイルアップロードエラー' });
+    
+    const error = this.createValidationError('ファイルアップロードエラー', {
+      code: err.code,
+      field: err.field
+    });
+    this.createDetailedErrorLog(error, req);
+    return this.sendErrorResponse(req, res, 400, error.message);
   }
 
-  handleGeneralError(err, res) {
-    res.status(500).json({ 
-      error: process.env.NODE_ENV === 'production' 
-        ? 'サーバーエラーが発生しました' 
-        : err.message 
+  handleGeneralError(err, req, res) {
+    const errorDetails = this.createDetailedErrorLog(err, req);
+    const errorMessage = process.env.NODE_ENV === 'production' 
+      ? 'サーバーエラーが発生しました' 
+      : err.message;
+    
+    return this.sendErrorResponse(
+      req, 
+      res, 
+      err.status || 500, 
+      errorMessage,
+      process.env.NODE_ENV !== 'production' ? errorDetails : undefined
+    );
+  }
+
+  sendErrorResponse(req, res, status, message, details = {}) {
+    const isApiRequest = req.xhr || req.headers.accept?.includes('application/json');
+    
+    if (isApiRequest) {
+      return res.status(status).json({
+        error: message,
+        ...details
+      });
+    } else {
+      try {
+        if (req.session && req.flash) {
+          req.flash('error', message);
+        }
+      } catch (e) {
+        // Ignore flash errors if session is not available
+      }
+      const fallbackUrl = req.header('Referer') || '/';
+      return res.redirect(fallbackUrl);
+    }
+  }
+
+  handleValidationError(req, res, message, details = {}) {
+    const error = this.createValidationError(message, details);
+    this.createDetailedErrorLog(error, req);
+    return this.sendErrorResponse(req, res, 400, error.message);
+  }
+
+  handleAuthError(req, res, message = '認証が必要です') {
+    const error = this.createValidationError(message, { code: 'AUTH_ERROR' });
+    this.createDetailedErrorLog(error, req);
+    return this.sendErrorResponse(req, res, 401, error.message);
+  }
+
+  handlePermissionError(req, res, message = '権限がありません') {
+    const error = this.createValidationError(message, { code: 'PERMISSION_ERROR' });
+    this.createDetailedErrorLog(error, req);
+    return res.status(403).json({
+      error: message
     });
+  }
+
+  handleNotFoundError(req, res, message = 'リソースが見つかりません') {
+    const error = this.createValidationError(message, { code: 'NOT_FOUND' });
+    this.createDetailedErrorLog(error, req);
+    return this.sendErrorResponse(req, res, 404, error.message);
   }
 }
 
@@ -186,86 +536,118 @@ class Application {
   constructor() {
     this.app = express();
     this.prisma = new PrismaClient();
-    this.port = process.env.APP_PORT || 8080;
+    this.port = CONFIG.app.port;
+    
+    this.setupDirectories();
+    setupSecurity(this.app);
+    this.app.use(express.static(path.join(__dirname, 'public')));
+    
+    // Prismaインスタンスを設定
+    this.app.set('prisma', this.prisma);
+    
+    this.initializeCore();
+    this.services = this.initializeServices();
+    this.controllers = this.initializeControllers();
+  }
+
+  setupDirectories() {
+    const dirs = [
+      path.join(__dirname, 'public'),
+      path.join(__dirname, 'public', 'uploads'),
+      path.join(__dirname, 'public', 'css')
+    ];
+
+    dirs.forEach(dir => {
+      if (!fs.existsSync(dir)) {
+        fs.mkdirSync(dir, { recursive: true });
+      }
+      fs.chmodSync(dir, '755');
+    });
+  }
+
+  initializeCore() {
+    const loggingSystem = new LoggingSystem();
+    // Winstonロガーインスタンスを取得
+    this.logger = loggingSystem.getLogger();
+    // LoggingSystemインスタンスも保持
+    this.loggingSystem = loggingSystem;
     
     this.storageConfig = new StorageConfig();
     this.fileUploader = new FileUploader(this.storageConfig);
-    this.errorHandler = new ErrorHandler(this.storageConfig.getUploadLimits());
+    this.errorHandler = new ErrorHandler(this.storageConfig.getUploadLimits(), this.logger);
+
+    const passportService = new PassportService(this.prisma, this.logger);
+    passportService.configurePassport(passport);
+  }
+
+  initializeServices() {
+    return {
+      auth: new AuthService(this.prisma, this.logger),
+      profile: new ProfileService(this.prisma, this.logger),
+      micropost: new MicropostService(this.prisma, this.logger),
+      system: new SystemService(this.prisma, this.logger),
+      category: new CategoryService(this.prisma, this.logger),
+      passport: new PassportService(this.prisma, this.logger),
+      like: new LikeService(this.prisma, this.logger),
+      comment: new CommentService(this.prisma, this.logger),
+      notification: new NotificationService(this.prisma, this.logger),
+      follow: new FollowService(this.prisma, this.logger)
+    };
+  }
+
+  initializeControllers() {
+    return {
+      auth: new AuthController(this.services.auth, this.errorHandler, this.logger),
+      profile: new ProfileController(
+        { 
+          profile: this.services.profile,
+          micropost: this.services.micropost,
+          follow: this.services.follow
+        },
+        this.errorHandler,
+        this.logger
+      ),
+      micropost: new MicropostController(
+        { 
+          micropost: this.services.micropost, 
+          like: this.services.like,
+          comment: this.services.comment 
+        },
+        this.fileUploader,
+        this.errorHandler,
+        this.logger
+      ),
+      system: new SystemController(this.services.system, this.errorHandler, this.logger),
+      dev: new DevController(
+        { 
+          system: this.services.system,
+          profile: this.services.profile,
+          micropost: this.services.micropost
+        },
+        this.errorHandler,
+        this.logger
+      ),
+      admin: new AdminController(this.services, this.errorHandler, this.logger),
+      category: new CategoryController(this.services.category, this.errorHandler, this.logger),
+      like: new LikeController(this.services.like, this.errorHandler, this.logger),
+      comment: new CommentController(this.services, this.errorHandler, this.logger),
+      notification: new NotificationController(this.services, this.errorHandler, this.logger)
+    };
   }
 
   setupMiddleware() {
-    const logFormat = ':remote-addr - :remote-user [:date[clf]] ":method :url HTTP/:http-version" :status :res[content-length] ":referrer" ":user-agent" :response-time ms';
-    this.app.use(morgan(logFormat));
-    this.app.use(express.json());
-    this.app.use(express.urlencoded({ extended: true }));
-    this.app.set('view engine', 'ejs');
-    this.app.set('views', path.join(__dirname, 'views'));
+    setupBasicMiddleware(this.app);
+    setupAuthMiddleware(this.app, CONFIG);
+    setupRequestLogging(this.app, this.loggingSystem);  // LoggingSystemインスタンスを渡す
+    setupErrorLogging(this.app, this.logger);           // Winstonロガーを渡す
   }
 
   setupRoutes() {
-    const upload = this.fileUploader.createUploader();
-
-    this.setupHealthRoutes();
-    this.setupMainRoutes(upload);
-    this.setupStaticRoutes();
-  }
-
-  setupHealthRoutes() {
-    this.app.get('/health', (_, res) => res.json({ status: 'healthy' }));
-    this.app.get('/health-db', asyncHandler(async (_, res) => {
-      try {
-        await this.prisma.$queryRaw`SELECT 1`;
-        res.json({ status: 'healthy' });
-      } catch (err) {
-        console.error('Database health check failed:', err);
-        res.status(500).json({ status: 'unhealthy', error: err.message });
-      }
-    }));
-  }
-
-  setupMainRoutes(upload) {
-    this.app.get('/', asyncHandler(async (_, res) => {
-      const microposts = await this.prisma.micropost.findMany({
-        orderBy: { createdAt: 'desc' }
-      });
-      res.render('index', { microposts });
-    }));
-
-    this.app.post('/microposts', upload.single('image'), asyncHandler(async (req, res) => {
-      try {
-        const { title } = req.body;
-        if (!title?.trim()) {
-          return res.status(400).json({ error: '投稿内容を入力してください' });
-        }
-
-        const imageUrl = this.fileUploader.generateFileUrl(req.file);
-
-        await this.prisma.micropost.create({
-          data: { 
-            title: title.trim(),
-            imageUrl
-          }
-        });
-
-        res.redirect('/');
-      } catch (error) {
-        console.error('File upload error:', error);
-        res.status(500).json({ 
-          error: 'ファイルアップロードに失敗しました',
-          details: process.env.NODE_ENV === 'development' ? error.message : undefined
-        });
-      }
-    }));
-  }
-
-  setupStaticRoutes() {
-    if (!this.storageConfig.isEnabled()) {
-      this.app.use('/uploads', express.static(path.join(__dirname, '..', 'uploads')));
-    }
+    setupRoutes(this.app, this.controllers, this.fileUploader);
   }
 
   setupErrorHandler() {
-    this.app.use((err, req, res, next) => this.errorHandler.handle(err, req, res, next));
+    this.app.use(handle500Error);
   }
 
   async start() {
@@ -274,21 +656,24 @@ class Application {
       this.setupRoutes();
       this.setupErrorHandler();
 
-      if (process.env.APP_ENV !== 'test') {
-        const host = process.env.APP_HOST || '0.0.0.0';
-        this.app.listen(this.port, host, () => {
-          console.log('\n=== Server URLs ===');
-          console.log(`APP_ENV:   ${process.env.APP_ENV}`);  
-          console.log(`Local:     http://localhost:${this.port}`);
-          console.log(`Public:    http://${process.env.SERVER_PUBLIC_IP || 'YOUR_SERVER_PUBLIC_IP'}:${this.port}`);
-          console.log(`Private:   http://${process.env.SERVER_PRIVATE_IP || 'YOUR_SERVER_PRIVATE_IP'}:${this.port}`);
-          console.log(`\nStorage: ${this.storageConfig.isEnabled() ? 'S3' : 'Local'}`);
+      if (!CONFIG.app.isTest) {
+        this.app.listen(this.port, CONFIG.app.host, () => {
+          this.logServerStartup();
         });
       }
     } catch (err) {
-      console.error('Application startup error:', err);
+      this.logger.error('Application startup error:', err);
       process.exit(1);
     }
+  }
+
+  logServerStartup() {
+    console.log('\n=== Server Information ===');
+    console.log(`Environment: ${CONFIG.app.env}`);
+    console.log(`Storage:     ${this.storageConfig.isEnabled() ? 'S3' : 'Local'}`);
+    console.log(`CloudWatch:  ${this.loggingSystem.isEnabled() ? 'Enabled' : 'Disabled'}`);
+    console.log(`Server:      http://${CONFIG.app.host}:${this.port}`);
+    console.log('\n=== Server is ready ===\n');
   }
 
   async cleanup() {
@@ -296,17 +681,22 @@ class Application {
   }
 }
 
-if (require.main === module) {
-  const app = new Application();
-  app.start();
+const app = new Application();
+app.start().catch(err => {
+  console.error('Failed to start application:', err);
+  process.exit(1);
+});
 
-  ['SIGINT', 'SIGTERM'].forEach(signal => {
-    process.on(signal, async () => {
-      console.log(`\nReceived ${signal}, cleaning up...`);
-      await app.cleanup();
-      process.exit(0);
-    });
-  });
-}
+process.on('SIGINT', async () => {
+  console.log('\nReceived SIGINT, cleaning up...');
+  await app.cleanup();
+  process.exit(0);
+});
+
+process.on('SIGTERM', async () => {
+  console.log('\nReceived SIGTERM, cleaning up...');
+  await app.cleanup();
+  process.exit(0);
+});
 
 module.exports = { Application };

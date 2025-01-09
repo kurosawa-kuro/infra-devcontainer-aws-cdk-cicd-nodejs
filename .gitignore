@@ -120,3 +120,7 @@ temp/
 *.tmp
 *.temp
 .env.backup_*
+Memo_Todo.md
+
+function.zip
+uploads/

@@ -1,0 +1,71 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    @apply bg-bg dark:bg-bg-dark text-text dark:text-text-dark;
+  }
+  h1 {
+    @apply text-2xl font-bold text-text dark:text-text-dark mb-2;
+  }
+  h2 {
+    @apply text-xl font-semibold text-text dark:text-text-dark mb-2;
+  }
+  h3 {
+    @apply text-lg font-semibold text-text dark:text-text-dark mb-1;
+  }
+  p {
+    @apply text-text-secondary dark:text-text-secondary-dark;
+  }
+}
+
+@layer components {
+  .btn-primary {
+    @apply bg-primary text-white px-6 py-3 rounded-lg font-medium 
+           hover:bg-opacity-90 transition-colors dark:bg-primary-dark;
+  }
+  
+  .btn-secondary {
+    @apply bg-white dark:bg-bg-card-dark text-text dark:text-text-dark px-6 py-3 
+           rounded-lg font-medium border border-border dark:border-border-dark 
+           hover:border-text-secondary dark:hover:border-text-secondary-dark transition-colors;
+  }
+  
+  .input-text {
+    @apply w-full px-4 py-3 bg-white dark:bg-bg-card-dark
+           text-text dark:text-text-dark
+           border border-border dark:border-border-dark rounded-lg 
+           focus:outline-none focus:ring-2 focus:ring-primary dark:focus:ring-primary-dark 
+           focus:border-transparent
+           placeholder-text-secondary dark:placeholder-text-secondary-dark;
+  }
+  
+  .card {
+    @apply bg-bg-card dark:bg-bg-card-dark p-6 rounded-lg 
+           border border-border dark:border-border-dark
+           shadow-card dark:shadow-card-dark
+           hover:shadow-lg transition-shadow;
+  }
+  
+  .section {
+    @apply bg-bg-card dark:bg-bg-card-dark p-6 rounded-lg 
+           border border-border dark:border-border-dark
+           shadow-card dark:shadow-card-dark;
+  }
+
+  .feature-item {
+    @apply bg-bg-card dark:bg-bg-card-dark p-4 rounded-lg 
+           border border-border dark:border-border-dark
+           hover:shadow-card dark:hover:shadow-card-dark transition-shadow;
+  }
+
+  .nav-link {
+    @apply text-text-secondary dark:text-text-secondary-dark 
+           hover:text-text dark:hover:text-text-dark transition-colors;
+  }
+
+  .nav-link-active {
+    @apply text-primary dark:text-primary-dark font-medium;
+  }
+} 

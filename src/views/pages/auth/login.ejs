@@ -1,0 +1,67 @@
+<%- contentFor('body') %>
+<div class="max-w-md mx-auto px-4">
+    <div class="mb-12 text-center">
+        <h1 class="text-3xl font-semibold mb-3 text-gray-900 dark:text-white">ログイン</h1>
+        <p class="text-base text-gray-600 dark:text-gray-400">アカウントにログインしてサービスを利用</p>
+    </div>
+
+    <div class="bg-white dark:bg-gray-900 rounded-xl shadow-sm border border-gray-200 dark:border-gray-800 p-6">
+        <form action="/auth/login" method="POST" class="space-y-6">
+            <div>
+                <label for="email" class="block text-sm font-medium text-gray-900 dark:text-white mb-2">
+                    メールアドレス
+                </label>
+                <input type="email" 
+                       id="email"
+                       name="email" 
+                       required
+                       class="block w-full rounded-lg border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-900 dark:text-white shadow-sm focus:border-rose-500 dark:focus:border-rose-500 focus:ring-rose-500 dark:focus:ring-rose-500">
+            </div>
+
+            <div>
+                <label for="password" class="block text-sm font-medium text-gray-900 dark:text-white mb-2">
+                    パスワード
+                </label>
+                <input type="password" 
+                       id="password"
+                       name="password" 
+                       required
+                       class="block w-full rounded-lg border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-900 dark:text-white shadow-sm focus:border-rose-500 dark:focus:border-rose-500 focus:ring-rose-500 dark:focus:ring-rose-500">
+            </div>
+
+            <div class="flex items-center justify-between">
+                <div class="flex items-center">
+                    <input type="checkbox" 
+                           id="remember" 
+                           name="remember"
+                           class="h-4 w-4 rounded border-gray-300 dark:border-gray-700 text-rose-600 focus:ring-rose-500 dark:focus:ring-rose-500">
+                    <label for="remember" class="ml-2 block text-sm text-gray-600 dark:text-gray-400">
+                        ログイン状態を保持
+                    </label>
+                </div>
+
+                <div class="text-sm">
+                    <a href="#" class="text-rose-600 dark:text-rose-500 hover:text-rose-700 dark:hover:text-rose-400">
+                        パスワードをお忘れですか？
+                    </a>
+                </div>
+            </div>
+
+            <div>
+                <button type="submit" 
+                        class="flex w-full justify-center rounded-lg bg-rose-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-rose-700 dark:bg-rose-500 dark:hover:bg-rose-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-rose-500 dark:focus:ring-offset-gray-900 transition-colors">
+                    ログイン
+                </button>
+            </div>
+        </form>
+
+        <div class="mt-6 text-center">
+            <p class="text-sm text-gray-600 dark:text-gray-400">
+                アカウントをお持ちでないですか？
+                <a href="/auth/signup" class="text-rose-600 dark:text-rose-500 hover:text-rose-700 dark:hover:text-rose-400 font-medium">
+                    新規登録
+                </a>
+            </p>
+        </div>
+    </div>
+</div> 

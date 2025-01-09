@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>500 - サーバーエラー</title>
+    <style>
+        .error-container {
+            text-align: center;
+            padding: 50px 20px;
+            max-width: 600px;
+            margin: 0 auto;
+        }
+        .error-code {
+            font-size: 120px;
+            color: #e74c3c;
+            margin: 0;
+            font-weight: bold;
+        }
+        .error-message {
+            font-size: 24px;
+            color: #2c3e50;
+            margin: 20px 0;
+        }
+        .error-description {
+            color: #7f8c8d;
+            margin-bottom: 30px;
+        }
+        .back-button {
+            display: inline-block;
+            padding: 10px 20px;
+            background-color: #3498db;
+            color: white;
+            text-decoration: none;
+            border-radius: 5px;
+            transition: background-color 0.3s;
+        }
+        .back-button:hover {
+            background-color: #2980b9;
+        }
+        .error-details {
+            margin-top: 20px;
+            padding: 15px;
+            background-color: #f8f9fa;
+            border-radius: 5px;
+            font-family: monospace;
+            text-align: left;
+            display: none;
+        }
+        .show-details {
+            margin-top: 20px;
+            color: #7f8c8d;
+            text-decoration: underline;
+            cursor: pointer;
+        }
+    </style>
+</head>
+<body>
+    <div class="error-container">
+        <h1 class="error-code">500</h1>
+        <h2 class="error-message">サーバーエラーが発生しました</h2>
+        <p class="error-description">
+            申し訳ありませんが、サーバーで問題が発生しました。<br>
+            しばらく時間をおいてから再度アクセスしてください。
+        </p>
+        <a href="/" class="back-button">トップページに戻る</a>
+        
+        <% if (process.env.NODE_ENV !== 'production' && error) { %>
+            <div class="show-details" onclick="toggleDetails()">エラー詳細を表示</div>
+            <div class="error-details" id="errorDetails">
+                <strong>Error:</strong> <%= error.message %><br>
+                <% if (error.stack) { %>
+                    <strong>Stack:</strong><br>
+                    <pre><%= error.stack %></pre>
+                <% } %>
+            </div>
+            <script>
+                function toggleDetails() {
+                    const details = document.getElementById('errorDetails');
+                    details.style.display = details.style.display === 'none' ? 'block' : 'none';
+                }
+            </script>
+        <% } %>
+    </div>
+</body>
+</html>
