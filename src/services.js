@@ -3,15 +3,25 @@ const bcrypt = require('bcrypt');
 const axios = require('axios');
 const passport = require('passport');
 const LocalStrategy = require('passport-local').Strategy;
-const { S3Client, PutObjectCommand } = require('@aws-sdk/client-s3');
-const fs = require('fs').promises;
 const path = require('path');
 require('dotenv').config({ path: path.join(__dirname, '../.env') });
 
-const PATHS = {
-  DEFAULT_AVATAR: process.env.DEFAULT_AVATAR_PATH,
-  UPLOAD_DIR: process.env.UPLOAD_DIR_PATH,
-  PUBLIC_DIR: process.env.PUBLIC_DIR_PATH
+// 定数定義
+const CONSTANTS = {
+  PATHS: {
+    DEFAULT_AVATAR: process.env.DEFAULT_AVATAR_PATH,
+    UPLOAD_DIR: process.env.UPLOAD_DIR_PATH,
+    PUBLIC_DIR: process.env.PUBLIC_DIR_PATH
+  },
+  NOTIFICATION_TYPES: {
+    FOLLOW: 'FOLLOW',
+    LIKE: 'LIKE',
+    COMMENT: 'COMMENT'
+  },
+  AUTH: {
+    PASSWORD_MIN_LENGTH: 6,
+    TOKEN_EXPIRY: 24 * 60 * 60 * 1000 // 24時間
+  }
 };
 
 // 共通のユーティリティ関数
@@ -49,110 +59,155 @@ const ValidationUtils = {
   }
 };
 
-// 通知タイプの定義
-const NotificationType = {
-  FOLLOW: 'FOLLOW',
-  LIKE: 'LIKE',
-  COMMENT: 'COMMENT'
+// 共通のエラーハンドリングユーティリティ
+const ErrorUtils = {
+  handleError(error, context, logger) {
+    logger.error('Error occurred', {
+      context,
+      error: error.message,
+      stack: error.stack,
+      name: error.name
+    });
+    throw error;
+  },
+
+  handleDatabaseError(error, operation, logger) {
+    logger.error('Database error', {
+      operation,
+      error: error.message,
+      code: error.code
+    });
+    throw error;
+  }
 };
 
 // ベース抽象クラス - 共通機能を提供
 class BaseService {
   constructor(prisma, logger) {
+    if (!prisma) throw new Error('Prisma client is required');
+    if (!logger) throw new Error('Logger is required');
+    
     this.prisma = prisma;
     this.logger = logger;
-    
-    if (!this.logger) {
-      throw new Error('Logger is not initialized in BaseService');
-    }
   }
 
+  // 共通のバリデーションメソッド
   validateId(id) {
     return ValidationUtils.validateId(id);
   }
 
-  logError(error, context = {}) {
-    this.logger.error('Service error occurred', {
-      ...context,
+  // エラーハンドリング
+  handleError(error, context = {}) {
+    ErrorUtils.handleError(error, context, this.logger);
+  }
+
+  handleDatabaseError(error, operation) {
+    ErrorUtils.handleDatabaseError(error, operation, this.logger);
+  }
+
+  // トランザクション実行の共通メソッド
+  async executeTransaction(callback) {
+    try {
+      return await this.prisma.$transaction(async (prisma) => {
+        return callback(prisma);
+      });
+    } catch (error) {
+      this.handleDatabaseError(error, 'Transaction execution');
+    }
+  }
+
+  // 共通のユーザー検索メソッド
+  async findUserById(userId, includeProfile = true, includeRoles = true) {
+    try {
+      return await this.prisma.user.findUnique({
+        where: { id: this.validateId(userId) },
+        include: {
+          profile: includeProfile,
+          userRoles: includeRoles ? {
+            include: { role: true }
+          } : undefined,
+          _count: {
+            select: { microposts: true }
+          }
+        }
+      });
+    } catch (error) {
+      this.handleDatabaseError(error, 'Find user by ID');
+    }
+  }
+
+  // 通知作成の共通メソッド
+  async createNotification(type, recipientId, actorId, data = {}) {
+    if (!Object.values(CONSTANTS.NOTIFICATION_TYPES).includes(type)) {
+      throw new Error('Invalid notification type');
+    }
+
+    try {
+      return await this.executeTransaction(async (prisma) => {
+        const notification = await prisma.notification.create({
+          data: {
+            type,
+            recipientId: this.validateId(recipientId),
+            actorId: this.validateId(actorId),
+            micropostId: data.micropostId ? this.validateId(data.micropostId) : null,
+            commentId: data.commentId ? this.validateId(data.commentId) : null,
+            read: false
+          },
+          include: {
+            actor: {
+              include: {
+                profile: true
+              }
+            },
+            micropost: true,
+            comment: true
+          }
+        });
+
+        // プロフィルが存在しない場合は作成
+        if (!notification.actor.profile) {
+          await prisma.userProfile.create({
+            data: {
+              userId: actorId,
+              avatarPath: CONSTANTS.PATHS.DEFAULT_AVATAR
+            }
+          });
+        }
+
+        return notification;
+      });
+    } catch (error) {
+      this.handleDatabaseError(error, 'Create notification');
+    }
+  }
+
+  // ファイルパス正規化
+  normalizeAvatarPath(avatarPath) {
+    if (!avatarPath) return CONSTANTS.PATHS.DEFAULT_AVATAR;
+    if (avatarPath.startsWith('/uploads/')) return avatarPath;
+    return `/uploads/${avatarPath.replace(/^\//, '')}`;
+  }
+
+  // ログ出力の共通メソッド
+  logInfo(message, data = {}) {
+    this.logger.info(message, data);
+  }
+
+  logError(message, error, data = {}) {
+    this.logger.error(message, {
+      ...data,
       error: error.message,
       stack: error.stack,
       name: error.name
     });
   }
 
-  // 共通のユーティリティメソッド
-  async findUserById(userId) {
-    return this.prisma.user.findUnique({
-      where: { id: this.validateId(userId) },
-      include: {
-        profile: true,
-        userRoles: {
-          include: {
-            role: true
-          }
-        },
-        _count: {
-          select: { microposts: true }
-        }
-      }
-    });
+  logDebug(message, data = {}) {
+    this.logger.debug(message, data);
   }
 
-  // 通知作成の共通メソッド
-  async createNotification(type, recipientId, actorId, data = {}) {
-    
-    if (!Object.values(NotificationType).includes(type)) {
-      throw new Error('Invalid notification type');
-    }
-
-    return this.executeTransaction(async (prisma) => {
-      // アクターのプロフィルが存在することを確認
-      const actor = await prisma.user.findUnique({
-        where: { id: this.validateId(actorId) },
-        include: { profile: true }
-      });
-
-      // if (!actor.profile) {
-      //   console.log('Creating profile for actor:', actorId);
-      //   // プロフィルが存在しない場合は作成
-      //   await prisma.userProfile.create({
-      //     data: {
-      //       userId: actor.id,
-      //       avatarPath: PATHS.DEFAULT_AVATAR
-      //     }
-      //   });
-      // }
-
-      const notification = await prisma.notification.create({
-        data: {
-          type,
-          recipientId: this.validateId(recipientId),
-          actorId: this.validateId(actorId),
-          micropostId: data.micropostId ? this.validateId(data.micropostId) : null,
-          commentId: data.commentId ? this.validateId(data.commentId) : null,
-          read: false
-        },
-        include: {
-          actor: {
-            include: {
-              profile: true
-            }
-          },
-          micropost: true,
-          comment: true
-        }
-      });
-
-
-      return notification;
-    });
-  }
-
-  // トランザクション実行の共通メソッド
-  async executeTransaction(callback) {
-    return this.prisma.$transaction(async (prisma) => {
-      return callback(prisma);
-    });
+  logWarn(message, data = {}) {
+    this.logger.warn(message, data);
   }
 }
 
@@ -161,8 +216,10 @@ class AuthService extends BaseService {
   constructor(prisma, logger) {
     super(prisma, logger);
     this.csrfTokens = new Map();
+    this.cleanupInterval = null;
   }
 
+  // CSRF関連のメソッド
   generateCsrfToken(sessionId) {
     const token = require('crypto').randomBytes(32).toString('hex');
     this.csrfTokens.set(sessionId, {
@@ -174,13 +231,10 @@ class AuthService extends BaseService {
 
   validateCsrfToken(sessionId, token) {
     const storedData = this.csrfTokens.get(sessionId);
-    if (!storedData) {
-      return false;
-    }
+    if (!storedData) return false;
 
-    // トークンの有効期限を24時間に設定
     const tokenAge = Date.now() - storedData.createdAt;
-    if (tokenAge > 24 * 60 * 60 * 1000) {
+    if (tokenAge > CONSTANTS.AUTH.TOKEN_EXPIRY) {
       this.csrfTokens.delete(sessionId);
       return false;
     }
@@ -188,124 +242,136 @@ class AuthService extends BaseService {
     return storedData.token === token;
   }
 
-  cleanupExpiredTokens() {
-    const now = Date.now();
-    for (const [sessionId, data] of this.csrfTokens.entries()) {
-      if (now - data.createdAt > 24 * 60 * 60 * 1000) {
-        this.csrfTokens.delete(sessionId);
-      }
-    }
-  }
-
+  // ユーザー認証メソッド
   async signup({ email, password, passwordConfirmation, name, csrfToken, sessionId }) {
-    // CSRFトークン検証
-    if (!this.validateCsrfToken(sessionId, csrfToken)) {
-      throw new Error('Invalid CSRF token');
-    }
-
-    // バリデーション
-    ValidationUtils.validateEmail(email);
-    ValidationUtils.validatePassword(password, passwordConfirmation);
-    ValidationUtils.validateUsername(name);
-
-    // 既存ユーザーチェック
-    const existingUser = await this.prisma.user.findUnique({ where: { email } });
-    if (existingUser) {
-      throw new Error('このメールアドレスは既に登録されています');
-    }
-
-    return this.executeTransaction(async (prisma) => {
-      const hashedPassword = await bcrypt.hash(password, 10);
-      const userRole = await prisma.role.findUnique({ where: { name: 'user' } });
-      
-      if (!userRole) {
-        throw new Error('デフォルトのユーザーロールが見つかりません');
+    try {
+      if (!this.validateCsrfToken(sessionId, csrfToken)) {
+        throw new Error('Invalid CSRF token');
       }
 
-      return prisma.user.create({
-        data: {
-          email,
-          name,
-          password: hashedPassword,
-          userRoles: {
-            create: { roleId: userRole.id }
-          }
-        },
-        include: {
-          userRoles: {
-            include: { role: true }
-          }
+      // バリデーション
+      ValidationUtils.validateEmail(email);
+      ValidationUtils.validatePassword(password, passwordConfirmation);
+      ValidationUtils.validateUsername(name);
+
+      return await this.executeTransaction(async (prisma) => {
+        // 既存ユーザーチェック
+        const existingUser = await prisma.user.findUnique({ where: { email } });
+        if (existingUser) {
+          throw new Error('このメールアドレスは既に登録されています');
         }
+
+        const hashedPassword = await bcrypt.hash(password, 10);
+        const userRole = await prisma.role.findUnique({ where: { name: 'user' } });
+        
+        if (!userRole) {
+          throw new Error('デフォルトのユーザーロールが見つかりません');
+        }
+
+        return prisma.user.create({
+          data: {
+            email,
+            name,
+            password: hashedPassword,
+            userRoles: {
+              create: { roleId: userRole.id }
+            }
+          },
+          include: {
+            userRoles: {
+              include: { role: true }
+            }
+          }
+        });
       });
-    });
+    } catch (error) {
+      this.handleError(error, { context: 'User signup' });
+    }
   }
 
   async login(req, res) {
-    // CSRFトークンの生成と設定
-    const csrfToken = this.generateCsrfToken(req.sessionID);
-    res.cookie('XSRF-TOKEN', csrfToken, {
-      httpOnly: false,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'Lax'
-    });
+    try {
+      const csrfToken = this.generateCsrfToken(req.sessionID);
+      res.cookie('XSRF-TOKEN', csrfToken, {
+        httpOnly: false,
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: 'Lax'
+      });
 
-    return new Promise((resolve, reject) => {
-      passport.authenticate('local', (err, user, info) => {
-        if (err) return reject(err);
-        if (!user) return reject(new Error(info?.message || 'ログインに失敗しました'));
-        
-        req.logIn(user, (err) => {
+      return new Promise((resolve, reject) => {
+        passport.authenticate('local', (err, user, info) => {
           if (err) return reject(err);
-          resolve(user);
-        });
-      })(req, res);
-    });
+          if (!user) return reject(new Error(info?.message || 'ログインに失敗しました'));
+          
+          req.logIn(user, (err) => {
+            if (err) return reject(err);
+            resolve(user);
+          });
+        })(req, res);
+      });
+    } catch (error) {
+      this.handleError(error, { context: 'User login' });
+    }
   }
 
   async logout(req) {
-    return new Promise((resolve, reject) => {
-      if (!req.session) {
-        resolve();
-        return;
-      }
+    try {
+      if (!req.session) return;
 
-      // CSRFトークンの削除
       this.csrfTokens.delete(req.sessionID);
 
-      const logoutCallback = (err) => {
-        if (err) {
-          this.logError(err, { context: 'logout' });
-          reject(err);
-          return;
-        }
+      return new Promise((resolve, reject) => {
+        const logoutCallback = (err) => {
+          if (err) {
+            this.handleError(err, { context: 'logout' });
+            return reject(err);
+          }
 
-        if (req.session) {
-          req.session.destroy((err) => {
-            if (err) {
-              this.logError(err, { context: 'session destruction' });
-              reject(err);
-              return;
-            }
+          if (req.session) {
+            req.session.destroy((err) => {
+              if (err) {
+                this.handleError(err, { context: 'session destruction' });
+                return reject(err);
+              }
+              resolve();
+            });
+          } else {
             resolve();
-          });
-        } else {
-          resolve();
-        }
-      };
+          }
+        };
 
-      if (req.logout) {
-        req.logout(logoutCallback);
-      } else {
-        logoutCallback();
-      }
-    });
+        if (req.logout) {
+          req.logout(logoutCallback);
+        } else {
+          logoutCallback();
+        }
+      });
+    } catch (error) {
+      this.handleError(error, { context: 'User logout' });
+    }
   }
 
-  // 定期的なトークンクリーンアップを開始
+  // トークン管理
   startTokenCleanup() {
-    setInterval(() => {
-      this.cleanupExpiredTokens();
-    }, 60 * 60 * 1000); // 1時間ごとに実行
+    if (this.cleanupInterval) {
+      clearInterval(this.cleanupInterval);
+    }
+
+    this.cleanupInterval = setInterval(() => {
+      const now = Date.now();
+      for (const [sessionId, data] of this.csrfTokens.entries()) {
+        if (now - data.createdAt > CONSTANTS.AUTH.TOKEN_EXPIRY) {
+          this.csrfTokens.delete(sessionId);
+        }
+      }
+    }, CONSTANTS.AUTH.TOKEN_EXPIRY); // 24時間ごとにクリーンアップ
+  }
+
+  stopTokenCleanup() {
+    if (this.cleanupInterval) {
+      clearInterval(this.cleanupInterval);
+      this.cleanupInterval = null;
+    }
   }
 }
 
@@ -316,366 +382,264 @@ class ProfileService extends BaseService {
     this.followService = new FollowService(prisma, logger);
   }
 
-  // プロフィールのアバターパスを正規化する
-  normalizeAvatarPath(avatarPath) {
-    if (!avatarPath) return PATHS.DEFAULT_AVATAR;
-    if (avatarPath.startsWith('/uploads/')) return avatarPath;
-    return `/uploads/${avatarPath.replace(/^\//, '')}`;
-  }
-
+  // プロフィール取得メソッド
   async getUserProfile(userId) {
-    return this.findUserById(userId);
+    try {
+      return await this.findUserById(userId);
+    } catch (error) {
+      this.handleError(error, { context: 'Get user profile', userId });
+    }
   }
 
   async getUserProfileByName(name) {
-    ValidationUtils.validateUsername(name);
-    return this.prisma.user.findFirst({
-      where: { name },
-      include: {
-        profile: true,
-        userRoles: {
-          include: { role: true }
-        },
-        _count: {
-          select: { microposts: true }
+    try {
+      ValidationUtils.validateUsername(name);
+      return await this.prisma.user.findFirst({
+        where: { name },
+        include: {
+          profile: true,
+          userRoles: {
+            include: { role: true }
+          },
+          _count: {
+            select: { microposts: true }
+          }
         }
-      }
-    });
+      });
+    } catch (error) {
+      this.handleError(error, { context: 'Get user profile by name', name });
+    }
   }
 
   async getAllUsers() {
-    return this.prisma.user.findMany({
-      include: {
-        profile: true,
-        userRoles: {
-          include: { role: true }
+    try {
+      return await this.prisma.user.findMany({
+        include: {
+          profile: true,
+          userRoles: {
+            include: { role: true }
+          },
+          _count: {
+            select: { microposts: true }
+          }
         },
-        _count: {
-          select: { microposts: true }
-        }
-      },
-      orderBy: { id: 'desc' }
-    });
-  }
-
-  async updateProfile(userId, profileData) {
-    const parsedId = this.validateId(userId);
-    if (profileData.name) {
-      ValidationUtils.validateUsername(profileData.name);
+        orderBy: { id: 'desc' }
+      });
+    } catch (error) {
+      this.handleError(error, { context: 'Get all users' });
     }
-
-    return this.executeTransaction(async (prisma) => {
-      const user = await prisma.user.update({
-        where: { id: parsedId },
-        data: { 
-          name: profileData.name || undefined
-        }
-      });
-
-      await prisma.userProfile.upsert({
-        where: { userId: parsedId },
-        create: {
-          userId: parsedId,
-          bio: profileData.bio || '',
-          location: profileData.location || '',
-          website: profileData.website || '',
-          birthDate: profileData.birthDate ? new Date(profileData.birthDate) : null,
-          avatarPath: this.normalizeAvatarPath(profileData.avatarPath)
-        },
-        update: {
-          bio: profileData.bio || '',
-          location: profileData.location || '',
-          website: profileData.website || '',
-          birthDate: profileData.birthDate ? new Date(profileData.birthDate) : null,
-          ...(profileData.avatarPath && { avatarPath: profileData.avatarPath })
-        }
-      });
-
-      return this.findUserById(parsedId);
-    });
   }
 
+  // プロフィール更新メソッド
+  async updateProfile(userId, profileData) {
+    try {
+      const parsedId = this.validateId(userId);
+      if (profileData.name) {
+        ValidationUtils.validateUsername(profileData.name);
+      }
+
+      return await this.executeTransaction(async (prisma) => {
+        // ユーザー情報の更新
+        await prisma.user.update({
+          where: { id: parsedId },
+          data: { 
+            name: profileData.name || undefined
+          }
+        });
+
+        // プロフィール情報の更新
+        await prisma.userProfile.upsert({
+          where: { userId: parsedId },
+          create: {
+            userId: parsedId,
+            bio: profileData.bio || '',
+            location: profileData.location || '',
+            website: profileData.website || '',
+            birthDate: profileData.birthDate ? new Date(profileData.birthDate) : null,
+            avatarPath: this.normalizeAvatarPath(profileData.avatarPath)
+          },
+          update: {
+            bio: profileData.bio || '',
+            location: profileData.location || '',
+            website: profileData.website || '',
+            birthDate: profileData.birthDate ? new Date(profileData.birthDate) : null,
+            ...(profileData.avatarPath && { avatarPath: this.normalizeAvatarPath(profileData.avatarPath) })
+          }
+        });
+
+        return this.findUserById(parsedId);
+      });
+    } catch (error) {
+      this.handleError(error, { context: 'Update profile', userId });
+    }
+  }
+
+  // ロール管理メソッド
   async updateUserRoles(userId, roleNames) {
-    const parsedId = this.validateId(userId);
-    
-    return this.executeTransaction(async (prisma) => {
-      const roles = await prisma.role.findMany({
-        where: {
-          name: { in: roleNames }
-        }
+    try {
+      const parsedId = this.validateId(userId);
+      
+      return await this.executeTransaction(async (prisma) => {
+        const roles = await prisma.role.findMany({
+          where: {
+            name: { in: roleNames }
+          }
+        });
+
+        const roleMap = new Map(roles.map(role => [role.name, role.id]));
+        const selectedRoleIds = roleNames
+          .filter(name => roleMap.has(name))
+          .map(name => roleMap.get(name));
+
+        // 既存のロールを削除
+        await prisma.userRole.deleteMany({
+          where: { userId: parsedId }
+        });
+
+        // 新しいロールを作成
+        await prisma.userRole.createMany({
+          data: selectedRoleIds.map(roleId => ({
+            userId: parsedId,
+            roleId
+          }))
+        });
+
+        return this.findUserById(parsedId);
       });
-
-      const roleMap = new Map(roles.map(role => [role.name, role.id]));
-      const selectedRoleIds = roleNames
-        .filter(name => roleMap.has(name))
-        .map(name => roleMap.get(name));
-
-      await prisma.userRole.deleteMany({
-        where: { userId: parsedId }
-      });
-
-      await prisma.userRole.createMany({
-        data: selectedRoleIds.map(roleId => ({
-          userId: parsedId,
-          roleId
-        }))
-      });
-
-      return this.findUserById(parsedId);
-    });
+    } catch (error) {
+      this.handleError(error, { context: 'Update user roles', userId });
+    }
   }
 
+  // フォロー関連メソッド
   async getFollowCounts(userId) {
-    return this.followService.getFollowCounts(userId);
+    try {
+      return await this.followService.getFollowCounts(userId);
+    } catch (error) {
+      this.handleError(error, { context: 'Get follow counts', userId });
+    }
   }
 
   async isFollowing(followerId, followingId) {
-    return this.followService.isFollowing(followerId, followingId);
+    try {
+      return await this.followService.isFollowing(followerId, followingId);
+    } catch (error) {
+      this.handleError(error, { context: 'Check following status', followerId, followingId });
+    }
   }
 
   async getFollowing(userId) {
-    return this.followService.getFollowing(userId);
+    try {
+      return await this.followService.getFollowing(userId);
+    } catch (error) {
+      this.handleError(error, { context: 'Get following users', userId });
+    }
   }
 
   async getFollowers(userId) {
-    return this.followService.getFollowers(userId);
+    try {
+      return await this.followService.getFollowers(userId);
+    } catch (error) {
+      this.handleError(error, { context: 'Get followers', userId });
+    }
   }
 
+  // ユーティリティメソッド
   async findUserByIdentifier(identifier) {
-    if (identifier.match(/^[0-9]+$/)) {
-      return this.getUserProfile(parseInt(identifier, 10));
-    } else {
-      return this.getUserProfileByName(identifier);
+    try {
+      if (identifier.match(/^[0-9]+$/)) {
+        return await this.getUserProfile(parseInt(identifier, 10));
+      } else {
+        return await this.getUserProfileByName(identifier);
+      }
+    } catch (error) {
+      this.handleError(error, { context: 'Find user by identifier', identifier });
     }
   }
 
   async createProfile(userId, profileData) {
-    return await this.prisma.userProfile.create({
-      data: {
-        userId,
-        avatarPath: profileData.avatarPath || PATHS.DEFAULT_AVATAR,
-        // ... rest of the code ...
-      }
-    });
-  }
-}
-
-// フォロー関連サービス
-class FollowService extends BaseService {
-  async isFollowing(followerId, followingId) {
-    const validFollowerId = this.validateId(followerId);
-    const validFollowingId = this.validateId(followingId);
-
-    const follow = await this.prisma.follow.findUnique({
-      where: {
-        followerId_followingId: {
-          followerId: validFollowerId,
-          followingId: validFollowingId
-        }
-      }
-    });
-    return !!follow;
-  }
-
-  async follow(followerId, followingId) {
-    const validFollowerId = this.validateId(followerId);
-    const validFollowingId = this.validateId(followingId);
-
-    const follow = await this.executeTransaction(async (prisma) => {
-      const follow = await prisma.follow.create({
+    try {
+      return await this.prisma.userProfile.create({
         data: {
-          followerId: validFollowerId,
-          followingId: validFollowingId
+          userId,
+          avatarPath: profileData.avatarPath || CONSTANTS.PATHS.DEFAULT_AVATAR,
+          bio: profileData.bio || '',
+          location: profileData.location || '',
+          website: profileData.website || '',
+          birthDate: profileData.birthDate ? new Date(profileData.birthDate) : null
         }
       });
-
-      // フォロー通知の作成
-      await this.createNotification(
-        NotificationType.FOLLOW,
-        validFollowingId,
-        validFollowerId
-      );
-
-      return follow;
-    });
-
-    return follow;
-  }
-
-  async unfollow(followerId, followingId) {
-    const validFollowerId = this.validateId(followerId);
-    const validFollowingId = this.validateId(followingId);
-
-    return this.prisma.follow.delete({
-      where: {
-        followerId_followingId: {
-          followerId: validFollowerId,
-          followingId: validFollowingId
-        }
-      }
-    });
-  }
-
-  async getFollowCounts(userId) {
-    const validUserId = this.validateId(userId);
-    const [followingCount, followersCount] = await Promise.all([
-      this.prisma.follow.count({
-        where: { followerId: validUserId }
-      }),
-      this.prisma.follow.count({
-        where: { followingId: validUserId }
-      })
-    ]);
-
-    return { followingCount, followersCount };
-  }
-
-  async getFollowing(userId) {
-    return this.prisma.follow.findMany({
-      where: { followerId: this.validateId(userId) },
-      include: {
-        following: {
-          include: { profile: true }
-        }
-      }
-    });
-  }
-
-  async getFollowers(userId) {
-    return this.prisma.follow.findMany({
-      where: { followingId: this.validateId(userId) },
-      include: {
-        follower: {
-          include: { profile: true }
-        }
-      }
-    });
+    } catch (error) {
+      this.handleError(error, { context: 'Create profile', userId });
+    }
   }
 }
 
 // 投稿関連サービス
 class MicropostService extends BaseService {
+  // 投稿取得メソッド
   async getAllMicroposts() {
-    return this.prisma.micropost.findMany({
-      orderBy: { createdAt: 'desc' },
-      include: {
-        user: {
-          select: {
-            id: true,
-            email: true,
-            name: true,
-            profile: true,
-            userRoles: {
-              include: { role: true }
-            }
-          }
-        },
-        categories: {
-          include: { category: true }
-        },
-        _count: {
-          select: { 
-            views: true,
-            likes: true,
-            comments: true
-          }
-        }
-      }
-    });
-  }
-
-  async createMicropost({ title, imageUrl, userId, categories = [] }) {
-    const validUserId = this.validateId(userId);
-    const validCategories = categories.map(id => this.validateId(id));
-
-    return this.executeTransaction(async (prisma) => {
-      return prisma.micropost.create({
-        data: {
-          title,
-          imageUrl,
-          userId: validUserId,
-          categories: {
-            create: validCategories.map(categoryId => ({
-              categoryId
-            }))
-          }
-        },
+    try {
+      return await this.prisma.micropost.findMany({
+        orderBy: { createdAt: 'desc' },
         include: {
           user: {
             select: {
               id: true,
-              email: true
+              email: true,
+              name: true,
+              profile: true,
+              userRoles: {
+                include: { role: true }
+              }
             }
           },
           categories: {
             include: { category: true }
-          }
-        }
-      });
-    });
-  }
-
-  async getMicropostsByUser(userId) {
-    const validUserId = this.validateId(userId);
-    return this.prisma.micropost.findMany({
-      where: { userId: validUserId },
-      orderBy: { createdAt: 'desc' },
-      take: 10,
-      include: {
-        user: {
-          select: {
-            id: true,
-            email: true,
-            userRoles: {
-              include: { role: true }
+          },
+          _count: {
+            select: { 
+              views: true,
+              likes: true,
+              comments: true
             }
           }
         }
-      }
-    });
-  }
-
-  async trackView(micropostId, ipAddress) {
-    const validMicropostId = this.validateId(micropostId);
-    try {
-      return this.executeTransaction(async (prisma) => {
-        return prisma.micropostView.upsert({
-          where: {
-            micropostId_ipAddress: {
-              micropostId: validMicropostId,
-              ipAddress
-            }
-          },
-          create: {
-            micropostId: validMicropostId,
-            ipAddress,
-            viewedAt: new Date()
-          },
-          update: {
-            viewedAt: new Date()
-          }
-        });
       });
     } catch (error) {
-      this.logError(error, {
-        context: 'trackView',
-        micropostId,
-        ipAddress
-      });
-      throw error;
+      this.handleError(error, { context: 'Get all microposts' });
     }
   }
 
-  async getViewCount(micropostId) {
-    return this.prisma.micropostView.count({
-      where: { micropostId: this.validateId(micropostId) }
-    });
+  async getMicropostsByUser(userId) {
+    try {
+      const validUserId = this.validateId(userId);
+      return await this.prisma.micropost.findMany({
+        where: { userId: validUserId },
+        orderBy: { createdAt: 'desc' },
+        take: 10,
+        include: {
+          user: {
+            select: {
+              id: true,
+              email: true,
+              userRoles: {
+                include: { role: true }
+              }
+            }
+          }
+        }
+      });
+    } catch (error) {
+      this.handleError(error, { context: 'Get microposts by user', userId });
+    }
   }
 
   async getMicropostWithViews(micropostId) {
     try {
+      const validMicropostId = this.validateId(micropostId);
       const micropost = await this.prisma.micropost.findUnique({
-        where: { id: this.validateId(micropostId) },
+        where: { id: validMicropostId },
         include: {
           user: {
             select: {
@@ -718,29 +682,98 @@ class MicropostService extends BaseService {
       });
 
       if (!micropost) {
-        console.log('Micropost not found:', micropostId);
+        this.logWarn('Micropost not found', { micropostId });
         return null;
       }
 
-
       return micropost;
     } catch (error) {
-      console.error('Error fetching micropost:', {
-        error: error.message,
-        stack: error.stack,
-        micropostId
+      this.handleError(error, { context: 'Get micropost with views', micropostId });
+    }
+  }
+
+  // 投稿作成メソッド
+  async createMicropost({ title, imageUrl, userId, categories = [] }) {
+    try {
+      const validUserId = this.validateId(userId);
+      const validCategories = categories.map(id => this.validateId(id));
+
+      return await this.executeTransaction(async (prisma) => {
+        return prisma.micropost.create({
+          data: {
+            title,
+            imageUrl,
+            userId: validUserId,
+            categories: {
+              create: validCategories.map(categoryId => ({
+                categoryId
+              }))
+            }
+          },
+          include: {
+            user: {
+              select: {
+                id: true,
+                email: true
+              }
+            },
+            categories: {
+              include: { category: true }
+            }
+          }
+        });
       });
-      throw error;
+    } catch (error) {
+      this.handleError(error, { context: 'Create micropost', userId });
+    }
+  }
+
+  // ビュー関連メソッド
+  async trackView(micropostId, ipAddress) {
+    try {
+      const validMicropostId = this.validateId(micropostId);
+      return await this.executeTransaction(async (prisma) => {
+        return prisma.micropostView.upsert({
+          where: {
+            micropostId_ipAddress: {
+              micropostId: validMicropostId,
+              ipAddress
+            }
+          },
+          create: {
+            micropostId: validMicropostId,
+            ipAddress,
+            viewedAt: new Date()
+          },
+          update: {
+            viewedAt: new Date()
+          }
+        });
+      });
+    } catch (error) {
+      this.handleError(error, { context: 'Track view', micropostId, ipAddress });
+    }
+  }
+
+  async getViewCount(micropostId) {
+    try {
+      return await this.prisma.micropostView.count({
+        where: { micropostId: this.validateId(micropostId) }
+      });
+    } catch (error) {
+      this.handleError(error, { context: 'Get view count', micropostId });
     }
   }
 }
 
 // カテゴリ関連サービス
 class CategoryService extends BaseService {
+  // カテゴリ取得メソッド
   async getAllCategories() {
-    this.logger.info('Starting getAllCategories');
     try {
-      this.logger.debug('Executing category query with includes');
+      this.logInfo('Starting getAllCategories');
+      this.logDebug('Executing category query with includes');
+
       const categories = await this.prisma.category.findMany({
         include: {
           microposts: {
@@ -777,7 +810,7 @@ class CategoryService extends BaseService {
       });
 
       const hasRecords = categories.length > 0;
-      this.logger.info('Categories query completed', {
+      this.logInfo('Categories query completed', {
         hasRecords,
         count: categories.length,
         recordIds: hasRecords ? categories.map(c => c.id) : [],
@@ -785,11 +818,11 @@ class CategoryService extends BaseService {
       });
 
       if (!hasRecords) {
-        this.logger.warn('No categories found in the database');
+        this.logWarn('No categories found in the database');
         return [];
       }
 
-      this.logger.info('Categories retrieved successfully', {
+      this.logInfo('Categories retrieved successfully', {
         count: categories.length,
         categoriesWithPosts: categories.map(c => ({
           id: c.id,
@@ -800,29 +833,17 @@ class CategoryService extends BaseService {
 
       return categories;
     } catch (error) {
-      this.logError(error, {
-        method: 'getAllCategories',
+      this.handleError(error, {
+        context: 'Get all categories',
         message: 'Failed to retrieve categories'
       });
-      throw error;
     }
   }
 
   async getCategoryById(id) {
-    
-    let validatedId;
     try {
-      validatedId = this.validateId(id);
-    } catch (error) {
-      console.error('ID validation failed:', {
-        inputId: id,
-        error: error.message,
-        stack: error.stack
-      });
-      throw error;
-    }
+      const validatedId = this.validateId(id);
 
-    try {
       const category = await this.prisma.category.findUnique({
         where: { 
           id: validatedId
@@ -845,22 +866,77 @@ class CategoryService extends BaseService {
       });
 
       if (!category) {
-        console.warn('Category not found:', validatedId);
+        this.logWarn('Category not found', { categoryId: validatedId });
         return null;
       }
 
       return category;
     } catch (error) {
-      console.error('Query error:', error);
-      throw error;
+      this.handleError(error, {
+        context: 'Get category by ID',
+        categoryId: id
+      });
+    }
+  }
+
+  // カテゴリ作成メソッド
+  async createCategory(name, description = '') {
+    try {
+      return await this.prisma.category.create({
+        data: {
+          name,
+          description
+        }
+      });
+    } catch (error) {
+      this.handleError(error, {
+        context: 'Create category',
+        name
+      });
+    }
+  }
+
+  // カテゴリ更新メソッド
+  async updateCategory(id, data) {
+    try {
+      const validatedId = this.validateId(id);
+      return await this.prisma.category.update({
+        where: { id: validatedId },
+        data
+      });
+    } catch (error) {
+      this.handleError(error, {
+        context: 'Update category',
+        categoryId: id
+      });
+    }
+  }
+
+  // カテゴリ削除メソッド
+  async deleteCategory(id) {
+    try {
+      const validatedId = this.validateId(id);
+      return await this.prisma.category.delete({
+        where: { id: validatedId }
+      });
+    } catch (error) {
+      this.handleError(error, {
+        context: 'Delete category',
+        categoryId: id
+      });
     }
   }
 }
 
 // システム関連サービス
 class SystemService extends BaseService {
+  // ヘルスチェックメソッド
   async getHealth() {
-    return { status: 'healthy' };
+    try {
+      return { status: 'healthy' };
+    } catch (error) {
+      this.handleError(error, { context: 'Get system health' });
+    }
   }
 
   async getDbHealth() {
@@ -870,223 +946,284 @@ class SystemService extends BaseService {
       });
       return { status: 'healthy' };
     } catch (error) {
-      this.logError(error, { context: 'Database health check' });
-      throw error;
+      this.handleError(error, { context: 'Database health check' });
     }
   }
 
+  // システム統計メソッド
   async getStats() {
     try {
-      return this.executeTransaction(async (prisma) => {
-        const [totalUsers, totalPosts] = await Promise.all([
+      return await this.executeTransaction(async (prisma) => {
+        const [
+          totalUsers,
+          totalPosts,
+          totalCategories,
+          totalComments
+        ] = await Promise.all([
           prisma.user.count(),
-          prisma.micropost.count()
+          prisma.micropost.count(),
+          prisma.category.count(),
+          prisma.comment.count()
         ]);
 
-        return { totalUsers, totalPosts };
+        return {
+          totalUsers,
+          totalPosts,
+          totalCategories,
+          totalComments,
+          timestamp: new Date()
+        };
       });
     } catch (error) {
-      this.logError(error, { context: 'Getting system stats' });
-      throw error;
+      this.handleError(error, { context: 'Get system stats' });
     }
   }
-}
 
-// ログアップロード関連サービス
-class LogUploader extends BaseService {
-  constructor(prisma, logger) {
-    super(prisma, logger);
-    this.s3Client = new S3Client({
-      region: process.env.AWS_REGION,
-      credentials: {
-        accessKeyId: process.env.AWS_ACCESS_KEY_ID,
-        secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY
-      }
-    });
-    this.bucketName = process.env.STORAGE_S3_BUCKET;
-    this.logDir = path.join(__dirname, '../logs');
-  }
-
-  async uploadFile(localPath, s3Key) {
+  // システム設定メソッド
+  async getSystemSettings() {
     try {
-      const fileContent = await fs.readFile(localPath);
-      const command = new PutObjectCommand({
-        Bucket: this.bucketName,
-        Key: s3Key,
-        Body: fileContent,
-        ContentType: 'text/plain'
-      });
-
-      await this.s3Client.send(command);
-      this.logger.info(`Successfully uploaded ${localPath} to s3://${this.bucketName}/${s3Key}`);
+      return {
+        environment: process.env.NODE_ENV || 'development',
+        uploadPath: CONSTANTS.PATHS.UPLOAD_DIR,
+        maxUploadSize: process.env.MAX_UPLOAD_SIZE || '5MB',
+        allowedFileTypes: ['image/jpeg', 'image/png', 'image/gif'],
+        version: process.env.APP_VERSION || '1.0.0'
+      };
     } catch (error) {
-      this.logger.error(`Failed to upload ${localPath}: ${error.message}`);
-      throw error;
+      this.handleError(error, { context: 'Get system settings' });
     }
   }
 
-  async rotateFile(filePath) {
-    const timestamp = new Date().toISOString().slice(0, 10);
-    const rotatedPath = `${filePath}.${timestamp}`;
+  // メンテナンスモード管理
+  async setMaintenanceMode(enabled) {
     try {
-      await fs.rename(filePath, rotatedPath);
-      await fs.writeFile(filePath, '');
-      this.logger.info(`Rotated ${filePath} to ${rotatedPath}`);
-      return rotatedPath;
-    } catch (error) {
-      this.logger.error(`Failed to rotate ${filePath}: ${error.message}`);
-      throw error;
-    }
-  }
-
-  async cleanupOldLogs(baseFilename) {
-    try {
-      const files = await fs.readdir(this.logDir);
-      const oneWeekAgo = new Date();
-      oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
-
-      for (const file of files) {
-        if (file.startsWith(baseFilename + '.')) {
-          const filePath = path.join(this.logDir, file);
-          const dateStr = file.split('.').pop();
-          const fileDate = new Date(dateStr);
-
-          if (fileDate < oneWeekAgo) {
-            await fs.unlink(filePath);
-            this.logger.info(`Deleted old log file: ${file}`);
-          }
+      // メンテナンスモードの状態を保存
+      await this.prisma.systemSetting.upsert({
+        where: { key: 'maintenance_mode' },
+        create: {
+          key: 'maintenance_mode',
+          value: String(enabled),
+          updatedAt: new Date()
+        },
+        update: {
+          value: String(enabled),
+          updatedAt: new Date()
         }
-      }
+      });
+
+      return { maintenanceMode: enabled };
     } catch (error) {
-      this.logger.error(`Error cleaning up old logs: ${error.message}`);
+      this.handleError(error, { context: 'Set maintenance mode' });
     }
   }
 
-  async processLogFile(filename) {
-    const localPath = path.join(this.logDir, filename);
-    const timestamp = new Date().toISOString().slice(0, 10);
-    const s3Key = `logs/${timestamp}/${filename}`;
-
+  async getMaintenanceMode() {
     try {
-      const stats = await fs.stat(localPath);
-      if (stats.size > 0) {
-        await this.uploadFile(localPath, s3Key);
-        const rotatedPath = await this.rotateFile(localPath);
-        await this.cleanupOldLogs(filename);
-      }
+      const setting = await this.prisma.systemSetting.findUnique({
+        where: { key: 'maintenance_mode' }
+      });
+      return {
+        maintenanceMode: setting ? setting.value === 'true' : false
+      };
     } catch (error) {
-      if (error.code !== 'ENOENT') {
-        this.logger.error(`Error processing ${filename}: ${error.message}`);
-      }
-    }
-  }
-
-  async uploadLogs() {
-    try {
-      const logFiles = ['error.log', 'combined.log', 'batch.log'];
-      for (const filename of logFiles) {
-        await this.processLogFile(filename);
-      }
-    } catch (error) {
-      this.logger.error(`Error in uploadLogs: ${error.message}`);
+      this.handleError(error, { context: 'Get maintenance mode' });
     }
   }
 }
 
-// パスポート関連サービス
+// ロスポート認証関連サービス
 class PassportService extends BaseService {
   constructor(prisma, logger) {
     super(prisma, logger);
     this.passport = require('passport');
     this.LocalStrategy = require('passport-local').Strategy;
+    this.initialized = false;
   }
 
+  // パスポート設定メソッド
   configurePassport() {
-    this.passport.use(new this.LocalStrategy(
-      {
-        usernameField: 'email',
-        passwordField: 'password'
-      },
-      async (email, password, done) => {
-        try {
-          const user = await this.prisma.user.findUnique({
-            where: { email: email }
-          });
+    if (this.initialized) {
+      this.logWarn('Passport is already configured');
+      return this.passport;
+    }
 
-          if (!user) {
-            return done(null, false, { message: 'メールアドレスまたはパスワードが正しくありません。' });
-          }
+    try {
+      // ローカル認証戦略の設定
+      this.passport.use(new this.LocalStrategy(
+        {
+          usernameField: 'email',
+          passwordField: 'password'
+        },
+        this._verifyUser.bind(this)
+      ));
 
-          const isValid = await this.validatePassword(password, user.password);
-          if (!isValid) {
-            return done(null, false, { message: 'メールアドレスまたはパスワードが正しくありません。' });
-          }
+      // シリアライズ設定
+      this.passport.serializeUser((user, done) => {
+        done(null, user.id);
+      });
 
-          return done(null, user);
-        } catch (error) {
-          this.logger.error('Passport authentication error:', error);
-          return done(error);
-        }
-      }
-    ));
+      // デシリアライズ設定
+      this.passport.deserializeUser(this._deserializeUser.bind(this));
 
-    this.passport.serializeUser((user, done) => {
-      done(null, user.id);
-    });
-
-    this.passport.deserializeUser(async (id, done) => {
-      try {
-        const user = await this.prisma.user.findUnique({
-          where: { id: id }
-        });
-        done(null, user);
-      } catch (error) {
-        done(error);
-      }
-    });
-
-    return this.passport;
+      this.initialized = true;
+      this.logInfo('Passport configuration completed');
+      return this.passport;
+    } catch (error) {
+      this.handleError(error, { context: 'Configure passport' });
+    }
   }
 
+  // ユーザー検証メソッド
+  async _verifyUser(email, password, done) {
+    try {
+      const user = await this.prisma.user.findUnique({
+        where: { email: email }
+      });
+
+      if (!user) {
+        return done(null, false, { message: 'メールアドレスまたはパスワードが正しくありません。' });
+      }
+
+      const isValid = await this._validatePassword(password, user.password);
+      if (!isValid) {
+        return done(null, false, { message: 'メールアドレスまたはパスワードが正しくありません。' });
+      }
+
+      return done(null, user);
+    } catch (error) {
+      this.handleError(error, { context: 'Verify user', email });
+      return done(error);
+    }
+  }
+
+  // ユーザーデシリアライズメソッド
+  async _deserializeUser(id, done) {
+    try {
+      const user = await this.findUserById(id, false);
+      done(null, user);
+    } catch (error) {
+      this.handleError(error, { context: 'Deserialize user', userId: id });
+      done(error);
+    }
+  }
+
+  // パスワード検証メソッド
+  async _validatePassword(inputPassword, hashedPassword) {
+    try {
+      return await bcrypt.compare(inputPassword, hashedPassword);
+    } catch (error) {
+      this.handleError(error, { context: 'Validate password' });
+      return false;
+    }
+  }
+
+  // パスポートインスタンス取得
   getPassport() {
+    if (!this.initialized) {
+      this.logWarn('Passport is not configured yet');
+      this.configurePassport();
+    }
     return this.passport;
   }
 
-  // ... existing methods ...
+  // 認証ミドルウェア生成
+  createAuthMiddleware() {
+    return this.passport.authenticate('local', {
+      failureRedirect: '/login',
+      failureFlash: true
+    });
+  }
+
+  // セッション確認ミドルウェア
+  ensureAuthenticated(req, res, next) {
+    if (req.isAuthenticated()) {
+      return next();
+    }
+    res.redirect('/login');
+  }
+
+  // ロール確認ミドルウェア
+  ensureRole(role) {
+    return async (req, res, next) => {
+      try {
+        if (!req.user) {
+          return res.redirect('/login');
+        }
+
+        const user = await this.findUserById(req.user.id, false, true);
+        const hasRole = user.userRoles.some(ur => ur.role.name === role);
+
+        if (hasRole) {
+          return next();
+        }
+
+        res.status(403).json({ error: 'アクセス権限がありません' });
+      } catch (error) {
+        this.handleError(error, { context: 'Ensure role', role });
+        res.status(500).json({ error: 'Internal server error' });
+      }
+    };
+  }
 }
 
 // いいね関連サービス
 class LikeService extends BaseService {
+  // いいね操作メソッド
   async like(userId, micropostId) {
-    const validUserId = this.validateId(userId);
-    const validMicropostId = this.validateId(micropostId);
+    try {
+      const validUserId = this.validateId(userId);
+      const validMicropostId = this.validateId(micropostId);
 
-    return this.executeTransaction(async (prisma) => {
-      await prisma.like.createMany({
-        data: {
-          userId: validUserId,
-          micropostId: validMicropostId
-        },
-        skipDuplicates: true
+      return await this.executeTransaction(async (prisma) => {
+        // いいねの作成
+        await prisma.like.createMany({
+          data: {
+            userId: validUserId,
+            micropostId: validMicropostId
+          },
+          skipDuplicates: true
+        });
+
+        // 投稿の作成者を取得
+        const micropost = await prisma.micropost.findUnique({
+          where: { id: validMicropostId },
+          select: { userId: true }
+        });
+
+        // 自分の投稿以外にいいねした場合のみ通知を作成
+        if (micropost && micropost.userId !== validUserId) {
+          await this.createNotification(
+            CONSTANTS.NOTIFICATION_TYPES.LIKE,
+            micropost.userId,
+            validUserId,
+            { micropostId: validMicropostId }
+          );
+        }
+
+        return prisma.like.findUnique({
+          where: {
+            userId_micropostId: {
+              userId: validUserId,
+              micropostId: validMicropostId
+            }
+          }
+        });
       });
-
-      // 投稿の作成者を取得
-      const micropost = await prisma.micropost.findUnique({
-        where: { id: validMicropostId },
-        select: { userId: true }
+    } catch (error) {
+      this.handleError(error, {
+        context: 'Like micropost',
+        userId,
+        micropostId
       });
+    }
+  }
 
-      // 自分の投稿以外にいいねした場合のみ通知を作成
-      if (micropost && micropost.userId !== validUserId) {
-        await this.createNotification(
-          NotificationType.LIKE,
-          micropost.userId,
-          validUserId,
-          { micropostId: validMicropostId }
-        );
-      }
+  async unlike(userId, micropostId) {
+    try {
+      const validUserId = this.validateId(userId);
+      const validMicropostId = this.validateId(micropostId);
 
-      return prisma.like.findUnique({
+      const like = await this.prisma.like.findUnique({
         where: {
           userId_micropostId: {
             userId: validUserId,
@@ -1094,60 +1231,70 @@ class LikeService extends BaseService {
           }
         }
       });
-    });
-  }
 
-  async unlike(userId, micropostId) {
-    const validUserId = this.validateId(userId);
-    const validMicropostId = this.validateId(micropostId);
-
-    const like = await this.prisma.like.findUnique({
-      where: {
-        userId_micropostId: {
-          userId: validUserId,
-          micropostId: validMicropostId
-        }
+      if (!like) {
+        return null;
       }
-    });
 
-    if (!like) {
-      return null;
+      return await this.prisma.like.delete({
+        where: {
+          userId_micropostId: {
+            userId: validUserId,
+            micropostId: validMicropostId
+          }
+        }
+      });
+    } catch (error) {
+      this.handleError(error, {
+        context: 'Unlike micropost',
+        userId,
+        micropostId
+      });
     }
-
-    return this.prisma.like.delete({
-      where: {
-        userId_micropostId: {
-          userId: validUserId,
-          micropostId: validMicropostId
-        }
-      }
-    });
   }
 
+  // いいね状態確認メソッド
   async isLiked(userId, micropostId) {
-    const validUserId = this.validateId(userId);
-    const validMicropostId = this.validateId(micropostId);
+    try {
+      const validUserId = this.validateId(userId);
+      const validMicropostId = this.validateId(micropostId);
 
-    const like = await this.prisma.like.findUnique({
-      where: {
-        userId_micropostId: {
-          userId: validUserId,
-          micropostId: validMicropostId
+      const like = await this.prisma.like.findUnique({
+        where: {
+          userId_micropostId: {
+            userId: validUserId,
+            micropostId: validMicropostId
+          }
         }
-      }
-    });
-    return !!like;
+      });
+      return !!like;
+    } catch (error) {
+      this.handleError(error, {
+        context: 'Check like status',
+        userId,
+        micropostId
+      });
+    }
   }
 
+  // いいね数取得メソッド
   async getLikeCount(micropostId) {
-    return this.prisma.like.count({
-      where: { micropostId: this.validateId(micropostId) }
-    });
+    try {
+      return await this.prisma.like.count({
+        where: { micropostId: this.validateId(micropostId) }
+      });
+    } catch (error) {
+      this.handleError(error, {
+        context: 'Get like count',
+        micropostId
+      });
+    }
   }
 
+  // いいねしたユーザー取得メソッド
   async getLikedUsers(micropostId) {
     try {
-      const likes = await this.prisma.like.findMany({
+      return await this.prisma.like.findMany({
         where: { micropostId },
         include: {
           user: {
@@ -1160,47 +1307,148 @@ class LikeService extends BaseService {
           createdAt: 'desc'
         }
       });
-      return likes;
     } catch (error) {
-      console.error('Error fetching liked users:', {
-        error: error.message,
+      this.handleError(error, {
+        context: 'Get liked users',
         micropostId
       });
-      return [];
     }
   }
 
+  // ユーザーのいいね一覧取得メソッド
   async getUserLikes(userId) {
-    return this.prisma.like.findMany({
-      where: { userId: this.validateId(userId) },
-      include: {
-        micropost: {
-          include: {
-            user: true,
-            _count: {
-              select: { likes: true }
+    try {
+      return await this.prisma.like.findMany({
+        where: { userId: this.validateId(userId) },
+        include: {
+          micropost: {
+            include: {
+              user: true,
+              _count: {
+                select: { likes: true }
+              }
             }
           }
         }
-      }
-    });
+      });
+    } catch (error) {
+      this.handleError(error, {
+        context: 'Get user likes',
+        userId
+      });
+    }
   }
 }
 
+// コメント関連サービス
 class CommentService extends BaseService {
+  // コメント作成メソッド
   async createComment({ content, userId, micropostId }) {
-    const validUserId = this.validateId(userId);
-    const validMicropostId = this.validateId(micropostId);
+    try {
+      const validUserId = this.validateId(userId);
+      const validMicropostId = this.validateId(micropostId);
 
-    return this.executeTransaction(async (prisma) => {
-      const comment = await prisma.comment.create({
-        data: {
-          content,
-          userId: validUserId,
-          micropostId: validMicropostId
-        },
+      return await this.executeTransaction(async (prisma) => {
+        // コメントの作成
+        const comment = await prisma.comment.create({
+          data: {
+            content,
+            userId: validUserId,
+            micropostId: validMicropostId
+          },
+          include: {
+            user: true,
+            micropost: {
+              select: {
+                userId: true
+              }
+            }
+          }
+        });
+
+        // 自分の投稿以外にコメントした場合のみ通知を作成
+        if (comment.micropost.userId !== validUserId) {
+          await this.createNotification(
+            CONSTANTS.NOTIFICATION_TYPES.COMMENT,
+            comment.micropost.userId,
+            validUserId,
+            {
+              micropostId: validMicropostId,
+              commentId: comment.id
+            }
+          );
+        }
+
+        return comment;
+      });
+    } catch (error) {
+      this.handleError(error, {
+        context: 'Create comment',
+        userId,
+        micropostId
+      });
+    }
+  }
+
+  // コメント取得メソッド
+  async getCommentsByMicropostId(micropostId) {
+    try {
+      return await this.prisma.comment.findMany({
+        where: { micropostId: this.validateId(micropostId) },
         include: {
-          user: true,
+          user: {
+            include: {
+              profile: true,
+              userRoles: {
+                include: {
+                  role: true
+                }
+              }
+            }
+          }
+        },
+        orderBy: { createdAt: 'desc' }
+      });
+    } catch (error) {
+      this.handleError(error, {
+        context: 'Get comments by micropost',
+        micropostId
+      });
+    }
+  }
+
+  // コメント更新メソッド
+  async updateComment(commentId, content) {
+    try {
+      const validCommentId = this.validateId(commentId);
+      return await this.prisma.comment.update({
+        where: { id: validCommentId },
+        data: { content },
+        include: {
+          user: {
+            include: {
+              profile: true
+            }
+          }
+        }
+      });
+    } catch (error) {
+      this.handleError(error, {
+        context: 'Update comment',
+        commentId
+      });
+    }
+  }
+
+  // コメント削除メソッド
+  async deleteComment(commentId, userId) {
+    try {
+      const validCommentId = this.validateId(commentId);
+      const validUserId = this.validateId(userId);
+
+      const comment = await this.prisma.comment.findUnique({
+        where: { id: validCommentId },
+        include: {
           micropost: {
             select: {
               userId: true
@@ -1209,46 +1457,77 @@ class CommentService extends BaseService {
         }
       });
 
-      // 自分の投稿以外にコメントした場合のみ通知を作成
-      if (comment.micropost.userId !== validUserId) {
-        await this.createNotification(
-          NotificationType.COMMENT,
-          comment.micropost.userId,
-          validUserId,
-          {
-            micropostId: validMicropostId,
-            commentId: comment.id
-          }
-        );
+      if (!comment) {
+        throw new Error('Comment not found');
       }
 
-      return comment;
-    });
+      // コメント作成者または投稿作成者のみ削除可能
+      if (comment.userId !== validUserId && comment.micropost.userId !== validUserId) {
+        throw new Error('Unauthorized to delete this comment');
+      }
+
+      return await this.prisma.comment.delete({
+        where: { id: validCommentId }
+      });
+    } catch (error) {
+      this.handleError(error, {
+        context: 'Delete comment',
+        commentId,
+        userId
+      });
+    }
   }
 
-  async getCommentsByMicropostId(micropostId) {
-    return this.prisma.comment.findMany({
-      where: { micropostId: this.validateId(micropostId) },
-      include: {
-        user: {
-          include: {
-            profile: true,
-            userRoles: {
-              include: {
-                role: true
+  // コメント数取得メソッド
+  async getCommentCount(micropostId) {
+    try {
+      return await this.prisma.comment.count({
+        where: { micropostId: this.validateId(micropostId) }
+      });
+    } catch (error) {
+      this.handleError(error, {
+        context: 'Get comment count',
+        micropostId
+      });
+    }
+  }
+
+  // ユーザーのコメント一覧取得メソッド
+  async getUserComments(userId) {
+    try {
+      return await this.prisma.comment.findMany({
+        where: { userId: this.validateId(userId) },
+        include: {
+          micropost: {
+            include: {
+              user: {
+                include: {
+                  profile: true
+                }
               }
             }
+          },
+          user: {
+            include: {
+              profile: true
+            }
           }
-        }
-      },
-      orderBy: { createdAt: 'desc' }
-    });
+        },
+        orderBy: { createdAt: 'desc' }
+      });
+    } catch (error) {
+      this.handleError(error, {
+        context: 'Get user comments',
+        userId
+      });
+    }
   }
 }
 
+// 通知関連サービス
 class NotificationService extends BaseService {
+  // 通知取得メソッド
   async getNotifications(userId) {
-
     try {
       const notifications = await this.prisma.notification.findMany({
         where: {
@@ -1260,23 +1539,22 @@ class NotificationService extends BaseService {
               profile: true
             }
           },
-          micropost: true
+          micropost: true,
+          comment: true
         },
         orderBy: {
           createdAt: 'desc'
         }
       });
 
-
       // プロフィルが存在しない通知アクターのプロフィルを作成
       const updatedNotifications = await Promise.all(
         notifications.map(async (notification) => {
           if (!notification.actor.profile) {
-
             await this.prisma.userProfile.create({
               data: {
                 userId: notification.actorId,
-                avatarPath: PATHS.DEFAULT_AVATAR
+                avatarPath: CONSTANTS.PATHS.DEFAULT_AVATAR
               }
             });
 
@@ -1289,7 +1567,8 @@ class NotificationService extends BaseService {
                     profile: true
                   }
                 },
-                micropost: true
+                micropost: true,
+                comment: true
               }
             });
           }
@@ -1297,46 +1576,333 @@ class NotificationService extends BaseService {
         })
       );
 
-
       return updatedNotifications;
     } catch (error) {
-      console.error('Error in getNotifications:', error);
-      throw error;
+      this.handleError(error, {
+        context: 'Get notifications',
+        userId
+      });
     }
   }
 
+  // 通知既読メソッド
   async markAsRead(notificationId, userId) {
-    const validNotificationId = this.validateId(notificationId);
-    const validUserId = this.validateId(userId);
+    try {
+      const validNotificationId = this.validateId(notificationId);
+      const validUserId = this.validateId(userId);
 
-    return this.prisma.notification.update({
-      where: {
-        id: validNotificationId,
-        recipientId: validUserId
-      },
-      data: {
-        read: true
-      }
-    });
+      return await this.prisma.notification.update({
+        where: {
+          id: validNotificationId,
+          recipientId: validUserId
+        },
+        data: {
+          read: true
+        }
+      });
+    } catch (error) {
+      this.handleError(error, {
+        context: 'Mark notification as read',
+        notificationId,
+        userId
+      });
+    }
   }
 
+  // 未読通知数取得メソッド
   async getUnreadCount(userId) {
-    return this.prisma.notification.count({
-      where: {
-        recipientId: this.validateId(userId),
-        read: false
-      }
-    });
+    try {
+      return await this.prisma.notification.count({
+        where: {
+          recipientId: this.validateId(userId),
+          read: false
+        }
+      });
+    } catch (error) {
+      this.handleError(error, {
+        context: 'Get unread notification count',
+        userId
+      });
+    }
+  }
+
+  // 全通知既読メソッド
+  async markAllAsRead(userId) {
+    try {
+      const validUserId = this.validateId(userId);
+      return await this.prisma.notification.updateMany({
+        where: {
+          recipientId: validUserId,
+          read: false
+        },
+        data: {
+          read: true
+        }
+      });
+    } catch (error) {
+      this.handleError(error, {
+        context: 'Mark all notifications as read',
+        userId
+      });
+    }
+  }
+
+  // 通知削除メソッド
+  async deleteNotification(notificationId, userId) {
+    try {
+      const validNotificationId = this.validateId(notificationId);
+      const validUserId = this.validateId(userId);
+
+      return await this.prisma.notification.delete({
+        where: {
+          id: validNotificationId,
+          recipientId: validUserId
+        }
+      });
+    } catch (error) {
+      this.handleError(error, {
+        context: 'Delete notification',
+        notificationId,
+        userId
+      });
+    }
+  }
+
+  // 古い通知のクリーンアップ
+  async cleanupOldNotifications(days = 30) {
+    try {
+      const cutoffDate = new Date();
+      cutoffDate.setDate(cutoffDate.getDate() - days);
+
+      return await this.prisma.notification.deleteMany({
+        where: {
+          createdAt: {
+            lt: cutoffDate
+          },
+          read: true
+        }
+      });
+    } catch (error) {
+      this.handleError(error, {
+        context: 'Cleanup old notifications',
+        days
+      });
+    }
   }
 }
 
+// モォロー関連サービス
+class FollowService extends BaseService {
+  // フォロー状態確認メソッド
+  async isFollowing(followerId, followingId) {
+    try {
+      const validFollowerId = this.validateId(followerId);
+      const validFollowingId = this.validateId(followingId);
+
+      const follow = await this.prisma.follow.findUnique({
+        where: {
+          followerId_followingId: {
+            followerId: validFollowerId,
+            followingId: validFollowingId
+          }
+        }
+      });
+      return !!follow;
+    } catch (error) {
+      this.handleError(error, {
+        context: 'Check following status',
+        followerId,
+        followingId
+      });
+    }
+  }
+
+  // フォロー作成メソッド
+  async follow(followerId, followingId) {
+    try {
+      const validFollowerId = this.validateId(followerId);
+      const validFollowingId = this.validateId(followingId);
+
+      return await this.executeTransaction(async (prisma) => {
+        const follow = await prisma.follow.create({
+          data: {
+            followerId: validFollowerId,
+            followingId: validFollowingId
+          }
+        });
+
+        // フォロー通知の作成
+        await this.createNotification(
+          CONSTANTS.NOTIFICATION_TYPES.FOLLOW,
+          validFollowingId,
+          validFollowerId
+        );
+
+        return follow;
+      });
+    } catch (error) {
+      this.handleError(error, {
+        context: 'Follow user',
+        followerId,
+        followingId
+      });
+    }
+  }
+
+  // フォロー解除メソッド
+  async unfollow(followerId, followingId) {
+    try {
+      const validFollowerId = this.validateId(followerId);
+      const validFollowingId = this.validateId(followingId);
+
+      return await this.prisma.follow.delete({
+        where: {
+          followerId_followingId: {
+            followerId: validFollowerId,
+            followingId: validFollowingId
+          }
+        }
+      });
+    } catch (error) {
+      this.handleError(error, {
+        context: 'Unfollow user',
+        followerId,
+        followingId
+      });
+    }
+  }
+
+  // フォロー数取得メソッド
+  async getFollowCounts(userId) {
+    try {
+      const validUserId = this.validateId(userId);
+      const [followingCount, followersCount] = await Promise.all([
+        this.prisma.follow.count({
+          where: { followerId: validUserId }
+        }),
+        this.prisma.follow.count({
+          where: { followingId: validUserId }
+        })
+      ]);
+
+      return { followingCount, followersCount };
+    } catch (error) {
+      this.handleError(error, {
+        context: 'Get follow counts',
+        userId
+      });
+    }
+  }
+
+  // フォロー中のユーザー取得メソッド
+  async getFollowing(userId) {
+    try {
+      return await this.prisma.follow.findMany({
+        where: { followerId: this.validateId(userId) },
+        include: {
+          following: {
+            include: {
+              profile: true,
+              userRoles: {
+                include: { role: true }
+              }
+            }
+          }
+        },
+        orderBy: {
+          createdAt: 'desc'
+        }
+      });
+    } catch (error) {
+      this.handleError(error, {
+        context: 'Get following users',
+        userId
+      });
+    }
+  }
+
+  // フォロワー取得メソッド
+  async getFollowers(userId) {
+    try {
+      return await this.prisma.follow.findMany({
+        where: { followingId: this.validateId(userId) },
+        include: {
+          follower: {
+            include: {
+              profile: true,
+              userRoles: {
+                include: { role: true }
+              }
+            }
+          }
+        },
+        orderBy: {
+          createdAt: 'desc'
+        }
+      });
+    } catch (error) {
+      this.handleError(error, {
+        context: 'Get followers',
+        userId
+      });
+    }
+  }
+
+  // フォロー推奨ユーザー取得メソッド
+  async getRecommendedUsers(userId, limit = 5) {
+    try {
+      const validUserId = this.validateId(userId);
+
+      // 現在のフォロー中のユーザーIDを取得
+      const following = await this.prisma.follow.findMany({
+        where: { followerId: validUserId },
+        select: { followingId: true }
+      });
+      const followingIds = following.map(f => f.followingId);
+
+      // 推奨ユーザーを取得（フォロー中以外のアクティブユーザー）
+      return await this.prisma.user.findMany({
+        where: {
+          id: {
+            not: validUserId,
+            notIn: followingIds
+          },
+          microposts: {
+            some: {} // 投稿があるユーザーのみ
+          }
+        },
+        include: {
+          profile: true,
+          _count: {
+            select: {
+              followers: true,
+              microposts: true
+            }
+          }
+        },
+        orderBy: {
+          followers: {
+            _count: 'desc'
+          }
+        },
+        take: limit
+      });
+    } catch (error) {
+      this.handleError(error, {
+        context: 'Get recommended users',
+        userId
+      });
+    }
+  }
+}
+
+// モジュールエクスポート
 module.exports = {
   AuthService,
   ProfileService,
   MicropostService,
   SystemService,
   CategoryService,
-  LogUploader,
   FollowService,
   PassportService,
   LikeService,

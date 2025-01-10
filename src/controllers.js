@@ -1,6 +1,4 @@
-const express = require('express');
 const path = require('path');
-const asyncHandler = require('express-async-handler');
 
 class BaseController {
   constructor(services, errorHandler, logger) {
@@ -931,29 +929,8 @@ class DevelopmentToolsController extends BaseController {
       const [health, dbHealth, recentUsers, recentMicroposts] = await Promise.all([
         this.systemService.getHealth(),
         this.systemService.getDbHealth(),
-        this.profileService.user.findMany({
-          take: 10,
-          orderBy: { createdAt: 'desc' },
-          include: {
-            userRoles: {
-              include: {
-                role: true
-              }
-            }
-          }
-        }),
-        this.micropostService.micropost.findMany({
-          take: 10,
-          orderBy: { createdAt: 'desc' },
-          include: {
-            user: {
-              select: {
-                id: true,
-                email: true
-              }
-            }
-          }
-        })
+        this.profileService.getAllUsers(),
+        this.micropostService.getAllMicroposts()
       ]);
 
       const renderOptions = {
@@ -986,9 +963,7 @@ class DevelopmentToolsController extends BaseController {
         throw new Error('メールアドレスが指定されていません');
       }
 
-      const user = await this.services.profile.prisma.user.findUnique({
-        where: { email }
-      });
+      const user = await this.profileService.findUserByIdentifier(email);
 
       if (!user) {
         throw new Error('ユーザーが見つかりません');
