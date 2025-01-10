@@ -127,6 +127,7 @@ function setupRoutes(app, controllers, fileUploader) {
 
   // 開発者ツールルート
   const developmentToolsRouter = express.Router();
+  developmentToolsRouter.use(isAuthenticated);
   
   // 開発ツールのホーム
   developmentToolsRouter.get('/', asyncHandler(async (req, res) => {

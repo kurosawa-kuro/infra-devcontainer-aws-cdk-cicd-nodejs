@@ -873,48 +873,49 @@ class SystemController extends BaseController {
 class DevelopmentToolsController extends BaseController {
   constructor(services, errorHandler, logger) {
     super(services, errorHandler, logger);
+    
+    if (!services || !services.system || !services.profile) {
+      throw new Error('Required services are not initialized in DevelopmentToolsController');
+    }
   }
 
   async index(req, res) {
     return this.handleRequest(req, res, async () => {
-      console.log('\n=== Development Tools Debug [Start] ===');
-      console.log('1. Request Details:', {
+      this.logger.debug('Development Tools Debug [Start]', {
         method: req.method,
         path: req.path,
-        headers: JSON.stringify(req.headers, null, 2),
-        cookies: JSON.stringify(req.cookies, null, 2),
-        session: JSON.stringify(req.session, null, 2)
+        headers: req.headers,
+        cookies: req.cookies,
+        session: req.session
       });
 
-      console.log('2. Response Locals [Before]:', JSON.stringify(res.locals, null, 2));
-
-      const health = await this.services.system.getHealth();
-      const dbHealth = await this.services.system.getDbHealth();
-
-      const recentUsers = await this.services.profile.prisma.user.findMany({
-        take: 10,
-        orderBy: { createdAt: 'desc' },
-        include: {
-          userRoles: {
-            include: {
-              role: true
+      const [health, dbHealth, recentUsers, recentMicroposts] = await Promise.all([
+        this.services.system.getHealth(),
+        this.services.system.getDbHealth(),
+        this.services.profile.prisma.user.findMany({
+          take: 10,
+          orderBy: { createdAt: 'desc' },
+          include: {
+            userRoles: {
+              include: {
+                role: true
+              }
             }
           }
-        }
-      });
-
-      const recentMicroposts = await this.services.micropost.prisma.micropost.findMany({
-        take: 10,
-        orderBy: { createdAt: 'desc' },
-        include: {
-          user: {
-            select: {
-              id: true,
-              email: true
+        }),
+        this.services.micropost.prisma.micropost.findMany({
+          take: 10,
+          orderBy: { createdAt: 'desc' },
+          include: {
+            user: {
+              select: {
+                id: true,
+                email: true
+              }
             }
           }
-        }
-      });
+        })
+      ]);
 
       const renderOptions = {
         title: '開発支援機能',
@@ -926,18 +927,26 @@ class DevelopmentToolsController extends BaseController {
         layout: 'layouts/dev'
       };
 
-      console.log('3. Response Locals [After Title]:', JSON.stringify(res.locals, null, 2));
-      console.log('4. Render Options:', JSON.stringify(renderOptions, null, 2));
-      console.log('5. Template Path: pages/development-tools/index');
-      console.log('=== Development Tools Debug [End] ===\n');
+      this.logger.debug('Development Tools Debug [End]', {
+        renderOptions: {
+          ...renderOptions,
+          recentUsers: `[Array(${recentUsers.length})]`,
+          recentMicroposts: `[Array(${recentMicroposts.length})]`
+        }
+      });
 
-      res.render('pages/development-tools/index', renderOptions);
+      return res.render('pages/development-tools/index', renderOptions);
     });
   }
 
   async quickLogin(req, res) {
     return this.handleRequest(req, res, async () => {
       const { email } = req.params;
+      
+      if (!email) {
+        throw new Error('メールアドレスが指定されていません');
+      }
+
       const user = await this.services.profile.prisma.user.findUnique({
         where: { email }
       });
