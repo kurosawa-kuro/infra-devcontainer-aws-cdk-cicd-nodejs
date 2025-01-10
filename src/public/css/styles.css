@@ -809,10 +809,6 @@ p:is(.dark *) {
   margin-right: 0.25rem;
 }
 
-.mr-2 {
-  margin-right: 0.5rem;
-}
-
 .mr-3 {
   margin-right: 0.75rem;
 }
@@ -1684,11 +1680,6 @@ p:is(.dark *) {
   background-color: rgb(29 78 216 / var(--tw-bg-opacity, 1));
 }
 
-.hover\:bg-gray-100:hover {
-  --tw-bg-opacity: 1;
-  background-color: rgb(243 244 246 / var(--tw-bg-opacity, 1));
-}
-
 .hover\:bg-gray-50:hover {
   --tw-bg-opacity: 1;
   background-color: rgb(249 250 251 / var(--tw-bg-opacity, 1));
@@ -1775,14 +1766,6 @@ p:is(.dark *) {
 
 .focus\:ring-offset-2:focus {
   --tw-ring-offset-width: 2px;
-}
-
-.disabled\:cursor-not-allowed:disabled {
-  cursor: not-allowed;
-}
-
-.disabled\:opacity-50:disabled {
-  opacity: 0.5;
 }
 
 .group:hover .group-hover\:text-rose-600 {

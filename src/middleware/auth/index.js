@@ -59,21 +59,32 @@ const canManageUser = (req, res, next) => {
   res.redirect('/');
 };
 
+const validateEnvironmentVariables = () => {
+  // 必須の環境変数のみチェック
+  if (!process.env.SESSION_SECRET) {
+    throw new Error('SESSION_SECRET environment variable is required');
+  }
+};
+
 // セッション設定
 const setupSession = (app) => {
+  validateEnvironmentVariables();
+
   const sessionConfig = {
-    secret: process.env.SESSION_SECRET || 'your-session-secret',
+    secret: process.env.SESSION_SECRET,
     resave: false,
-    saveUninitialized: true,
+    saveUninitialized: false,
+    name: 'sessionId', // 元の名前に戻す
     cookie: {
       secure: process.env.NODE_ENV === 'production',
-      maxAge: parseInt(process.env.SESSION_MAX_AGE, 10) || 24 * 60 * 60 * 1000
+      httpOnly: true,
+      maxAge: parseInt(process.env.SESSION_MAX_AGE, 10) || 86400000,
+      sameSite: 'lax'  // 開発環境でも動作しやすいように
     }
   };
 
-  if (process.env.APP_ENV === 'test') {
+  if (process.env.NODE_ENV === 'test') {
     sessionConfig.cookie.secure = false;
-    sessionConfig.resave = true;
   }
 
   app.use(session(sessionConfig));
@@ -86,6 +97,10 @@ const setupSession = (app) => {
 const setupCSRF = (app) => {
   const errorHandler = new ErrorHandler();
   
+  const validateToken = (token) => {
+    return token && token.length > 0;  // 基本的な存在チェックのみ
+  };
+
   const csrfMiddleware = csrf({
     cookie: true,
     ignoreMethods: ['GET', 'HEAD', 'OPTIONS'],
@@ -97,10 +112,14 @@ const setupCSRF = (app) => {
   });
 
   app.use((req, res, next) => {
+    // 基本的なセキュリティヘッダー
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('X-Frame-Options', 'DENY');
+    
     if (req.headers['content-type']?.includes('multipart/form-data')) {
       const token = req.cookies['XSRF-TOKEN'];
       if (!token) {
-        return errorHandler.handleValidationError(req, res, 'セッションが無効になりました。ページを再読み込みしてください。');
+        return csrfMiddleware(req, res, next);
       }
       req.csrfToken = () => token;
       res.locals.csrfToken = token;
@@ -108,28 +127,25 @@ const setupCSRF = (app) => {
     }
 
     try {
-      if (req.method === 'GET') {
-        csrfMiddleware(req, res, () => {
-          const token = req.csrfToken();
-          res.cookie('XSRF-TOKEN', token, {
-            secure: process.env.NODE_ENV === 'production',
-            sameSite: 'Lax',
-            path: '/'
-          });
-          res.locals.csrfToken = token;
-          next();
+      csrfMiddleware(req, res, (err) => {
+        if (err) {
+          logger.error('CSRF error:', err);
+          return errorHandler.handleValidationError(req, res, 'セッションが無効になりました。ページを再読み込みしてください。');
+        }
+        
+        const token = req.csrfToken();
+        res.cookie('XSRF-TOKEN', token, {
+          secure: process.env.NODE_ENV === 'production',
+          httpOnly: true,
+          sameSite: 'lax',
+          path: '/'
         });
-      } else {
-        csrfMiddleware(req, res, (err) => {
-          if (err) {
-            return errorHandler.handleValidationError(req, res, 'セッションが無効になりました。ページを再読み込みしてください。');
-          }
-          const token = req.csrfToken();
-          res.locals.csrfToken = token;
-          next();
-        });
-      }
+        
+        res.locals.csrfToken = token;
+        next();
+      });
     } catch (error) {
+      logger.error('CSRF setup error:', error);
       return errorHandler.handleInternalError(req, res, error);
     }
   });

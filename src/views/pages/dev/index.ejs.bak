@@ -1,0 +1,171 @@
+<%- contentFor('body') %>
+<div class="max-w-5xl mx-auto px-4 py-8">
+    <div class="mb-12">
+        <h1 class="text-3xl font-semibold mb-3 text-gray-900 dark:text-white">開発支援機能</h1>
+        <p class="text-base text-gray-600 dark:text-gray-300">開発者向けの機能とツールを提供します</p>
+    </div>
+
+    <div class="space-y-6">
+        <!-- 即時ログイン -->
+        <div class="bg-white dark:bg-gray-900 rounded-xl shadow-sm border border-gray-200 dark:border-gray-800 p-6">
+            <h2 class="text-xl font-semibold mb-4 text-gray-900 dark:text-white">即時ログイン</h2>
+            <div class="space-y-4">
+                <a href="/dev/quick-login/user@example.com" class="block p-4 bg-gray-50 dark:bg-gray-800 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors">
+                    <h3 class="text-base font-medium text-gray-900 dark:text-white">一般ユーザーとしてログイン</h3>
+                    <p class="text-sm text-gray-600 dark:text-gray-400 mt-1">user@example.com / password</p>
+                </a>
+                <a href="/dev/quick-login/admin@example.com" class="block p-4 bg-gray-50 dark:bg-gray-800 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors">
+                    <h3 class="text-base font-medium text-gray-900 dark:text-white">管理者としてログイン</h3>
+                    <p class="text-sm text-gray-600 dark:text-gray-400 mt-1">admin@example.com / password</p>
+                </a>
+            </div>
+        </div>
+
+        <!-- システム状態 -->
+        <div class="bg-white dark:bg-gray-900 rounded-xl shadow-sm border border-gray-200 dark:border-gray-800">
+            <div class="p-6">
+                <div class="flex items-center justify-between mb-6">
+                    <h2 class="text-xl font-semibold text-gray-900 dark:text-white">システム状態</h2>
+                    <button onclick="checkHealth()" 
+                            class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-lg text-white bg-rose-600 hover:bg-rose-700 dark:bg-rose-500 dark:hover:bg-rose-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-rose-500 dark:focus:ring-offset-gray-900 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
+                        <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+                        </svg>
+                        ヘルスチェック実行
+                    </button>
+                </div>
+                <div class="space-y-4">
+                    <div class="p-4 bg-gray-50 dark:bg-gray-800 rounded-lg">
+                        <div class="flex items-center justify-between">
+                            <div>
+                                <h3 class="text-base font-medium text-gray-900 dark:text-white">API状態</h3>
+                                <p class="text-sm text-gray-600 dark:text-gray-400 mt-1">APIサーバーの応答状態</p>
+                            </div>
+                            <span id="api-health" class="text-sm font-medium text-gray-500 dark:text-gray-400">未確認</span>
+                        </div>
+                    </div>
+
+                    <div class="p-4 bg-gray-50 dark:bg-gray-800 rounded-lg">
+                        <div class="flex items-center justify-between">
+                            <div>
+                                <h3 class="text-base font-medium text-gray-900 dark:text-white">データベース状態</h3>
+                                <p class="text-sm text-gray-600 dark:text-gray-400 mt-1">データベースの接続状態</p>
+                            </div>
+                            <span id="db-health" class="text-sm font-medium text-gray-500 dark:text-gray-400">未確認</span>
+                        </div>
+                    </div>
+
+                    <div class="mt-4 text-sm text-gray-500 dark:text-gray-400 text-right">
+                        <span id="last-check"></span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 最新のユーザー -->
+        <div class="bg-white dark:bg-gray-900 rounded-xl shadow-sm border border-gray-200 dark:border-gray-800 p-6">
+            <h2 class="text-xl font-semibold mb-4 text-gray-900 dark:text-white">最新のユーザー</h2>
+            <div class="space-y-4">
+                <div class="overflow-x-auto">
+                    <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
+                        <thead class="bg-gray-50 dark:bg-gray-800">
+                            <tr>
+                                <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">ID</th>
+                                <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">メールアドレス</th>
+                                <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">ロール</th>
+                                <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">作成日時</th>
+                            </tr>
+                        </thead>
+                        <tbody class="bg-white dark:bg-gray-900 divide-y divide-gray-200 dark:divide-gray-700">
+                            <% recentUsers.forEach(user => { %>
+                            <tr>
+                                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white"><%= user.id %></td>
+                                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white"><%= user.email %></td>
+                                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white">
+                                    <% user.userRoles.forEach(ur => { %>
+                                        <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-rose-100 dark:bg-rose-900/30 text-rose-800 dark:text-rose-400">
+                                            <%= ur.role.name %>
+                                        </span>
+                                    <% }) %>
+                                </td>
+                                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white"><%= new Date(user.createdAt).toLocaleString('ja-JP') %></td>
+                            </tr>
+                            <% }) %>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- 最新の投稿 -->
+        <div class="bg-white dark:bg-gray-900 rounded-xl shadow-sm border border-gray-200 dark:border-gray-800 p-6">
+            <h2 class="text-xl font-semibold mb-4 text-gray-900 dark:text-white">最新の投稿</h2>
+            <div class="space-y-4">
+                <div class="overflow-x-auto">
+                    <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
+                        <thead class="bg-gray-50 dark:bg-gray-800">
+                            <tr>
+                                <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">ID</th>
+                                <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">タイトル</th>
+                                <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">投稿者</th>
+                                <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">作成日時</th>
+                            </tr>
+                        </thead>
+                        <tbody class="bg-white dark:bg-gray-900 divide-y divide-gray-200 dark:divide-gray-700">
+                            <% recentMicroposts.forEach(post => { %>
+                            <tr>
+                                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white"><%= post.id %></td>
+                                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white"><%= post.title %></td>
+                                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white"><%= post.user.email %></td>
+                                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white"><%= new Date(post.createdAt).toLocaleString('ja-JP') %></td>
+                            </tr>
+                            <% }) %>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    async function checkHealth() {
+        const button = document.querySelector('button');
+        button.disabled = true;
+        
+        try {
+            const [apiRes, dbRes] = await Promise.all([
+                fetch('/health'),
+                fetch('/health-db')
+            ]);
+
+            const [apiData, dbData] = await Promise.all([
+                apiRes.json(),
+                dbRes.json()
+            ]);
+
+            updateStatus('api-health', apiData.status === 'healthy');
+            updateStatus('db-health', dbData.status === 'healthy');
+            
+            document.getElementById('last-check').textContent = 
+                `最終確認: ${new Date().toLocaleString('ja-JP')}`;
+
+        } catch (error) {
+            console.error('ヘルスチェックエラー:', error);
+            updateStatus('api-health', false);
+            updateStatus('db-health', false);
+        } finally {
+            button.disabled = false;
+        }
+    }
+
+    function updateStatus(elementId, isHealthy) {
+        const element = document.getElementById(elementId);
+        element.textContent = isHealthy ? '正常' : '異常';
+        if (isHealthy) {
+            element.className = 'text-sm font-medium text-green-600 dark:text-green-400';
+        } else {
+            element.className = 'text-sm font-medium text-rose-600 dark:text-rose-400';
+        }
+    }
+</script> 

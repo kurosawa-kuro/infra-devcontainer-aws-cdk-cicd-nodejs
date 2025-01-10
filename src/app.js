@@ -1,6 +1,8 @@
 const express = require('express');
 const { PrismaClient } = require('@prisma/client');
 require('dotenv').config();
+const session = require('express-session');
+const passport = require('passport');
 
 // Internal dependencies
 const { logger } = require('./middleware/logging');
@@ -52,7 +54,7 @@ const {
 const CONFIG = {
   app: {
     port: process.env.APP_PORT || 8080,
-    host: process.env.APP_HOST || '0.0.0.0',
+    host: process.env.NODE_ENV === 'production' ? '0.0.0.0' : 'localhost',
     env: process.env.APP_ENV || 'development',
     isProduction: process.env.NODE_ENV === 'production',
     isTest: process.env.APP_ENV === 'test'
@@ -137,21 +139,31 @@ class Application {
   // Middleware Setup Methods
   setupMiddleware() {
     console.log('\n=== Middleware Setup Start ===');
-    console.log('1. Setting up basic middleware');
+    
+    // 1. Basic middleware setup (body parsers, etc.)
     setupBasic(this.app);
-    
-    console.log('2. Setting up session middleware');
+    console.log('1. Basic middleware setup complete');
+
+    // 2. Session setup (before security and auth)
     setupSession(this.app);
-    
-    console.log('3. Setting up auth middleware');
-    setupAuthMiddleware(this.app, CONFIG);
-    
-    console.log('4. Setting up logging middleware');
-    this.app.use(loggingMiddleware.request);
-    
-    console.log('5. Setting up security middleware');
+    console.log('2. Session setup complete');
+
+    // 3. Passport initialization
+    this.app.use(passport.initialize());
+    this.app.use(passport.session());
+    console.log('3. Passport initialization complete');
+
+    // 4. Security middleware (after session, before routes)
     setupSecurity(this.app);
-    console.log('=== Middleware Setup Complete ===\n');
+    console.log('4. Security middleware setup complete');
+
+    // 5. Routes setup
+    this.setupRoutes();
+    console.log('5. Routes setup complete');
+
+    // 6. Error handlers
+    this.setupErrorHandler();
+    console.log('6. Error handlers setup complete');
   }
 
   setupRoutes() {
@@ -185,10 +197,27 @@ class Application {
   async start() {
     try {
       await this.initializeApplication();
-      await this.startServer();
-      return this.server;
+      
+      const port = process.env.PORT || 8080;
+      const host = '0.0.0.0';  // Listen on all interfaces
+      
+      this.server = this.app.listen(port, host, () => {
+        logger.info('Starting application on Lightsail/Other');
+        logger.info('Running on Lightsail - using local storage configuration');
+        logger.info('Server Information', {
+          environment: process.env.NODE_ENV || 'development',
+          storage: 'Local',
+          server: `http://${host}:${port}`,
+          host: host,
+          port: port
+        });
+      });
+
+      // Enable keep-alive
+      this.server.keepAliveTimeout = 65000;
+      this.server.headersTimeout = 66000;
     } catch (error) {
-      logger.error('Failed to start application:', error);
+      logger.error('Failed to start server', { error: error.message });
       throw error;
     }
   }
@@ -219,17 +248,9 @@ class Application {
     this.setupMiddleware();
     console.log('11. Middleware setup complete');
 
-    console.log('12. Setting up routes');
-    this.setupRoutes();
-    console.log('13. Routes setup complete');
-
-    console.log('14. Setting up error handlers');
-    this.setupErrorHandler();
-    console.log('15. Error handlers setup complete');
-
-    console.log('16. Configuring storage type');
+    console.log('12. Configuring storage type');
     this.configureStorageType();
-    console.log('17. Storage type configured');
+    console.log('13. Storage type configured');
 
     console.log('=== Application Initialization Complete ===\n');
   }
@@ -252,23 +273,6 @@ class Application {
       logger.info('Running on EC2 - using S3 storage configuration');
       process.env.USE_S3 = 'true';
     }
-  }
-
-  async startServer() {
-    const port = CONFIG.app.port;
-    const host = CONFIG.app.host;
-    
-    this.server = this.app.listen(port, host, () => {
-      this.logServerStartup();
-    });
-  }
-
-  logServerStartup() {
-    logger.info('Server Information', {
-      environment: CONFIG.app.env,
-      storage: this.storageConfig.isEnabled() ? 'S3' : 'Local',
-      server: `http://${CONFIG.app.host}:${CONFIG.app.port}`
-    });
   }
 
   async cleanup() {

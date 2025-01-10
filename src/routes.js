@@ -37,21 +37,6 @@ function setupRoutes(app, controllers, fileUploader) {
     cookieParser()(req, res, next);
   });
 
-  // 2. Session Configuration
-  app.use((req, res, next) => {
-    console.log('2. Session Middleware');
-    session({
-      secret: process.env.SESSION_SECRET || 'your-secret-key',
-      resave: false,
-      saveUninitialized: false,
-      cookie: {
-        secure: process.env.NODE_ENV === 'production',
-        httpOnly: true,
-        maxAge: 24 * 60 * 60 * 1000
-      }
-    })(req, res, next);
-  });
-
   // レイアウトのデバッグ用ミドルウェア
   app.use((req, res, next) => {
     const originalRender = res.render;
@@ -85,18 +70,7 @@ function setupRoutes(app, controllers, fileUploader) {
     next();
   });
 
-  // デフォルトのレスポンス変数を設定
-  app.use((req, res, next) => {
-    console.log('3. Default Response Variables');
-    console.log('Path:', req.path);
-    console.log('Method:', req.method);
-    res.locals.title = 'ページ';
-    res.locals.user = req.user;
-    res.locals.path = req.path;
-    next();
-  });
-
-  // デバッグ: リクエストヘッダーとセッション情報をログ
+  // デフッグ: リクエストヘッダーとセッション情報をログ
   app.use((req, res, next) => {
     console.log('\n=== Request Debug Info ===');
     console.log('Request Headers:', req.headers);
@@ -109,67 +83,8 @@ function setupRoutes(app, controllers, fileUploader) {
     next();
   });
 
-  // 3. CSRF Protection Setup
-  const csrfProtection = csrf({ 
-    cookie: {
-      key: '_csrf',
-      signed: false
-    },
-    value: (req) => {
-      // デバッグ: CSRFトークンの取得試行をログ
-      console.log('\n=== CSRF Token Extraction ===');
-      console.log('Headers:', {
-        'x-csrf-token': req.headers['x-csrf-token'],
-        'x-xsrf-token': req.headers['x-xsrf-token'],
-      });
-      console.log('Cookies:', req.cookies);
-      
-      // マルチパートフォームデータの場合の特別処理
-      if (req.headers['content-type']?.includes('multipart/form-data')) {
-        console.log('Multipart form data detected');
-        // _csrfクッキーからトークンを取得
-        const token = req.cookies['_csrf'];
-        console.log('Token from _csrf cookie:', token);
-        return token;
-      }
-      
-      // 通常のリクエストの場合
-      const token = 
-        req.headers['x-csrf-token'] ||
-        req.headers['x-xsrf-token'] ||
-        req.body?._csrf ||
-        req.query?._csrf;
-      
-      console.log('Selected Token:', token);
-      return token;
-    }
-  });
-  
-  app.use(csrfProtection);
-
-  // CSRFトークンをすべてのレスポンスに追加
-  app.use((req, res, next) => {
-    const token = req.csrfToken();
-    console.log('\n=== CSRF Token Generation ===');
-    console.log('Generated Token:', token);
-    
-    // _csrfクッキーを設定
-    res.cookie('_csrf', token, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'Lax'
-    });
-    console.log('Set _csrf cookie:', token);
-    
-    // テンプレートで使用するためにlocalsに設定
-    res.locals.csrfToken = token;
-    console.log('Set token in res.locals.csrfToken');
-    
-    next();
-  });
-
   // ===================================
-  // Static Assets - No CSRF needed
+  // Static Assets
   // ===================================
   if (process.env.STORAGE_PROVIDER !== 's3') {
     const uploadsPath = path.join(__dirname, 'public', 'uploads');
