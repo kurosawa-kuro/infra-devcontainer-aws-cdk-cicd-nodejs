@@ -11,6 +11,7 @@ const rateLimit = require('express-rate-limit');
 const xss = require('xss-clean');
 const cookieParser = require('cookie-parser');
 const logger = require('./logger');
+const { ErrorHandler } = require('./error');
 
 const authMiddleware = {
   isAuthenticated: (req, res, next) => {
@@ -66,168 +67,6 @@ const authMiddleware = {
   }
 };
 
-class ErrorHandler {
-  constructor(logger) {
-    this.logger = logger;
-  }
-
-  handleNotFoundError(req, res, message = 'リソースが見つかりません') {
-    this.logger.warn('Not Found', {
-      path: req.path,
-      params: req.params,
-      user: req.user ? { id: req.user.id } : null
-    });
-
-    if (logger.isApiRequest(req)) {
-      return res.status(404).json({
-        success: false,
-        message
-      });
-    }
-    return res.status(404).render('pages/errors/404', {
-      message,
-      path: req.path,
-      user: req.user
-    });
-  }
-
-  handleValidationError(req, res, message = 'バリデーションエラーが発生しました') {
-    this.logger.warn('Validation Error', {
-      path: req.path,
-      params: req.params,
-      body: req.body,
-      user: req.user ? { id: req.user.id } : null
-    });
-
-    if (logger.isApiRequest(req)) {
-      return res.status(400).json({
-        success: false,
-        message
-      });
-    }
-    req.flash('error', message);
-    return res.redirect('back');
-  }
-
-  handleDatabaseError(req, res, message = 'データベースエラーが発生しました') {
-    this.logger.error('Database Error', {
-      path: req.path,
-      params: req.params,
-      query: req.query,
-      user: req.user ? { id: req.user.id } : null
-    });
-
-    if (logger.isApiRequest(req)) {
-      return res.status(500).json({
-        success: false,
-        message
-      });
-    }
-    req.flash('error', message);
-    return res.redirect('back');
-  }
-
-  handlePermissionError(req, res, message = '権限がありません') {
-    this.logger.warn('Permission Error', {
-      path: req.path,
-      user: req.user ? { id: req.user.id } : null
-    });
-
-    if (logger.isApiRequest(req)) {
-      return res.status(403).json({
-        success: false,
-        message
-      });
-    }
-    req.flash('error', message);
-    return res.redirect('back');
-  }
-
-  handleInternalError(req, res, error) {
-    this.logger.logSystemError('Internal Server Error', error, {
-      request: {
-        path: req.path,
-        params: req.params,
-        query: req.query,
-        body: req.body
-      },
-      user: req.user ? { id: req.user.id } : null
-    });
-
-    const message = process.env.NODE_ENV === 'production' 
-      ? 'サーバーエラーが発生しました'
-      : error.message;
-
-    if (logger.isApiRequest(req)) {
-      return res.status(500).json({
-        success: false,
-        message,
-        ...(process.env.NODE_ENV !== 'production' && { error: error.stack })
-      });
-    }
-
-    return res.status(500).render('pages/errors/500', {
-      message,
-      error: process.env.NODE_ENV !== 'production' ? error : {},
-      path: req.path,
-      user: req.user
-    });
-  }
-}
-
-const errorMiddleware = {
-  handle404Error: (req, res, next) => {
-    logger.warn('Not Found', {
-      path: req.originalUrl,
-      method: req.method,
-      userId: req.user?.id
-    });
-
-    if (req.xhr || req.headers.accept?.includes('application/json')) {
-      return res.status(404).json({
-        error: 'Not Found',
-        message: 'リクエストされたページは存在しません'
-      });
-    }
-    res.status(404).render('pages/errors/404', {
-      title: 'ページが見つかりません',
-      path: req.path
-    });
-  },
-
-  handle500Error: (err, req, res, next) => {
-    logger.logError(err, req);
-
-    const statusCode = err?.status || 500;
-    const message = err?.message || 'Internal Server Error';
-    
-    if (req.xhr || req.headers.accept?.includes('application/json')) {
-      return res.status(statusCode).json({
-        success: false,
-        message: message,
-        error: process.env.NODE_ENV === 'development' ? {
-          name: err.name,
-          message: err.message,
-          stack: err.stack
-        } : undefined
-      });
-    }
-
-    try {
-      res.status(statusCode).render('pages/errors/500', {
-        message: message,
-        error: process.env.NODE_ENV === 'development' ? err : {},
-        title: `Error ${statusCode}`,
-        path: req.path,
-        user: req.user
-      });
-    } catch (renderError) {
-      logger.logError(renderError);
-      res.status(500).send('Internal Server Error');
-    }
-  }
-};
-
 const setupMiddleware = {
   setupBasicMiddleware: (app) => {
     app.use(express.json());
@@ -237,7 +76,6 @@ const setupMiddleware = {
     app.set('view engine', 'ejs');
     app.set('views', path.join(__dirname, 'views'));
     
-    // 静的ファイルの提供設定を追加
     app.use(express.static(path.join(__dirname, 'public')));
     app.use('/uploads', express.static(path.join(__dirname, 'public', 'uploads')));
     
@@ -297,9 +135,9 @@ const setupMiddleware = {
   },
 
   setupSecurity: (app) => {
+    const errorHandler = new ErrorHandler();
     app.use(cookieParser(process.env.COOKIE_SECRET || 'your-cookie-secret'));
 
-    // セッションの設定
     const sessionConfig = {
       secret: process.env.SESSION_SECRET || 'your-session-secret',
       resave: false,
@@ -315,13 +153,11 @@ const setupMiddleware = {
       sessionConfig.resave = true;
     }
 
-    // セッションとパスポートの初期化を先に行う
     app.use(session(sessionConfig));
     app.use(flash());
     app.use(passport.initialize());
     app.use(passport.session());
 
-    // セキュリティヘッダーの設定
     app.use(helmet({
       contentSecurityPolicy: {
         directives: {
@@ -342,7 +178,6 @@ const setupMiddleware = {
 
     app.use(xss());
 
-    // CSRFミドルウェアの設定を改善
     const csrfMiddleware = csrf({
       cookie: true,
       ignoreMethods: ['GET', 'HEAD', 'OPTIONS'],
@@ -353,18 +188,15 @@ const setupMiddleware = {
       }
     });
 
-    // CSRFトークンの処理を一元化
     app.use((req, res, next) => {
-
-      // multipart/form-dataリクエストの特別処理
       if (req.headers['content-type']?.includes('multipart/form-data')) {
         const token = req.cookies['XSRF-TOKEN'];
         if (!token) {
-          console.error('No CSRF token found in cookies for multipart request');
-          return res.status(403).json({
-            error: 'CSRF token missing',
-            message: 'セッションが無効になりました。ページを再読み込みしてください。'
+          logger.warn('CSRF token missing for multipart request', {
+            path: req.path,
+            method: req.method
           });
+          return errorHandler.handleValidationError(req, res, 'セッションが無効になりました。ページを再読み込みしてください。');
         }
         req.csrfToken = () => token;
         res.locals.csrfToken = token;
@@ -375,7 +207,6 @@ const setupMiddleware = {
         if (req.method === 'GET') {
           csrfMiddleware(req, res, () => {
             const token = req.csrfToken();
-
             res.cookie('XSRF-TOKEN', token, {
               secure: process.env.NODE_ENV === 'production',
               sameSite: 'Lax',
@@ -387,15 +218,12 @@ const setupMiddleware = {
         } else {
           csrfMiddleware(req, res, (err) => {
             if (err) {
-              console.error('CSRF validation failed:', {
+              logger.warn('CSRF validation failed', {
                 error: err.message,
-                token: req.body?._csrf,
-                cookieToken: req.cookies['XSRF-TOKEN']
+                path: req.path,
+                method: req.method
               });
-              return res.status(403).json({
-                error: 'CSRF token invalid',
-                message: 'セッションが無効になりました。ページを再読み込みしてください。'
-              });
+              return errorHandler.handleValidationError(req, res, 'セッションが無効になりました。ページを再読み込みしてください。');
             }
             const token = req.csrfToken();
             res.locals.csrfToken = token;
@@ -403,8 +231,8 @@ const setupMiddleware = {
           });
         }
       } catch (error) {
-        console.error('Error in CSRF middleware:', error);
-        next(error);
+        logger.error('Error in CSRF middleware:', error);
+        return errorHandler.handleInternalError(req, res, error);
       }
     });
 
@@ -466,7 +294,6 @@ const addLocals = (req, res, next) => {
 
 module.exports = {
   ...authMiddleware,
-  ...errorMiddleware,
   ...setupMiddleware,
   addLocals
 }; 

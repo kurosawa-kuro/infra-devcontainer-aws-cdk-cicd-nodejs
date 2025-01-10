@@ -8,7 +8,8 @@ const fs = require('fs');
 require('dotenv').config();
 const passport = require('passport');
 const logger = require('./logger');
-const { checkInstanceType } = require('./util');
+const { Util, StorageConfig, FileUploader } = require('./util');
+const { ErrorHandler, handleCSRFError, handle404Error, handle500Error } = require('./error');
 
 const setupRoutes = require('./routes');
 const {
@@ -17,7 +18,6 @@ const {
   setupRequestLogging,
   setupErrorLogging,
   setupSecurity,
-  handle500Error
 } = require('./middleware');
 const {
   AuthService,
@@ -44,19 +44,6 @@ const {
   NotificationController
 } = require('./controllers');
 
-// 環境変数からパスと制限を設定
-const PATHS = {
-  DEFAULT_AVATAR: process.env.DEFAULT_AVATAR_PATH,
-  UPLOAD_DIR: process.env.UPLOAD_DIR_PATH,
-  PUBLIC_DIR: process.env.PUBLIC_DIR_PATH
-};
-
-const LIMITS = {
-  MAX_FILE_SIZE: parseInt(process.env.MAX_FILE_SIZE),
-  MAX_TITLE_LENGTH: parseInt(process.env.MAX_TITLE_LENGTH),
-  MAX_CONTENT_LENGTH: parseInt(process.env.MAX_CONTENT_LENGTH)
-};
-
 // Constants and Configuration
 const CONFIG = {
   app: {
@@ -65,306 +52,8 @@ const CONFIG = {
     env: process.env.APP_ENV || 'development',
     isProduction: process.env.NODE_ENV === 'production',
     isTest: process.env.APP_ENV === 'test'
-  },
-  storage: {
-    useS3: process.env.USE_S3 === 'true',
-    s3: {
-      region: process.env.AWS_REGION,
-      accessKey: process.env.AWS_ACCESS_KEY_ID,
-      secretKey: process.env.AWS_SECRET_ACCESS_KEY,
-      bucket: process.env.STORAGE_S3_BUCKET
-    },
-    cloudfront: {
-      url: process.env.STORAGE_CDN_URL,
-      distributionId: process.env.STORAGE_CDN_DISTRIBUTION_ID
-    },
-    limits: {
-      fileSize: 5 * 1024 * 1024,
-      allowedMimeTypes: ['image/jpeg', 'image/png', 'image/gif']
-    }
   }
 };
-
-// ストレージ設定を管理するクラス
-class StorageConfig {
-  constructor() {
-    this.config = {
-      region: CONFIG.storage.s3.region,
-      bucket: CONFIG.storage.s3.bucket,
-      credentials: {
-        accessKeyId: CONFIG.storage.s3.accessKey,
-        secretAccessKey: CONFIG.storage.s3.secretKey
-      },
-      cloudfront: {
-        url: CONFIG.storage.cloudfront.url,
-        distributionId: CONFIG.storage.cloudfront.distributionId
-      },
-      uploadLimits: CONFIG.storage.limits
-    };
-  }
-
-  isEnabled() {
-    return CONFIG.storage.useS3;
-  }
-
-  getS3Client() {
-    if (!this.isEnabled()) return null;
-    
-    return new S3Client({
-      region: this.config.region,
-      credentials: this.config.credentials
-    });
-  }
-
-  getUploadLimits() {
-    return this.config.uploadLimits;
-  }
-
-  getCloudFrontUrl() {
-    return this.config.cloudfront.url;
-  }
-
-  getBucketName() {
-    return this.config.bucket;
-  }
-}
-
-// ファイルアップロードを管理するクラス
-class FileUploader {
-  constructor(storageConfig) {
-    this.storageConfig = storageConfig;
-    this.s3Client = storageConfig.getS3Client();
-    this.uploader = this.createUploader();
-  }
-
-  createFileFilter() {
-    return (req, file, cb) => {
-      const allowedMimeTypes = this.storageConfig.getUploadLimits().allowedMimeTypes;
-      if (allowedMimeTypes.includes(file.mimetype)) {
-        cb(null, true);
-      } else {
-        cb(new Error(`対応していないファイル形式です。対応形式: ${allowedMimeTypes.join(', ')}`));
-      }
-    };
-  }
-
-  getUploader() {
-    return this.uploader;
-  }
-
-  createUploader() {
-    if (this.storageConfig.isEnabled()) {
-      return this.createS3Uploader();
-    } else {
-      return this.createLocalUploader();
-    }
-  }
-
-  createS3Uploader() {
-    return multer({
-      storage: multerS3({
-        s3: this.s3Client,
-        bucket: this.storageConfig.getBucketName(),
-        contentType: multerS3.AUTO_CONTENT_TYPE,
-        metadata: this.createMetadataHandler(),
-        key: this.createKeyGenerator()
-      }),
-      limits: this.storageConfig.getUploadLimits(),
-      fileFilter: this.createFileFilter()
-    });
-  }
-
-  createLocalUploader() {
-    const uploadDir = path.join(__dirname, 'public', 'uploads');
-    if (!fs.existsSync(uploadDir)) {
-      fs.mkdirSync(uploadDir, { recursive: true });
-    }
-    
-    return multer({
-      storage: multer.diskStorage({
-        destination: (req, file, cb) => {
-          cb(null, uploadDir);
-        },
-        filename: (req, file, cb) => {
-          const uniqueSuffix = `${Date.now()}-${Math.round(Math.random() * 1E9)}`;
-          const fileExtension = path.extname(file.originalname);
-          const filename = `${uniqueSuffix}${fileExtension}`;
-          cb(null, filename);
-        }
-      }),
-      limits: this.storageConfig.getUploadLimits(),
-      fileFilter: this.createFileFilter()
-    });
-  }
-
-  createMetadataHandler() {
-    return (req, file, cb) => {
-      cb(null, {
-        fieldName: file.fieldname,
-        contentType: file.mimetype,
-        uploadedAt: new Date().toISOString()
-      });
-    };
-  }
-
-  createKeyGenerator() {
-    return (req, file, cb) => {
-      const uniqueSuffix = `${Date.now()}-${Math.round(Math.random() * 1E9)}`;
-      const fileExtension = path.extname(file.originalname);
-      const fileName = `${uniqueSuffix}${fileExtension}`;
-      cb(null, fileName);
-    };
-  }
-
-  generateFileUrl(file) {
-    if (!file) return null;
-    
-    if (this.storageConfig.isEnabled()) {
-      return `${this.storageConfig.getCloudFrontUrl()}/${file.key}`;
-    } else {
-      return `/uploads/${file.filename}`;
-    }
-  }
-}
-
-// エラーハンドリングを管理するクラス
-class ErrorHandler {
-  constructor(uploadLimits) {
-    this.uploadLimits = uploadLimits;
-  }
-
-  createDetailedErrorLog(error, req, additionalInfo = {}) {
-    const errorDetails = {
-      category: 'Error',
-      action: error.name || 'UnknownError',
-      value: error.code || 500,
-      quantity: 1,
-      error: error.message,
-      details: error.details || {},
-      userId: req.user?.id,
-      requestInfo: {
-        method: req.method,
-        path: req.path,
-        url: req.url
-      }
-    };
-
-    logger.logError(error, req);
-
-    return errorDetails;
-  }
-
-  createValidationError(message, details = {}) {
-    const error = new Error(message);
-    error.name = 'ValidationError';
-    error.code = details.code || 'VALIDATION_ERROR';
-    error.details = {
-      field: details.field,
-      value: details.value,
-      constraint: details.constraint,
-      ...details
-    };
-    return error;
-  }
-
-  handle(err, req, res) {
-    this.createDetailedErrorLog(err, req);
-    
-    if (err instanceof multer.MulterError) {
-      return this.handleMulterError(err, req, res);
-    }
-
-    return this.handleGeneralError(err, req, res);
-  }
-
-  handleMulterError(err, req, res) {
-    if (err.code === 'LIMIT_FILE_SIZE') {
-      const error = this.createValidationError(
-        `ファイルサイズが大きすぎます。${this.uploadLimits.fileSize / (1024 * 1024)}MB以下にしてください。`,
-        { code: 'LIMIT_FILE_SIZE', field: err.field }
-      );
-      this.createDetailedErrorLog(error, req);
-      return this.sendErrorResponse(req, res, 400, error.message);
-    }
-    
-    const error = this.createValidationError('ファイルアップロードエラー', {
-      code: err.code,
-      field: err.field
-    });
-    this.createDetailedErrorLog(error, req);
-    return this.sendErrorResponse(req, res, 400, error.message);
-  }
-
-  handleGeneralError(err, req, res) {
-    const errorDetails = this.createDetailedErrorLog(err, req);
-    const errorMessage = process.env.NODE_ENV === 'production' 
-      ? 'サーバーエラーが発生しました' 
-      : err.message;
-    
-    return this.sendErrorResponse(
-      req, 
-      res, 
-      err.status || 500, 
-      errorMessage,
-      process.env.NODE_ENV !== 'production' ? errorDetails : undefined
-    );
-  }
-
-  sendErrorResponse(req, res, status, message, details = {}) {
-    const isApiRequest = req.xhr || req.headers.accept?.includes('application/json');
-    
-    if (isApiRequest) {
-      return res.status(status).json({
-        error: message,
-        ...details
-      });
-    } else {
-      try {
-        if (req.session && req.flash) {
-          req.flash('error', message);
-        }
-      } catch (e) {
-        // Ignore flash errors if session is not available
-      }
-      const fallbackUrl = req.header('Referer') || '/';
-      return res.redirect(fallbackUrl);
-    }
-  }
-
-  handleValidationError(req, res, message, details = {}) {
-    const error = this.createValidationError(message, details);
-    this.createDetailedErrorLog(error, req);
-    return this.sendErrorResponse(req, res, 400, error.message);
-  }
-
-  handleAuthError(req, res, message = '認証が必要です') {
-    const error = this.createValidationError(message, { code: 'AUTH_ERROR' });
-    this.createDetailedErrorLog(error, req);
-    return this.sendErrorResponse(req, res, 401, error.message);
-  }
-
-  handlePermissionError(req, res, message = '権限がありません') {
-    const error = this.createValidationError(message, { code: 'PERMISSION_ERROR' });
-    this.createDetailedErrorLog(error, req);
-    return res.status(403).json({
-      error: message
-    });
-  }
-
-  handleNotFoundError(req, res, message = 'リソースが見つかりません') {
-    const error = this.createValidationError(message, { code: 'NOT_FOUND' });
-    this.createDetailedErrorLog(error, req);
-    return this.sendErrorResponse(req, res, 404, error.message);
-  }
-
-  handleInternalError(req, res, error) {
-    this.createDetailedErrorLog(error, req);
-    const message = process.env.NODE_ENV === 'production' 
-      ? 'サーバーエラーが発生しました' 
-      : error.message;
-    return this.sendErrorResponse(req, res, 500, message);
-  }
-}
 
 // メインのアプリケーションクラス
 class Application {
@@ -453,40 +142,11 @@ class Application {
   }
 
   setupMiddleware() {
-    /**
-     * Middleware Order is Critical:
-     * 1. Basic Middleware (body-parser, etc.) must be first to parse incoming requests
-     * 2. Auth Middleware depends on session/cookies from basic middleware
-     * 3. Logging Middleware should come after auth to include user info
-     * 4. Error Handling must be last to catch all previous middleware errors
-     */
-
-    // 1. Basic Middleware (Required First)
-    // - Handles request parsing (body-parser)
-    // - Sets up sessions, cookies
-    // - Configures security headers
     setupBasicMiddleware(this.app);
-
-    // 2. Authentication Middleware
-    // - Depends on session/cookies from basic middleware
-    // - Sets up Passport and user authentication
     setupAuthMiddleware(this.app, CONFIG);
-
-    // 3. Logging Middleware
-    // - Comes after auth to include authenticated user info in logs
-    // - Tracks request/response lifecycle
     setupRequestLogging(this.app, logger);
     setupErrorLogging(this.app, logger);
-
-    // 4. Error Handling (Required Last)
-    // - Catches errors from all previous middleware
-    // - Handles specific cases like CSRF token validation
-    this.app.use((err, req, res, next) => {
-      if (err.code === 'EBADCSRFTOKEN') {
-        return this.errorHandler.handleValidationError(req, res, 'Invalid CSRF token');
-      }
-      next(err);
-    });
+    this.app.use(handleCSRFError(this.errorHandler));
   }
 
   setupRoutes() {
@@ -494,6 +154,7 @@ class Application {
   }
 
   setupErrorHandler() {
+    this.app.use(handle404Error);
     this.app.use(handle500Error);
   }
 
@@ -501,7 +162,7 @@ class Application {
     try {
       // インスタンスタイプの確認（エラーハンドリングを強化）
       try {
-        this.instanceType = await checkInstanceType();
+        this.instanceType = await Util.checkInstanceType();
         logger.info(`Starting application on ${this.instanceType}`);
       } catch (instanceTypeError) {
         logger.warn('Failed to determine instance type, defaulting to Lightsail/Other:', instanceTypeError);
@@ -520,10 +181,10 @@ class Application {
       // インスタンスタイプに応じた設定
       if (this.instanceType === 'Lightsail/Other') {
         logger.info('Running on Lightsail - using local storage configuration');
-        CONFIG.storage.useS3 = false;
+        process.env.USE_S3 = 'false';
       } else {
         logger.info('Running on EC2 - using S3 storage configuration');
-        CONFIG.storage.useS3 = true;
+        process.env.USE_S3 = 'true';
       }
 
       // サーバー起動
