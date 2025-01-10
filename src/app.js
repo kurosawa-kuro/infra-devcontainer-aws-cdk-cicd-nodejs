@@ -1,11 +1,22 @@
+// External Libraries
 const express = require('express');
+
+// Database
 const { PrismaClient } = require('@prisma/client');
+
+// Internal Utilities
 const { Util } = require('./util');
+
+// Middleware
 const { logger } = require('./middleware/core/logging');
 const { ErrorHandler } = require('./middleware/core/error');
-const { PassportService } = require('./services');
 const { StorageConfig, FileUploader } = require('./middleware/upload');
 const InitializationMiddleware = require('./middleware/initialization');
+
+// Services
+const { PassportService } = require('./services');
+
+// Routes
 const routes = require('./routes');
 
 class Application {
@@ -49,17 +60,29 @@ class Application {
         }
       };
 
+      // Prismaサービスの初期化
+      const prismaService = {
+        ...this.prisma,
+        user: this.prisma.user,
+        micropost: this.prisma.micropost,
+        category: this.prisma.category,
+        like: this.prisma.like,
+        comment: this.prisma.comment,
+        notification: this.prisma.notification,
+        follow: this.prisma.follow
+      };
+
       // サービスの初期化
       const services = {
         auth: passportService,
-        profile: this.prisma,
-        micropost: this.prisma,
+        profile: prismaService,
+        micropost: prismaService,
         system: systemService,
-        category: this.prisma,
-        like: this.prisma,
-        comment: this.prisma,
-        notification: this.prisma,
-        follow: this.prisma
+        category: prismaService,
+        like: prismaService,
+        comment: prismaService,
+        notification: prismaService,
+        follow: prismaService
       };
 
       // コントローラーの初期化
