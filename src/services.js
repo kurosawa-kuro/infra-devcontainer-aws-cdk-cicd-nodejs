@@ -1212,7 +1212,11 @@ class SystemService extends BaseService {
   // ヘルスチェックメソッド
   async getHealth() {
     try {
-      return { status: 'healthy' };
+      return {
+        status: 'healthy',
+        timestamp: new Date().toISOString(),
+        environment: process.env.NODE_ENV || 'development'
+      };
     } catch (error) {
       this.handleError(error, { context: 'Get system health' });
     }
@@ -1220,12 +1224,17 @@ class SystemService extends BaseService {
 
   async getDbHealth() {
     try {
-      await this.executeTransaction(async (prisma) => {
-        await prisma.$queryRaw`SELECT 1`;
-      });
-      return { status: 'healthy' };
+      await this.prisma.$queryRaw`SELECT 1`;
+      return {
+        status: 'healthy',
+        timestamp: new Date().toISOString()
+      };
     } catch (error) {
-      this.handleError(error, { context: 'Database health check' });
+      return {
+        status: 'unhealthy',
+        error: error.message,
+        timestamp: new Date().toISOString()
+      };
     }
   }
 

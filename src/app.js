@@ -8,13 +8,13 @@ const { PrismaClient } = require('@prisma/client');
 const { Util } = require('./util');
 
 // Middleware
-const { logger } = require('./middleware/core/logging');
+const { logger, middleware } = require('./middleware/core/logging');
 const { ErrorHandler } = require('./middleware/core/error');
 const { StorageConfig, FileUploader } = require('./middleware/upload');
 const InitializationMiddleware = require('./middleware/initialization');
 
 // Services
-const { PassportService, MicropostService, ProfileService, CommentService, AuthService, LikeService, NotificationService } = require('./services');
+const { PassportService, MicropostService, ProfileService, CommentService, AuthService, LikeService, NotificationService, SystemService } = require('./services');
 
 // Routes
 const routes = require('./routes');
@@ -29,6 +29,11 @@ class Application {
 
   async initialize() {
     try {
+      // ロギングミドルウェアのセットアップ
+      this.app.use(middleware.debug);    // デバッグログ（開発環境のみ）
+      this.app.use(middleware.request);  // リクエストログ（全環境）
+      this.app.use(middleware.error);    // エラーログ（全環境）
+
       // 初期化に必要なサービスとコンポーネントの準備
       const storageConfig = new StorageConfig();
       const fileUploader = new FileUploader(storageConfig);
@@ -39,32 +44,7 @@ class Application {
       const commentService = new CommentService(this.prisma, logger);
       const likeService = new LikeService(this.prisma, logger);
       const notificationService = new NotificationService(this.prisma, logger);
-
-      // サステムサービスの初期化
-      const systemService = {
-        getHealth: async () => {
-          return {
-            status: 'healthy',
-            timestamp: new Date().toISOString(),
-            environment: process.env.NODE_ENV || 'development'
-          };
-        },
-        getDbHealth: async () => {
-          try {
-            await this.prisma.$queryRaw`SELECT 1`;
-            return {
-              status: 'healthy',
-              timestamp: new Date().toISOString()
-            };
-          } catch (error) {
-            return {
-              status: 'unhealthy',
-              error: error.message,
-              timestamp: new Date().toISOString()
-            };
-          }
-        }
-      };
+      const systemService = new SystemService(this.prisma, logger);
 
       // Prismaサービスの初期化
       const prismaService = {

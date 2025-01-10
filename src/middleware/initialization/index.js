@@ -18,8 +18,6 @@ class InitializationMiddleware {
    * @param {Object} options.util ユーティリティ
    */
   static async initialize(app, { routes, controllers, fileUploader, passportService, util }) {
-    logger.info('Starting application initialization');
-
     try {
       // 1. インスタンスタイプの検出と環境設定
       const instanceType = await this.detectInstanceType(util);
@@ -27,18 +25,12 @@ class InitializationMiddleware {
 
       // 2. 必要なディレクトリの作成
       await util.setupDirectories();
-      logger.info('Directory setup completed');
 
       // 3. 基本的なミドルウェアのセットアップ
       await this.setupCore(app, passportService);
-      logger.info('Core middleware setup completed');
-
+   
       // 4. ルートの設定
-      logger.info('Setting up routes');
-      routes(app, controllers, fileUploader);
-      logger.info('Routes setup completed');
-
-      logger.info('Application initialization completed successfully');
+      routes(app, controllers, fileUploader);   
     } catch (error) {
       logger.error('Failed to initialize application:', error);
       throw error;

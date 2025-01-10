@@ -1,6 +1,7 @@
 const winston = require('winston');
 const { format } = winston;
 require('winston-daily-rotate-file');
+const WinstonCloudWatch = require('winston-cloudwatch');
 
 // ログレベルの定義
 const LOG_LEVELS = {
@@ -11,6 +12,18 @@ const LOG_LEVELS = {
   VERBOSE: 'verbose',
   DEBUG: 'debug'
 };
+
+// ログから除外するURLパターン
+const EXCLUDED_PATHS = [
+  /^\/css\//,
+  /^\/js\//,
+  /^\/images\//,
+  /^\/fonts\//,
+  /^\/assets\//,
+  /^\/uploads\//,
+  /^\/favicon\.ico$/,
+  /^\/robots\.txt$/
+];
 
 // 機密情報をマスクする関数
 const maskSensitiveData = (data) => {
@@ -108,6 +121,27 @@ const logger = winston.createLogger({
   ]
 });
 
+// CloudWatchトランスポートの追加
+if (process.env.USE_CLOUDWATCH === 'true') {
+  const cloudwatchConfig = {
+    logGroupName: process.env.CLOUDWATCH_LOG_GROUP,
+    logStreamName: `${process.env.NODE_ENV}-${new Date().toISOString().split('T')[0]}`,
+    awsRegion: process.env.CLOUDWATCH_REGION,
+    messageFormatter: ({ level, message, ...meta }) => {
+      return JSON.stringify({
+        level,
+        message,
+        timestamp: new Date().toISOString(),
+        environment: process.env.NODE_ENV,
+        ...meta
+      });
+    }
+  };
+
+  logger.add(new WinstonCloudWatch(cloudwatchConfig));
+  logger.info('CloudWatch logging enabled');
+}
+
 // 開発環境用のコンソール出力設定
 if (process.env.NODE_ENV !== 'production') {
   logger.add(new winston.transports.Console({
@@ -120,6 +154,11 @@ if (process.env.NODE_ENV !== 'production') {
 
 // デバッグミドルウェア
 const debugMiddleware = (req, res, next) => {
+  // 除外パターンに一致する場合はスキップ
+  if (EXCLUDED_PATHS.some(pattern => pattern.test(req.path))) {
+    return next();
+  }
+
   if (process.env.NODE_ENV === 'development') {
     console.log(`[${new Date().toISOString()}] ${req.method} ${req.path}`);
     
@@ -138,6 +177,11 @@ const debugMiddleware = (req, res, next) => {
 
 // リクエストロギングミドルウェア
 const requestLogger = (req, res, next) => {
+  // 除外パターンに一致する場合はスキップ
+  if (EXCLUDED_PATHS.some(pattern => pattern.test(req.path))) {
+    return next();
+  }
+
   req.traceId = require('crypto').randomUUID();
   const startTime = Date.now();
   
