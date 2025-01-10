@@ -505,12 +505,7 @@ class ProfileController extends BaseController {
         path: req.path
       });
 
-      let profileUser;
-      if (req.params.id.match(/^[0-9]+$/)) {
-        profileUser = await this.services.profile.getUserProfile(req.params.id);
-      } else {
-        profileUser = await this.services.profile.getUserProfileByName(req.params.id);
-      }
+      const profileUser = await this.profileService.getUserProfileByName(req.params.id);
 
       if (!profileUser) {
         this.logger.debug('Profile not found:', {
@@ -525,9 +520,9 @@ class ProfileController extends BaseController {
       });
 
       const [microposts, followCounts, isFollowing] = await Promise.all([
-        this.services.micropost.getMicropostsByUser(profileUser.id),
-        this.services.profile.getFollowCounts(profileUser.id),
-        req.user ? this.services.profile.isFollowing(req.user.id, profileUser.id) : false
+        this.micropostService.getMicropostsByUser(profileUser.id),
+        this.profileService.getFollowCounts(profileUser.id),
+        req.user ? this.profileService.isFollowing(req.user.id, profileUser.id) : false
       ]);
 
       this.logger.debug('Profile data loaded:', {

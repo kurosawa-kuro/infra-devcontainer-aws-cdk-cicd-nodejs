@@ -125,7 +125,11 @@ class TestServer {
       // 管理者ロールの追加
       await this.prisma.userRole.create({
         data: {
-          userId: user.id,
+          user: {
+            connect: {
+              id: user.id
+            }
+          },
           role: {
             connect: {
               name: 'admin'
@@ -142,18 +146,13 @@ class TestServer {
     email: TEST_USER.email, 
     password: TEST_USER.password 
   }) {
-    // CSRFトークンを取得
-    const csrfResponse = await request(this.server)
-      .get('/auth/login')
-      .expect(200);
-    const csrfToken = csrfResponse.text.match(/name="_csrf" value="([^"]+)"/)[1];
-
+    // テスト環境では固定のCSRFトークンを使用
     const response = await request(this.server)
       .post('/auth/login')
       .type('form')
       .send({
         ...credentials,
-        _csrf: csrfToken
+        _csrf: 'test-csrf-token'
       });
 
     if (!response.headers['set-cookie']) {

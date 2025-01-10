@@ -553,23 +553,30 @@ class ProfileService extends BaseService {
     }
   }
 
-  async getUserProfileByName(name) {
+  async getUserProfileByName(username) {
     try {
-      ValidationUtils.validateUsername(name);
-      return await this.prisma.user.findFirst({
-        where: { name },
+      this.logger.debug('Getting user profile by name:', { username });
+      
+      const user = await this.prisma.user.findFirst({
+        where: { name: username },
         include: {
           profile: true,
           userRoles: {
-            include: { role: true }
-          },
-          _count: {
-            select: { microposts: true }
+            include: {
+              role: true
+            }
           }
         }
       });
+
+      this.logger.debug('User profile found:', { 
+        userId: user?.id,
+        username: user?.name 
+      });
+
+      return user;
     } catch (error) {
-      this.handleError(error, { context: 'Get user profile by name', name });
+      this.handleError(error, { context: 'Get user profile by name', username });
     }
   }
 
@@ -676,7 +683,16 @@ class ProfileService extends BaseService {
   // フォロー関連メソッド
   async getFollowCounts(userId) {
     try {
-      return await this.followService.getFollowCounts(userId);
+      const [followingCount, followersCount] = await Promise.all([
+        this.prisma.follow.count({
+          where: { followerId: userId }
+        }),
+        this.prisma.follow.count({
+          where: { followingId: userId }
+        })
+      ]);
+
+      return { followingCount, followersCount };
     } catch (error) {
       this.handleError(error, { context: 'Get follow counts', userId });
     }
@@ -684,7 +700,13 @@ class ProfileService extends BaseService {
 
   async isFollowing(followerId, followingId) {
     try {
-      return await this.followService.isFollowing(followerId, followingId);
+      const follow = await this.prisma.follow.findFirst({
+        where: {
+          followerId,
+          followingId
+        }
+      });
+      return !!follow;
     } catch (error) {
       this.handleError(error, { context: 'Check following status', followerId, followingId });
     }

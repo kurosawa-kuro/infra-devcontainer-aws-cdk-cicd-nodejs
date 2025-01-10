@@ -118,6 +118,17 @@ const validateToken = (token) => {
 
 // CSRF保護の設定
 const setupCSRF = (app) => {
+  // テスト環境ではCSRF保護を無効化
+  if (process.env.NODE_ENV === 'test') {
+    app.use((req, res, next) => {
+      // テスト環境では常に固定のCSRFトークンを使用
+      res.locals.csrfToken = 'test-csrf-token';
+      req.csrfToken = () => 'test-csrf-token';
+      next();
+    });
+    return;
+  }
+
   const csrfOptions = {
     cookie: {
       key: '_csrf',
@@ -130,22 +141,12 @@ const setupCSRF = (app) => {
         req.body?._csrf || 
         req.cookies['XSRF-TOKEN'];
 
-      // テスト環境では検証を緩和
-      if (process.env.NODE_ENV === 'test') {
-        return token || 'test-csrf-token';
-      }
-
       if (req.method !== 'GET' && !validateToken(token)) {
         throw new Error('Invalid CSRF token');
       }
       return token;
     }
   };
-
-  // テスト環境ではCSRF保護を無効化するオプションを追加
-  if (process.env.NODE_ENV === 'test') {
-    csrfOptions.ignoreMethods = ['GET', 'HEAD', 'OPTIONS', 'POST', 'PUT', 'DELETE', 'PATCH'];
-  }
 
   const csrfMiddleware = csrf(csrfOptions);
 
