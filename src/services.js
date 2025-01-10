@@ -312,14 +312,9 @@ class AuthService extends BaseService {
   // 認証の核となるメソッド
   async authenticate(email, password) {
     try {
-      console.log('Authentication attempt:', { email });
 
       const user = await this._findUserByEmail(email);
-      console.log('User found:', {
-        id: user?.id,
-        email: user?.email,
-        hashedPassword: user?.password ? 'exists' : 'missing'
-      });
+
 
       if (!user) {
         console.log('Authentication failed: User not found');

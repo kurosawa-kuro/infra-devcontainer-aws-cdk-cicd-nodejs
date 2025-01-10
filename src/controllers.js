@@ -183,15 +183,6 @@ class AuthController extends BaseController {
   async login(req, res) {
     return this.handleRequest(req, res, async () => {
       try {
-        console.log('Login attempt debug:', {
-          body: req.body,
-          session: req.session,
-          authService: {
-            methods: Object.getOwnPropertyNames(Object.getPrototypeOf(this.authService)),
-            type: this.authService.constructor.name
-          }
-        });
-
         const { email, password } = req.body;
         
         if (!email || !password) {
@@ -202,11 +193,6 @@ class AuthController extends BaseController {
 
         try {
           const user = await this.authService.authenticate(email, password);
-          console.log('User authenticated:', {
-            id: user?.id,
-            email: user?.email,
-            roles: user?.userRoles?.map(ur => ur.role.name)
-          });
 
           await new Promise((resolve, reject) => {
             req.logIn(user, (err) => {
@@ -216,11 +202,6 @@ class AuthController extends BaseController {
               }
               resolve();
             });
-          });
-
-          console.log('Session established:', {
-            user: req.user,
-            sessionID: req.sessionID
           });
 
           const isApiRequest = req.xhr || 
@@ -329,7 +310,6 @@ class MicropostController extends BaseController {
   async index(req, res) {
     return this.handleRequest(req, res, async () => {
       try {
-        console.log('Starting micropost index request');
         const [microposts, categories] = await Promise.all([
           this.micropostService.getAllMicroposts(),
           this.micropostService.prisma.category.findMany({
@@ -344,8 +324,6 @@ class MicropostController extends BaseController {
           })
         ]);
 
-        console.log('Retrieved microposts:', microposts);
-        console.log('Retrieved categories:', categories);
 
         const micropostsWithLikes = await Promise.all(
           microposts.map(async (micropost) => {
@@ -365,7 +343,6 @@ class MicropostController extends BaseController {
           })
         );
 
-        console.log('Microposts with likes:', micropostsWithLikes);
 
         try {
           const templateData = { 
@@ -379,7 +356,6 @@ class MicropostController extends BaseController {
             totalPages: 1
           };
 
-          console.log('Rendering template with data:', templateData);
           res.render('pages/public/microposts/index', templateData);
         } catch (renderError) {
           console.error('Template rendering error:', {
