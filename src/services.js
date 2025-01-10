@@ -236,7 +236,7 @@ class AuthService extends BaseService {
   }
 
   // ユーザー登録
-  async signup({ email, password, name, terms }) {
+  async signup({ email, password, name, terms, roles = ['user'] }) {
     try {
       // 入力値の検証
       ValidationUtils.validateEmail(email);
@@ -258,6 +258,17 @@ class AuthService extends BaseService {
 
       // トランザクションでユーザー作成
       return await this.executeTransaction(async (prisma) => {
+        // 指定されたロールの取得
+        const availableRoles = await prisma.role.findMany({
+          where: {
+            name: { in: roles }
+          }
+        });
+
+        if (availableRoles.length === 0) {
+          throw new Error('指定されたロールが見つかりません');
+        }
+
         // ユーザーの作成
         const user = await prisma.user.create({
           data: {
@@ -265,13 +276,13 @@ class AuthService extends BaseService {
             password: hashedPassword,
             name,
             userRoles: {
-              create: {
+              create: availableRoles.map(role => ({
                 role: {
                   connect: {
-                    name: 'user'
+                    id: role.id
                   }
                 }
-              }
+              }))
             },
             profile: {
               create: {
@@ -301,40 +312,97 @@ class AuthService extends BaseService {
   // 認証の核となるメソッド
   async authenticate(email, password) {
     try {
+      console.log('Authentication attempt:', { email });
+
       const user = await this._findUserByEmail(email);
+      console.log('User found:', {
+        id: user?.id,
+        email: user?.email,
+        hashedPassword: user?.password ? 'exists' : 'missing'
+      });
+
       if (!user) {
-        throw new AuthError('INVALID_CREDENTIALS');
+        console.log('Authentication failed: User not found');
+        throw new Error('メールアドレスまたはパスワードが正しくありません');
       }
 
       const isValid = await this._validatePassword(password, user.password);
+      console.log('Password validation:', { isValid });
+
       if (!isValid) {
-        throw new AuthError('INVALID_CREDENTIALS');
+        console.log('Authentication failed: Invalid password');
+        throw new Error('メールアドレスまたはパスワードが正しくありません');
       }
 
-      return user;
+      // ユーザーロールの取得
+      const userWithRoles = await this.prisma.user.findUnique({
+        where: { id: user.id },
+        include: {
+          userRoles: {
+            include: { role: true }
+          }
+        }
+      });
+
+      console.log('Authentication successful:', {
+        id: userWithRoles.id,
+        email: userWithRoles.email,
+        roles: userWithRoles.userRoles.map(ur => ur.role.name)
+      });
+
+      return userWithRoles;
     } catch (error) {
-      this.handleError(error, { email });
+      console.error('Authentication error in service:', {
+        error: error.message,
+        stack: error.stack,
+        type: error.constructor.name
+      });
+      throw error;
     }
   }
 
   // メールアドレスでユーザーを検索
   async _findUserByEmail(email) {
-    return await this.prisma.user.findUnique({
-      where: { email },
-      include: {
-        profile: true,
-        userRoles: {
-          include: {
-            role: true
+    try {
+      console.log('Finding user by email:', { email });
+      const user = await this.prisma.user.findUnique({
+        where: { email },
+        include: {
+          userRoles: {
+            include: { role: true }
           }
         }
-      }
-    });
+      });
+      console.log('User search result:', {
+        found: !!user,
+        id: user?.id,
+        email: user?.email,
+        roles: user?.userRoles?.map(ur => ur.role.name)
+      });
+      return user;
+    } catch (error) {
+      console.error('Error finding user:', {
+        error: error.message,
+        email
+      });
+      throw error;
+    }
   }
 
   // パスワードの検証
-  async _validatePassword(password, hashedPassword) {
-    return await bcrypt.compare(password, hashedPassword);
+  async _validatePassword(inputPassword, hashedPassword) {
+    try {
+      console.log('Validating password');
+      const isValid = await bcrypt.compare(inputPassword, hashedPassword);
+      console.log('Password validation result:', { isValid });
+      return isValid;
+    } catch (error) {
+      console.error('Password validation error:', {
+        error: error.message,
+        stack: error.stack
+      });
+      throw error;
+    }
   }
 
   // パスワード変更

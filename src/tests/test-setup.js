@@ -1,6 +1,7 @@
 const request = require('supertest');
 const { PrismaClient } = require('@prisma/client');
 const Application = require('../app');
+const bcrypt = require('bcrypt');
 
 class TestServer {
   constructor() {
@@ -10,11 +11,9 @@ class TestServer {
   }
 
   async initialize() {
-    console.log('Initializing test server...');
     const application = new Application();
     this.app = application;
     this.server = await application.initialize();
-    console.log('Test server initialized');
   }
 
   getServer() {
@@ -31,52 +30,39 @@ class TestServer {
       // 依存関係の順序に従って削除
       // 1. 通知関連
       await this.prisma.notification.deleteMany();
-      console.log('Cleaned notifications');
 
       // 2. いいね関連
       await this.prisma.like.deleteMany();
-      console.log('Cleaned likes');
 
       // 3. コメント関連
       await this.prisma.comment.deleteMany();
-      console.log('Cleaned comments');
 
       // 4. マイクロポストとカテゴリーの関連
       await this.prisma.categoryMicropost.deleteMany();
-      console.log('Cleaned category-micropost relations');
 
       // 5. マイクロポスト
       await this.prisma.micropost.deleteMany();
-      console.log('Cleaned microposts');
 
       // 6. カテゴリー
       await this.prisma.category.deleteMany();
-      console.log('Cleaned categories');
 
       // 7. ユーザープロフィール
       await this.prisma.userProfile.deleteMany();
-      console.log('Cleaned user profiles');
 
       // 8. フォロー関係
       await this.prisma.follow.deleteMany();
-      console.log('Cleaned follows');
 
       // 9. ユーザーロール
       await this.prisma.userRole.deleteMany();
-      console.log('Cleaned user roles');
 
       // 10. ロール
       await this.prisma.role.deleteMany();
-      console.log('Cleaned roles');
 
       // 11. ユーザー
       await this.prisma.user.deleteMany();
-      console.log('Cleaned users');
 
       // デフォルトロールの作成
       await this.setupDefaultRoles();
-
-      console.log('=== Database Cleanup Complete ===\n');
     } catch (error) {
       console.error('Database cleanup failed:', error);
       throw error;
@@ -84,7 +70,6 @@ class TestServer {
   }
 
   async setupDefaultRoles() {
-    console.log('\n=== Setting up default roles ===');
     try {
       const roles = [
         { name: 'user', description: 'Regular user role' },
@@ -99,9 +84,7 @@ class TestServer {
           create: role
         });
       }
-
-      console.log('Default roles created:', roles.map(r => r.name));
-      console.log('=== Role setup complete ===\n');
+      console.log('Default roles setup completed');
     } catch (error) {
       console.error('Failed to setup default roles:', error);
       throw error;
@@ -182,6 +165,73 @@ class TestServer {
         }
       }
     });
+  }
+
+  async createTestUser() {
+    try {
+      console.log('Creating test user...');
+      
+      // パスワードのハッシュ化
+      const hashedPassword = await bcrypt.hash('password123', 10);
+
+      const user = await this.prisma.user.create({
+        data: {
+          email: 'test@example.com',
+          password: hashedPassword,
+          name: 'TestUser',
+          userRoles: {
+            create: {
+              role: {
+                connect: {
+                  name: 'user'
+                }
+              }
+            }
+          },
+          profile: {
+            create: {
+              avatarPath: '/uploads/default-avatar.png'
+            }
+          }
+        },
+        include: {
+          userRoles: {
+            include: {
+              role: true
+            }
+          }
+        }
+      });
+
+      console.log('Test user created successfully:', {
+        id: user.id,
+        email: user.email,
+        roles: user.userRoles.map(ur => ur.role.name)
+      });
+
+      return user;
+    } catch (error) {
+      console.error('Failed to create test user:', error);
+      throw error;
+    }
+  }
+
+  async loginUser(email, password) {
+    console.log(`Attempting to login user: ${email}`);
+    const response = await request(this.server)
+      .post('/auth/login')
+      .send({
+        email,
+        password,
+        _csrf: 'test-csrf-token'
+      });
+    
+    console.log('Login response:', {
+      status: response.status,
+      location: response.headers.location
+    });
+    
+    return response;
   }
 
   async cleanup() {

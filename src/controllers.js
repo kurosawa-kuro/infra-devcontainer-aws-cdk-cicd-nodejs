@@ -154,8 +154,14 @@ class AuthController extends BaseController {
 
   async signup(req, res) {
     return this.handleRequest(req, res, async () => {
-      const { email, password, name, terms } = req.body;
-      const user = await this.authService.signup({ email, password, name, terms });
+      const { email, password, name, terms, roles } = req.body;
+      const user = await this.authService.signup({ 
+        email, 
+        password, 
+        name, 
+        terms,
+        roles: roles ? (Array.isArray(roles) ? roles : [roles]) : ['user']
+      });
       await new Promise((resolve, reject) => {
         req.logIn(user, (err) => err ? reject(err) : resolve());
       });
@@ -177,51 +183,76 @@ class AuthController extends BaseController {
   async login(req, res) {
     return this.handleRequest(req, res, async () => {
       try {
-        const user = await this.authService.login(req, res);
+        console.log('Login attempt debug:', {
+          body: req.body,
+          session: req.session,
+          authService: {
+            methods: Object.getOwnPropertyNames(Object.getPrototypeOf(this.authService)),
+            type: this.authService.constructor.name
+          }
+        });
+
+        const { email, password } = req.body;
         
-        this.logger.info('User login successful', {
-          userId: user.id,
-          email: user.email
-        });
-
-        const isApiRequest = req.xhr || 
-                           req.headers.accept?.toLowerCase().includes('application/json') ||
-                           req.headers['x-requested-with']?.toLowerCase() === 'xmlhttprequest';
-
-        const redirectUrl = req.session.returnTo || '/';
-        delete req.session.returnTo;
-
-        if (isApiRequest) {
-          return this.sendResponse(req, res, {
-            success: true,
-            message: 'ログインしました',
-            data: { userId: user.id },
-            redirectUrl
-          });
+        if (!email || !password) {
+          this.logger.warn('Login failed: Missing credentials');
+          req.flash('error', 'メールアドレスとパスワードを入力してください');
+          return res.redirect('/auth/login');
         }
 
-        req.flash('success', 'ログインしました');
-        return res.redirect(redirectUrl);
+        try {
+          const user = await this.authService.authenticate(email, password);
+          console.log('User authenticated:', {
+            id: user?.id,
+            email: user?.email,
+            roles: user?.userRoles?.map(ur => ur.role.name)
+          });
+
+          await new Promise((resolve, reject) => {
+            req.logIn(user, (err) => {
+              if (err) {
+                console.error('Login session error:', err);
+                reject(err);
+              }
+              resolve();
+            });
+          });
+
+          console.log('Session established:', {
+            user: req.user,
+            sessionID: req.sessionID
+          });
+
+          const isApiRequest = req.xhr || 
+                             req.headers.accept?.toLowerCase().includes('application/json') ||
+                             req.headers['x-requested-with']?.toLowerCase() === 'xmlhttprequest';
+
+          if (isApiRequest) {
+            return this.sendResponse(req, res, {
+              success: true,
+              message: 'ログインしました',
+              redirectUrl: '/'
+            });
+          }
+
+          return res.redirect('/');
+        } catch (error) {
+          console.error('Authentication error:', {
+            error: error.message,
+            stack: error.stack,
+            type: error.constructor.name
+          });
+
+          req.flash('error', 'メールアドレスまたはパスワードが正しくありません');
+          return res.redirect('/auth/login');
+        }
       } catch (error) {
-        this.logger.error('Login failed', {
+        console.error('Login handler error:', {
           error: error.message,
-          email: req.body.email
+          stack: error.stack,
+          type: error.constructor.name
         });
-
-        const isApiRequest = req.xhr || 
-                           req.headers.accept?.toLowerCase().includes('application/json') ||
-                           req.headers['x-requested-with']?.toLowerCase() === 'xmlhttprequest';
-
-        if (isApiRequest) {
-          return this.sendResponse(req, res, {
-            success: false,
-            message: 'ログインに失敗しました',
-            status: 401
-          });
-        }
-
-        req.flash('error', 'ログインに失敗しました');
-        return res.redirect('/auth/login');
+        throw error;
       }
     });
   }
