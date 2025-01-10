@@ -77,61 +77,115 @@ describe('Authentication Integration Tests', () => {
   });
 
   describe('User Login', () => {
-    let testUser;
+    describe('Regular User Login', () => {
+      let testUser;
 
-    beforeEach(async () => {
-      const setup = await testServer.setupTestEnvironment({ 
-        createUser: true,
-        userData: {
-          email: 'user@example.com',
-          password: 'password',
-          name: 'TestUser'
-        }
+      beforeEach(async () => {
+        const setup = await testServer.setupTestEnvironment({ 
+          createUser: true,
+          userData: {
+            email: 'user@example.com',
+            name: 'TestUser'
+          }
+        });
+        testUser = setup.testUser;
+        console.log('Test user created:', {
+          id: testUser.id,
+          email: testUser.email
+        });
       });
-      testUser = setup.testUser;
-      console.log('Test user created:', {
-        id: testUser.id,
-        email: testUser.email
+
+      it('should successfully login with correct credentials', async () => {
+        console.log('\n--- Testing: Regular User Login ---');
+        try {
+          const loginData = {
+            email: testUser.email,
+            password: 'password',
+            _csrf: 'test-csrf-token'
+          };
+
+          console.log('Login attempt with:', {
+            email: loginData.email,
+            password: loginData.password
+          });
+
+          const response = await agent
+            .post('/auth/login')
+            .send(loginData);
+
+          expect(response.status).toBe(302);
+          expect(response.headers.location).toBe('/');
+          expect(response.headers['set-cookie']).toBeDefined();
+
+          // セッション情報の確認
+          const sessionResponse = await request(server)
+            .get('/auth/session')
+            .set('Cookie', response.headers['set-cookie']);
+
+          expect(sessionResponse.status).toBe(200);
+          expect(sessionResponse.body.user).toBeTruthy();
+          expect(sessionResponse.body.user.email).toBe(testUser.email);
+        } catch (error) {
+          console.error('Login test failed:', {
+            error: error.message,
+            stack: error.stack
+          });
+          throw error;
+        }
       });
     });
 
-    it('should successfully login with correct credentials', async () => {
-      console.log('\n--- Testing: User Login ---');
-      try {
-        const loginData = {
-          email: testUser.email,
-          password: 'password',
-          _csrf: 'test-csrf-token'
-        };
+    describe('Admin User Login', () => {
+      let adminUser;
 
-        console.log('Login attempt with:', {
-          email: loginData.email,
-          password: loginData.password
+      beforeEach(async () => {
+        adminUser = await testServer.createTestAdmin();
+        console.log('Admin user created:', {
+          id: adminUser.id,
+          email: adminUser.email,
+          roles: adminUser.userRoles.map(ur => ur.role.name)
         });
+      });
 
-        const response = await agent
-          .post('/auth/login')
-          .send(loginData);
+      it('should successfully login with admin credentials', async () => {
+        console.log('\n--- Testing: Admin User Login ---');
+        try {
+          const loginData = {
+            email: adminUser.email,
+            password: 'password',
+            _csrf: 'test-csrf-token'
+          };
 
-        expect(response.status).toBe(302);
-        expect(response.headers.location).toBe('/');
-        expect(response.headers['set-cookie']).toBeDefined();
+          console.log('Login attempt with:', {
+            email: loginData.email,
+            password: loginData.password
+          });
 
-        // セッション情報の確認
-        const sessionResponse = await request(server)
-          .get('/auth/session')
-          .set('Cookie', response.headers['set-cookie']);
+          const response = await agent
+            .post('/auth/login')
+            .send(loginData);
 
-        expect(sessionResponse.status).toBe(200);
-        expect(sessionResponse.body.user).toBeTruthy();
-        expect(sessionResponse.body.user.email).toBe(testUser.email);
-      } catch (error) {
-        console.error('Login test failed:', {
-          error: error.message,
-          stack: error.stack
-        });
-        throw error;
-      }
+          expect(response.status).toBe(302);
+          expect(response.headers.location).toBe('/');
+          expect(response.headers['set-cookie']).toBeDefined();
+
+          // セッション情報の確認
+          const sessionResponse = await request(server)
+            .get('/auth/session')
+            .set('Cookie', response.headers['set-cookie']);
+
+          expect(sessionResponse.status).toBe(200);
+          expect(sessionResponse.body.user).toBeTruthy();
+          expect(sessionResponse.body.user.email).toBe(adminUser.email);
+          expect(sessionResponse.body.user.roles).toContain('admin');
+        } catch (error) {
+          console.error('Admin login test failed:', {
+            error: error.message,
+            stack: error.stack
+          });
+          throw error;
+        }
+      });
     });
   });
 

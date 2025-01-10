@@ -390,6 +390,65 @@ class TestServer {
     }
     console.log('Test server closed');
   }
+
+  async createTestAdmin() {
+    try {
+      console.log('Creating test admin user...');
+      
+      // パスワードのハッシュ化
+      const hashedPassword = await bcrypt.hash('password', 10);
+
+      const admin = await this.prisma.user.create({
+        data: {
+          email: 'admin@example.com',
+          password: hashedPassword,
+          name: 'AdminUser',
+          userRoles: {
+            create: [
+              {
+                role: {
+                  connect: {
+                    name: 'admin'
+                  }
+                }
+              },
+              {
+                role: {
+                  connect: {
+                    name: 'user'
+                  }
+                }
+              }
+            ]
+          },
+          profile: {
+            create: {
+              avatarPath: '/uploads/default-avatar.png'
+            }
+          }
+        },
+        include: {
+          userRoles: {
+            include: {
+              role: true
+            }
+          },
+          profile: true
+        }
+      });
+
+      console.log('Test admin created successfully:', {
+        id: admin.id,
+        email: admin.email,
+        roles: admin.userRoles.map(ur => ur.role.name)
+      });
+
+      return admin;
+    } catch (error) {
+      console.error('Failed to create test admin:', error);
+      throw error;
+    }
+  }
 }
 
 let testServer;
