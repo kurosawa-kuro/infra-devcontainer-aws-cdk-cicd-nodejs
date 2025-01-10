@@ -14,12 +14,11 @@ const {
 
 const setupRoutes = require('./routes');
 const {
-  setupBasicMiddleware,
+  setupBasic,
   setupAuthMiddleware,
-  setupRequestLogging,
-  setupErrorLogging,
-  setupSecurity,
 } = require('./middleware');
+const { middleware: loggingMiddleware } = require('./middleware/logging');
+const { setupSecurity } = require('./middleware/security');
 
 // Services
 const {
@@ -137,10 +136,9 @@ class Application {
 
   // Middleware Setup Methods
   setupMiddleware() {
-    setupBasicMiddleware(this.app);
+    setupBasic(this.app);
     setupAuthMiddleware(this.app, CONFIG);
-    setupRequestLogging(this.app, logger);
-    setupErrorLogging(this.app, logger);
+    this.app.use(loggingMiddleware.request);
     setupSecurity(this.app);
     this.app.use(handleCSRFError(this.errorHandler));
   }
