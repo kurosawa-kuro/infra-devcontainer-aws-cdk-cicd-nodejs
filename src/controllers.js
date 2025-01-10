@@ -264,6 +264,22 @@ class AuthController extends BaseController {
       }
     });
   }
+
+  async getSession(req, res) {
+    return this.handleRequest(req, res, async () => {
+      const user = req.user;
+      const roles = user.userRoles.map(ur => ur.role.name);
+
+      return res.status(200).json({
+        user: {
+          id: user.id,
+          email: user.email,
+          name: user.name,
+          roles: roles
+        }
+      });
+    });
+  }
 }
 
 class MicropostController extends BaseController {

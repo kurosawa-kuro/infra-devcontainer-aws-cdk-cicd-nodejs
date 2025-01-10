@@ -103,6 +103,7 @@ function setupRoutes(app, controllers, fileUploader) {
   });
   authRouter.post('/login', forwardAuthenticated, asyncHandler((req, res) => auth.login(req, res)));
   authRouter.get('/logout', isAuthenticated, asyncHandler((req, res) => auth.logout(req, res)));
+  authRouter.get('/session', isAuthenticated, asyncHandler((req, res) => auth.getSession(req, res)));
   app.use('/auth', authRouter);
 
   // ===================================
