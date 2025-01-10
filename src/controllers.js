@@ -460,18 +460,18 @@ class MicropostController extends BaseController {
 class ProfileController extends BaseController {
   constructor(services, errorHandler, logger) {
     super(services, errorHandler, logger);
+    
+    // 必要なサービスの存在確認
+    const requiredServices = ['profile', 'follow', 'micropost'];
+    const missingServices = requiredServices.filter(service => !services[service]);
+    
+    if (missingServices.length > 0) {
+      throw new Error(`Missing required services for ProfileController: ${missingServices.join(', ')}`);
+    }
+
     this.profileService = services.profile;
     this.followService = services.follow;
-    this.logger = logger;
-
-    // サービスの存在確認
-    if (!this.profileService) {
-      throw new Error('Profile service is not initialized in ProfileController');
-    }
-
-    if (!this.followService) {
-      throw new Error('Follow service is not initialized in ProfileController');
-    }
+    this.micropostService = services.micropost;
   }
 
   async show(req, res) {
@@ -931,7 +931,7 @@ class DevelopmentToolsController extends BaseController {
       const [health, dbHealth, recentUsers, recentMicroposts] = await Promise.all([
         this.systemService.getHealth(),
         this.systemService.getDbHealth(),
-        this.profileService.prisma.user.findMany({
+        this.profileService.user.findMany({
           take: 10,
           orderBy: { createdAt: 'desc' },
           include: {
@@ -942,7 +942,7 @@ class DevelopmentToolsController extends BaseController {
             }
           }
         }),
-        this.micropostService.prisma.micropost.findMany({
+        this.micropostService.micropost.findMany({
           take: 10,
           orderBy: { createdAt: 'desc' },
           include: {

@@ -149,9 +149,10 @@ function setupRoutes(app, controllers, fileUploader) {
   adminRouter.post('/users/:id/roles', asyncHandler((req, res) => admin.updateUserRoles(req, res)));
   app.use('/admin', adminRouter);
 
-  // 開発者ツールルート
+  // ===================================
+  // 開発者ツールルート（認証不要）
+  // ===================================
   const developmentToolsRouter = express.Router();
-  developmentToolsRouter.use(isAuthenticated);
   
   // 開発ツールのホーム
   developmentToolsRouter.get('/', asyncHandler(async (req, res) => {
