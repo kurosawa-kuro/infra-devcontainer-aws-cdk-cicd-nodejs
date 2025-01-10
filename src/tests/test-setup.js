@@ -96,11 +96,14 @@ class TestServer {
     let authCookie = null;
 
     if (createUser) {
+      // パスワードのハッシュ化
+      const hashedPassword = await bcrypt.hash('password', 10);
+
       // 一般ユーザーの作成
       testUser = await this.prisma.user.create({
         data: {
           email: userData?.email || 'user@example.com',
-          password: '$2b$10$K.0HwpsoPDGaB/atHp0.YOYZWGqxRm6hK3o3tgB.4kBSDGZEQw0iK', // 'password'のハッシュ
+          password: hashedPassword,
           name: userData?.name || 'TestUser',
           profile: {
             create: {
