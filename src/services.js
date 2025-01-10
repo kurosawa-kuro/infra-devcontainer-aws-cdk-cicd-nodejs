@@ -208,6 +208,25 @@ class BaseService {
   }
 }
 
+// 認証エラークラスの追加
+class AuthError extends Error {
+  constructor(code, message) {
+    super(message || AuthError.getDefaultMessage(code));
+    this.code = code;
+  }
+
+  static getDefaultMessage(code) {
+    const messages = {
+      INVALID_CREDENTIALS: 'メールアドレスまたはパスワードが正しくありません',
+      USER_NOT_FOUND: 'ユーザーが見つかりません',
+      INVALID_CURRENT_PASSWORD: '現在のパスワードが正しくありません',
+      INVALID_TOKEN: '無効なトークンです',
+      TOKEN_EXPIRED: 'トークンの有効期限が切れています'
+    };
+    return messages[code] || '認証エラーが発生しました';
+  }
+}
+
 // 認証関連サービス
 class AuthService extends BaseService {
   constructor(prisma, logger) {
@@ -216,7 +235,67 @@ class AuthService extends BaseService {
     this.cleanupInterval = null;
   }
 
-  // CSRF関連のメソッド
+  // 認証の核となるメソッド
+  async authenticate(email, password) {
+    try {
+      const user = await this._findUserByEmail(email);
+      if (!user) {
+        throw new AuthError('INVALID_CREDENTIALS');
+      }
+
+      const isValid = await this._validatePassword(password, user.password);
+      if (!isValid) {
+        throw new AuthError('INVALID_CREDENTIALS');
+      }
+
+      return user;
+    } catch (error) {
+      this.handleError(error, { context: 'User authentication', email });
+    }
+  }
+
+  // サインアップ処理
+  async signup({ email, password, name }) {
+    try {
+      await this._validateSignupData(email, password, name);
+      const hashedPassword = await this._hashPassword(password);
+      
+      return await this.executeTransaction(async (prisma) => {
+        const user = await this._createUser(prisma, {
+          email,
+          name,
+          password: hashedPassword
+        });
+
+        await this._assignDefaultRole(prisma, user.id);
+        return user;
+      });
+    } catch (error) {
+      this.handleError(error, { context: 'User signup' });
+    }
+  }
+
+  // パスワード変更
+  async changePassword(userId, currentPassword, newPassword) {
+    try {
+      const user = await this.findUserById(userId);
+      if (!user) {
+        throw new AuthError('USER_NOT_FOUND');
+      }
+
+      const isValid = await this._validatePassword(currentPassword, user.password);
+      if (!isValid) {
+        throw new AuthError('INVALID_CURRENT_PASSWORD');
+      }
+
+      const hashedPassword = await this._hashPassword(newPassword);
+      await this._updatePassword(userId, hashedPassword);
+    } catch (error) {
+      this.handleError(error, { context: 'Password change' });
+    }
+  }
+
+  // CSRFトークン管理
   generateCsrfToken(sessionId) {
     const token = require('crypto').randomBytes(32).toString('hex');
     this.csrfTokens.set(sessionId, {
@@ -239,136 +318,70 @@ class AuthService extends BaseService {
     return storedData.token === token;
   }
 
-  // ユーザー認証メソッド
-  async signup({ email, password, passwordConfirmation, name, csrfToken, sessionId }) {
-    try {
-      if (!this.validateCsrfToken(sessionId, csrfToken)) {
-        throw new Error('Invalid CSRF token');
-      }
-
-      // バリデーション
-      ValidationUtils.validateEmail(email);
-      ValidationUtils.validatePassword(password, passwordConfirmation);
-      ValidationUtils.validateUsername(name);
-
-      return await this.executeTransaction(async (prisma) => {
-        // 既存ユーザーチェック
-        const existingUser = await prisma.user.findUnique({ where: { email } });
-        if (existingUser) {
-          throw new Error('このメールアドレスは既に登録されています');
-        }
-
-        const hashedPassword = await bcrypt.hash(password, 10);
-        const userRole = await prisma.role.findUnique({ where: { name: 'user' } });
-        
-        if (!userRole) {
-          throw new Error('デフォルトのユーザーロールが見つかりません');
-        }
-
-        return prisma.user.create({
-          data: {
-            email,
-            name,
-            password: hashedPassword,
-            userRoles: {
-              create: { roleId: userRole.id }
-            }
-          },
-          include: {
-            userRoles: {
-              include: { role: true }
-            }
-          }
-        });
-      });
-    } catch (error) {
-      this.handleError(error, { context: 'User signup' });
-    }
-  }
-
-  async login(req, res) {
-    try {
-      const csrfToken = this.generateCsrfToken(req.sessionID);
-      res.cookie('XSRF-TOKEN', csrfToken, {
-        httpOnly: false,
-        secure: process.env.NODE_ENV === 'production',
-        sameSite: 'Lax'
-      });
-
-      return new Promise((resolve, reject) => {
-        passport.authenticate('local', (err, user, info) => {
-          if (err) return reject(err);
-          if (!user) return reject(new Error(info?.message || 'ログインに失敗しました'));
-          
-          req.logIn(user, (err) => {
-            if (err) return reject(err);
-            resolve(user);
-          });
-        })(req, res);
-      });
-    } catch (error) {
-      this.handleError(error, { context: 'User login' });
-    }
-  }
-
-  async logout(req) {
-    try {
-      if (!req.session) return;
-
-      this.csrfTokens.delete(req.sessionID);
-
-      return new Promise((resolve, reject) => {
-        const logoutCallback = (err) => {
-          if (err) {
-            this.handleError(err, { context: 'logout' });
-            return reject(err);
-          }
-
-          if (req.session) {
-            req.session.destroy((err) => {
-              if (err) {
-                this.handleError(err, { context: 'session destruction' });
-                return reject(err);
-              }
-              resolve();
-            });
-          } else {
-            resolve();
-          }
-        };
-
-        if (req.logout) {
-          req.logout(logoutCallback);
-        } else {
-          logoutCallback();
-        }
-      });
-    } catch (error) {
-      this.handleError(error, { context: 'User logout' });
-    }
-  }
-
-  // トークン管理
-  startTokenCleanup() {
-    if (this.cleanupInterval) {
-      clearInterval(this.cleanupInterval);
-    }
-
-    this.cleanupInterval = setInterval(() => {
-      const now = Date.now();
-      for (const [sessionId, data] of this.csrfTokens.entries()) {
-        if (now - data.createdAt > CONSTANTS.AUTH.TOKEN_EXPIRY) {
-          this.csrfTokens.delete(sessionId);
+  // プライベートメソッド
+  async _findUserByEmail(email) {
+    return this.prisma.user.findUnique({
+      where: { email },
+      include: {
+        userRoles: {
+          include: { role: true }
         }
       }
-    }, CONSTANTS.AUTH.TOKEN_EXPIRY); // 24時間ごとにクリーンアップ
+    });
   }
 
-  stopTokenCleanup() {
-    if (this.cleanupInterval) {
-      clearInterval(this.cleanupInterval);
-      this.cleanupInterval = null;
+  async _validatePassword(inputPassword, hashedPassword) {
+    return bcrypt.compare(inputPassword, hashedPassword);
+  }
+
+  async _hashPassword(password) {
+    return bcrypt.hash(password, 10);
+  }
+
+  async _validateSignupData(email, password, name) {
+    ValidationUtils.validateEmail(email);
+    ValidationUtils.validatePassword(password);
+    ValidationUtils.validateUsername(name);
+
+    const existingUser = await this._findUserByEmail(email);
+    if (existingUser) {
+      throw new AuthError('USER_EXISTS', 'このメールアドレスは既に登録されています');
     }
+  }
+
+  async _createUser(prisma, userData) {
+    return prisma.user.create({
+      data: userData,
+      include: {
+        userRoles: {
+          include: { role: true }
+        }
+      }
+    });
+  }
+
+  async _assignDefaultRole(prisma, userId) {
+    const userRole = await prisma.role.findUnique({
+      where: { name: 'user' }
+    });
+    
+    if (!userRole) {
+      throw new Error('デフォルトのユーザーロールが見つかりません');
+    }
+
+    return prisma.userRole.create({
+      data: {
+        userId,
+        roleId: userRole.id
+      }
+    });
+  }
+
+  async _updatePassword(userId, hashedPassword) {
+    return this.prisma.user.update({
+      where: { id: userId },
+      data: { password: hashedPassword }
+    });
   }
 }
 
@@ -1028,7 +1041,7 @@ class SystemService extends BaseService {
   }
 }
 
-// ロスポート認証関連サービス
+// パスポート関連サービス
 class PassportService extends BaseService {
   constructor(prisma, logger) {
     super(prisma, logger);
@@ -1037,93 +1050,38 @@ class PassportService extends BaseService {
     this.initialized = false;
   }
 
-  // パスポート設定メソッド
+  // 後方互換性のために残す
   configurePassport() {
+    return this.initialize();
+  }
+
+  // Passport設定の初期化
+  initialize() {
     if (this.initialized) {
       this.logWarn('Passport is already configured');
       return this.passport;
     }
 
     try {
-      // ローカル認証戦略の設定
-      this.passport.use(new this.LocalStrategy(
-        {
-          usernameField: 'email',
-          passwordField: 'password'
-        },
-        this._verifyUser.bind(this)
-      ));
-
-      // シリアライズ設定
-      this.passport.serializeUser((user, done) => {
-        done(null, user.id);
-      });
-
-      // デシリアライズ設定
-      this.passport.deserializeUser(this._deserializeUser.bind(this));
-
+      this._configureLocalStrategy();
+      this._configureSerializationMethods();
       this.initialized = true;
       this.logInfo('Passport configuration completed');
-      return this.passport;
+      return this.passport.initialize();
     } catch (error) {
-      this.handleError(error, { context: 'Configure passport' });
+      this.handleError(error, { context: 'Initialize passport' });
     }
   }
 
-  // ユーザー検証メソッド
-  async _verifyUser(email, password, done) {
-    try {
-      const user = await this.prisma.user.findUnique({
-        where: { email: email }
-      });
-
-      if (!user) {
-        return done(null, false, { message: 'メールアドレスまたはパスワードが正しくありません。' });
-      }
-
-      const isValid = await this._validatePassword(password, user.password);
-      if (!isValid) {
-        return done(null, false, { message: 'メールアドレスまたはパスワードが正しくありません。' });
-      }
-
-      return done(null, user);
-    } catch (error) {
-      this.handleError(error, { context: 'Verify user', email });
-      return done(error);
-    }
-  }
-
-  // ユーザーデシリアライズメソッド
-  async _deserializeUser(id, done) {
-    try {
-      const user = await this.findUserById(id, false);
-      done(null, user);
-    } catch (error) {
-      this.handleError(error, { context: 'Deserialize user', userId: id });
-      done(error);
-    }
-  }
-
-  // パスワード検証メソッド
-  async _validatePassword(inputPassword, hashedPassword) {
-    try {
-      return await bcrypt.compare(inputPassword, hashedPassword);
-    } catch (error) {
-      this.handleError(error, { context: 'Validate password' });
-      return false;
-    }
-  }
-
-  // パスポートインスタンス取得
-  getPassport() {
+  // セッション管理の初期化
+  session() {
     if (!this.initialized) {
-      this.logWarn('Passport is not configured yet');
-      this.configurePassport();
+      this.initialize();
     }
-    return this.passport;
+    return this.passport.session();
   }
 
-  // 認証ミドルウェア生成
+  // 認証ミドルウェアの生成
   createAuthMiddleware() {
     return this.passport.authenticate('local', {
       failureRedirect: '/login',
@@ -1131,35 +1089,61 @@ class PassportService extends BaseService {
     });
   }
 
-  // セッション確認ミドルウェア
-  ensureAuthenticated(req, res, next) {
-    if (req.isAuthenticated()) {
-      return next();
-    }
-    res.redirect('/login');
+  // プライベートメソッド
+  _configureLocalStrategy() {
+    this.passport.use(new this.LocalStrategy(
+      {
+        usernameField: 'email',
+        passwordField: 'password'
+      },
+      async (email, password, done) => {
+        try {
+          const user = await this._verifyUser(email, password);
+          return done(null, user);
+        } catch (error) {
+          this.logError('Authentication failed', error);
+          return done(null, false, { message: error.message });
+        }
+      }
+    ));
   }
 
-  // ロール確認ミドルウェア
-  ensureRole(role) {
-    return async (req, res, next) => {
+  _configureSerializationMethods() {
+    this.passport.serializeUser((user, done) => {
+      done(null, user.id);
+    });
+
+    this.passport.deserializeUser(async (id, done) => {
       try {
-        if (!req.user) {
-          return res.redirect('/login');
-        }
-
-        const user = await this.findUserById(req.user.id, false, true);
-        const hasRole = user.userRoles.some(ur => ur.role.name === role);
-
-        if (hasRole) {
-          return next();
-        }
-
-        res.status(403).json({ error: 'アクセス権限がありません' });
+        const user = await this.findUserById(id, false);
+        done(null, user);
       } catch (error) {
-        this.handleError(error, { context: 'Ensure role', role });
-        res.status(500).json({ error: 'Internal server error' });
+        this.logError('User deserialization failed', error);
+        done(error);
       }
-    };
+    });
+  }
+
+  async _verifyUser(email, password) {
+    const user = await this.prisma.user.findUnique({
+      where: { email },
+      include: {
+        userRoles: {
+          include: { role: true }
+        }
+      }
+    });
+
+    if (!user) {
+      throw new AuthError('INVALID_CREDENTIALS');
+    }
+
+    const isValid = await bcrypt.compare(password, user.password);
+    if (!isValid) {
+      throw new AuthError('INVALID_CREDENTIALS');
+    }
+
+    return user;
   }
 }
 
