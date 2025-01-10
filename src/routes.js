@@ -10,8 +10,18 @@ const session = require('express-session');
 function setupRoutes(app, controllers, fileUploader) {
   const { auth, profile, micropost, system, dev, admin, category, like, notification } = controllers;
 
-  // セッションとクッキーの設定
+  /**
+   * Middleware Order is Critical:
+   * 1. Cookie Parser (Required for session and CSRF)
+   * 2. Session Middleware (Required for CSRF)
+   * 3. CSRF Protection
+   * 4. Routes Configuration
+   */
+
+  // 1. Cookie Parser - Required for sessions
   app.use(cookieParser());
+
+  // 2. Session Configuration - Must come before CSRF
   app.use(session({
     secret: process.env.SESSION_SECRET || 'your-secret-key',
     resave: false,
@@ -23,22 +33,80 @@ function setupRoutes(app, controllers, fileUploader) {
     }
   }));
 
-  // CSRFミドルウェアの設定
-  const csrfProtection = csrf({
-    cookie: true
+  // デバッグ: リクエストヘッダーとセッション情報をログ
+  app.use((req, res, next) => {
+    console.log('\n=== Request Debug Info ===');
+    console.log('Request Headers:', req.headers);
+    console.log('Session ID:', req.sessionID);
+    console.log('Session:', req.session);
+    console.log('Cookies:', req.cookies);
+    console.log('Method:', req.method);
+    console.log('Path:', req.path);
+    console.log('Content-Type:', req.get('Content-Type'));
+    next();
   });
 
-  // グローバルにCSRF保護を適用
+  // 3. CSRF Protection Setup
+  const csrfProtection = csrf({ 
+    cookie: {
+      key: '_csrf',
+      signed: false
+    },
+    value: (req) => {
+      // デバッグ: CSRFトークンの取得試行をログ
+      console.log('\n=== CSRF Token Extraction ===');
+      console.log('Headers:', {
+        'x-csrf-token': req.headers['x-csrf-token'],
+        'x-xsrf-token': req.headers['x-xsrf-token'],
+      });
+      console.log('Cookies:', req.cookies);
+      
+      // マルチパートフォームデータの場合の特別処理
+      if (req.headers['content-type']?.includes('multipart/form-data')) {
+        console.log('Multipart form data detected');
+        // _csrfクッキーからトークンを取得
+        const token = req.cookies['_csrf'];
+        console.log('Token from _csrf cookie:', token);
+        return token;
+      }
+      
+      // 通常のリクエストの場合
+      const token = 
+        req.headers['x-csrf-token'] ||
+        req.headers['x-xsrf-token'] ||
+        req.body?._csrf ||
+        req.query?._csrf;
+      
+      console.log('Selected Token:', token);
+      return token;
+    }
+  });
+  
   app.use(csrfProtection);
 
-  // すべてのレスポンスにCSRFトークンを追加
+  // CSRFトークンをすべてのレスポンスに追加
   app.use((req, res, next) => {
-    res.locals.csrfToken = req.csrfToken();
+    const token = req.csrfToken();
+    console.log('\n=== CSRF Token Generation ===');
+    console.log('Generated Token:', token);
+    
+    // _csrfクッキーを設定
+    res.cookie('_csrf', token, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'Lax'
+    });
+    console.log('Set _csrf cookie:', token);
+    
+    // テンプレートで使用するためにlocalsに設定
+    res.locals.csrfToken = token;
+    console.log('Set token in res.locals.csrfToken');
+    
     next();
   });
 
   // ===================================
-  // Static Assets
+  // Static Assets - No CSRF needed
   // ===================================
   if (process.env.STORAGE_PROVIDER !== 's3') {
     const uploadsPath = path.join(__dirname, 'public', 'uploads');
@@ -102,23 +170,96 @@ function setupRoutes(app, controllers, fileUploader) {
   const micropostRouter = express.Router();
   micropostRouter.use(isAuthenticated);
   
-  // リクエストロギングミドルウェア
-  micropostRouter.use((req, res, next) => {
-    next();
-  });
-  
-  // GETリクエストのルート
-  micropostRouter.get('/', asyncHandler((req, res) => micropost.index(req, res)));
-  micropostRouter.get('/:id', asyncHandler((req, res) => micropost.show(req, res)));
-  
-  // ファイルアップロード用のミドルウェアを先に配置
-  const uploadMiddleware = fileUploader.getUploader().single('image');
-  
-  // POSTリクエストのルート
-  micropostRouter.post('/', uploadMiddleware, asyncHandler((req, res) => {
+  // マルチパートフォームデータの処理
+  micropostRouter.post('/',
+    // 1. マルチパートデータのパース
+    (req, res, next) => {
+      console.log('\n=== Initial Request Debug ===');
+      console.log('Content-Type:', req.get('Content-Type'));
+      console.log('Cookies:', req.cookies);
+      
+      if (!req.is('multipart/form-data')) {
+        return next();
+      }
 
-    return micropost.create(req, res);
-  }));
+      const busboy = require('busboy');
+      const bb = busboy({ headers: req.headers });
+      const fields = {};
+      const fileInfo = {};
+
+      bb.on('file', (name, file, info) => {
+        console.log('\n=== File Field ===');
+        console.log('Field name:', name);
+        console.log('File info:', info);
+        
+        // ファイルストリームを消費
+        file.resume();
+      });
+
+      bb.on('field', (name, val, info) => {
+        console.log('\n=== Form Field ===');
+        console.log('Field name:', name);
+        console.log('Field value:', val);
+        fields[name] = val;
+      });
+
+      bb.on('finish', () => {
+        console.log('\n=== Form Data Complete ===');
+        console.log('All fields:', fields);
+        req.body = fields;
+        next();
+      });
+
+      req.pipe(bb);
+    },
+
+    // 2. CSRF検証
+    (req, res, next) => {
+      console.log('\n=== CSRF Verification ===');
+      console.log('Form CSRF:', req.body?._csrf);
+      console.log('Cookie CSRF:', req.cookies._csrf);
+      
+      if (!req.body?._csrf) {
+        console.log('Error: No CSRF token in form data');
+        return res.status(403).json({ error: 'CSRF token missing' });
+      }
+
+      if (req.body._csrf !== req.cookies._csrf) {
+        console.log('Error: CSRF token mismatch');
+        console.log('Form:', req.body._csrf);
+        console.log('Cookie:', req.cookies._csrf);
+        return res.status(403).json({ error: 'Invalid CSRF token' });
+      }
+
+      next();
+    },
+
+    // 3. ファイルアップロード
+    (req, res, next) => {
+      console.log('\n=== File Upload ===');
+      if (!req.files?.image) {
+        console.log('No file to upload');
+        return next();
+      }
+
+      fileUploader.getUploader().single('image')(req, res, (err) => {
+        if (err) {
+          console.log('Upload error:', err);
+          return next(err);
+        }
+        console.log('Upload success:', req.file);
+        next();
+      });
+    },
+
+    // 4. コントローラー処理
+    asyncHandler(async (req, res) => {
+      console.log('\n=== Controller ===');
+      console.log('Final body:', req.body);
+      console.log('Final file:', req.file);
+      await micropost.create(req, res);
+    })
+  );
   
   // いいね関連のルート
   micropostRouter.post('/:id/like', asyncHandler((req, res) => {

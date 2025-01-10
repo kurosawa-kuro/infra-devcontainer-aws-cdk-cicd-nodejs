@@ -17,7 +17,16 @@
         <div class="bg-white dark:bg-gray-900 rounded-xl shadow-sm border border-gray-200 dark:border-gray-800 mb-8">
             <div class="p-6">
                 <form action="/microposts" method="POST" enctype="multipart/form-data">
+                    <!-- CSRFトークンをフォームの最初のフィールドとして配置 -->
                     <input type="hidden" name="_csrf" value="<%= locals.csrfToken %>">
+                    
+                    <!-- デバッグ情報 -->
+                    <script>
+                        console.log('Form CSRF Token:', '<%= locals.csrfToken %>');
+                        console.log('Cookie CSRF Token:', document.cookie.split('; ').find(row => row.startsWith('_csrf=')).split('=')[1]);
+                    </script>
+                    
+                    <!-- 投稿フォームの内容 -->
                     <div class="space-y-4">
                         <div>
                             <label for="title" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
