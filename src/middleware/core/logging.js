@@ -195,11 +195,13 @@ const errorLogger = (err, req, res, next) => {
 };
 
 // メトリクスの定期的なリセット（1時間ごと）
-setInterval(() => {
-  const metrics = performanceMetrics.getMetrics();
-  logger.info('Performance Metrics', { metrics });
-  performanceMetrics.reset();
-}, 3600000);
+if (process.env.NODE_ENV !== 'test') {
+  setInterval(() => {
+    const metrics = performanceMetrics.getMetrics();
+    logger.info('Performance Metrics', { metrics });
+    performanceMetrics.reset();
+  }, 60 * 60 * 1000); // 1時間
+}
 
 module.exports = {
   logger,

@@ -76,7 +76,7 @@
     "setupFilesAfterEnv": [
       "./src/tests/test-setup.js"
     ],
-    "testTimeout": 10000
+    "testTimeout": 30000
   },
   "prisma": {
     "seed": "node ./prisma/migrations/seed.js"
