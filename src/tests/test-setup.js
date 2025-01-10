@@ -91,18 +91,17 @@ class TestServer {
     }
   }
 
-  async setupTestEnvironment({ createUser = false } = {}) {
-    console.log('Setting up test environment...');
-    let testUser;
-    let authCookie;
+  async setupTestEnvironment({ createUser = false, userData = null } = {}) {
+    let testUser = null;
+    let authCookie = null;
 
     if (createUser) {
-      // テストユーザーの作成
+      // 一般ユーザーの作成
       testUser = await this.prisma.user.create({
         data: {
-          email: 'admin@example.com',
+          email: userData?.email || 'user@example.com',
           password: '$2b$10$K.0HwpsoPDGaB/atHp0.YOYZWGqxRm6hK3o3tgB.4kBSDGZEQw0iK', // 'password'のハッシュ
-          name: 'AdminUser123',
+          name: userData?.name || 'TestUser',
           profile: {
             create: {
               avatarPath: '/uploads/default-avatar.png'
@@ -124,17 +123,17 @@ class TestServer {
         }
       });
 
-      // ログインリクエストの実行
+      // ログイン処理
       const loginResponse = await request(this.server)
         .post('/auth/login')
         .send({
-          email: 'admin@example.com',
-          password: 'password'
+          email: testUser.email,
+          password: 'password',
+          _csrf: 'test-csrf-token'
         });
 
-      // Cookieの取得
-      authCookie = loginResponse.headers['set-cookie'];
       console.log('Login response status:', loginResponse.status);
+      authCookie = loginResponse.headers['set-cookie'];
       console.log('Auth cookie received:', !!authCookie);
     }
 
@@ -212,6 +211,154 @@ class TestServer {
       return user;
     } catch (error) {
       console.error('Failed to create test user:', error);
+      throw error;
+    }
+  }
+
+  async createTestMicropost(userId, data = {}) {
+    try {
+      console.log('Creating test micropost...');
+      const micropost = await this.prisma.micropost.create({
+        data: {
+          title: data.title || 'Test Post',
+          content: data.content || 'This is a test post content',
+          userId: userId,
+          ...data
+        },
+        include: {
+          user: {
+            include: {
+              profile: true
+            }
+          }
+        }
+      });
+
+      console.log('Test micropost created successfully:', {
+        id: micropost.id,
+        title: micropost.title
+      });
+
+      return micropost;
+    } catch (error) {
+      console.error('Failed to create test micropost:', error);
+      throw error;
+    }
+  }
+
+  async createTestCategory(data = {}) {
+    try {
+      console.log('Creating test category...');
+      const category = await this.prisma.category.create({
+        data: {
+          name: data.name || 'Test Category',
+          description: data.description || 'This is a test category',
+          ...data
+        }
+      });
+
+      console.log('Test category created successfully:', {
+        id: category.id,
+        name: category.name
+      });
+
+      return category;
+    } catch (error) {
+      console.error('Failed to create test category:', error);
+      throw error;
+    }
+  }
+
+  async createTestComment(userId, micropostId, data = {}) {
+    try {
+      console.log('Creating test comment...');
+      const comment = await this.prisma.comment.create({
+        data: {
+          content: data.content || 'Test comment content',
+          userId: userId,
+          micropostId: micropostId,
+          ...data
+        },
+        include: {
+          user: {
+            include: {
+              profile: true
+            }
+          }
+        }
+      });
+
+      console.log('Test comment created successfully:', {
+        id: comment.id,
+        content: comment.content
+      });
+
+      return comment;
+    } catch (error) {
+      console.error('Failed to create test comment:', error);
+      throw error;
+    }
+  }
+
+  async createTestLike(userId, micropostId) {
+    try {
+      console.log('Creating test like...');
+      const like = await this.prisma.like.create({
+        data: {
+          userId: userId,
+          micropostId: micropostId
+        },
+        include: {
+          user: {
+            include: {
+              profile: true
+            }
+          }
+        }
+      });
+
+      console.log('Test like created successfully:', {
+        id: like.id,
+        userId: like.userId,
+        micropostId: like.micropostId
+      });
+
+      return like;
+    } catch (error) {
+      console.error('Failed to create test like:', error);
+      throw error;
+    }
+  }
+
+  async createTestNotification(userId, data = {}) {
+    try {
+      console.log('Creating test notification...');
+      const notification = await this.prisma.notification.create({
+        data: {
+          type: data.type || 'LIKE',
+          content: data.content || 'Someone liked your post',
+          userId: userId,
+          isRead: data.isRead ?? false,
+          ...data
+        },
+        include: {
+          user: {
+            include: {
+              profile: true
+            }
+          }
+        }
+      });
+
+      console.log('Test notification created successfully:', {
+        id: notification.id,
+        type: notification.type,
+        content: notification.content
+      });
+
+      return notification;
+    } catch (error) {
+      console.error('Failed to create test notification:', error);
       throw error;
     }
   }
