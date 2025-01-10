@@ -292,7 +292,7 @@ class MicropostController extends BaseController {
             title: '投稿一覧',
             path: req.path,
             user: req.user,
-            csrfToken: req.csrfToken(),
+            csrfToken: res.locals.csrfToken,
             currentPage: 1,
             totalPages: 1
           });

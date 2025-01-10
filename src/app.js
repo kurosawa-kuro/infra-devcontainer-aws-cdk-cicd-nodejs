@@ -8,6 +8,7 @@ const fs = require('fs');
 require('dotenv').config();
 const passport = require('passport');
 const logger = require('./logger');
+const { checkInstanceType } = require('./util');
 
 const setupRoutes = require('./routes');
 const {
@@ -355,6 +356,14 @@ class ErrorHandler {
     this.createDetailedErrorLog(error, req);
     return this.sendErrorResponse(req, res, 404, error.message);
   }
+
+  handleInternalError(req, res, error) {
+    this.createDetailedErrorLog(error, req);
+    const message = process.env.NODE_ENV === 'production' 
+      ? 'サーバーエラーが発生しました' 
+      : error.message;
+    return this.sendErrorResponse(req, res, 500, message);
+  }
 }
 
 // メインのアプリケーションクラス
@@ -362,23 +371,10 @@ class Application {
   constructor() {
     this.app = express();
     this.prisma = new PrismaClient();
-    this.port = CONFIG.app.port;
-    
-    this.setupDirectories();
-    setupSecurity(this.app);
-    this.app.use(express.static(path.join(__dirname, 'public')));
-    this.app.use('/uploads', express.static(path.join(__dirname, 'public/uploads')));
-    
-    // Prismaインスタンスを設定
-    this.app.set('prisma', this.prisma);
-    
-    this.initializeCore();
-    this.services = this.initializeServices();
-    this.controllers = this.initializeControllers();
-
-    // グローバル変数の設定
-    this.app.locals.PATHS = PATHS;
-    this.app.locals.LIMITS = LIMITS;
+    this.storageConfig = new StorageConfig();
+    this.fileUploader = new FileUploader(this.storageConfig);
+    this.errorHandler = new ErrorHandler(this.storageConfig.getUploadLimits());
+    this.instanceType = null;
   }
 
   setupDirectories() {
@@ -397,10 +393,6 @@ class Application {
   }
 
   initializeCore() {
-    this.storageConfig = new StorageConfig();
-    this.fileUploader = new FileUploader(this.storageConfig);
-    this.errorHandler = new ErrorHandler(this.storageConfig.getUploadLimits());
-
     const passportService = new PassportService(this.prisma, logger);
     passportService.configurePassport(passport);
   }
@@ -461,10 +453,40 @@ class Application {
   }
 
   setupMiddleware() {
+    /**
+     * Middleware Order is Critical:
+     * 1. Basic Middleware (body-parser, etc.) must be first to parse incoming requests
+     * 2. Auth Middleware depends on session/cookies from basic middleware
+     * 3. Logging Middleware should come after auth to include user info
+     * 4. Error Handling must be last to catch all previous middleware errors
+     */
+
+    // 1. Basic Middleware (Required First)
+    // - Handles request parsing (body-parser)
+    // - Sets up sessions, cookies
+    // - Configures security headers
     setupBasicMiddleware(this.app);
+
+    // 2. Authentication Middleware
+    // - Depends on session/cookies from basic middleware
+    // - Sets up Passport and user authentication
     setupAuthMiddleware(this.app, CONFIG);
+
+    // 3. Logging Middleware
+    // - Comes after auth to include authenticated user info in logs
+    // - Tracks request/response lifecycle
     setupRequestLogging(this.app, logger);
     setupErrorLogging(this.app, logger);
+
+    // 4. Error Handling (Required Last)
+    // - Catches errors from all previous middleware
+    // - Handles specific cases like CSRF token validation
+    this.app.use((err, req, res, next) => {
+      if (err.code === 'EBADCSRFTOKEN') {
+        return this.errorHandler.handleValidationError(req, res, 'Invalid CSRF token');
+      }
+      next(err);
+    });
   }
 
   setupRoutes() {
@@ -477,18 +499,45 @@ class Application {
 
   async start() {
     try {
+      // インスタンスタイプの確認（エラーハンドリングを強化）
+      try {
+        this.instanceType = await checkInstanceType();
+        logger.info(`Starting application on ${this.instanceType}`);
+      } catch (instanceTypeError) {
+        logger.warn('Failed to determine instance type, defaulting to Lightsail/Other:', instanceTypeError);
+        this.instanceType = 'Lightsail/Other';
+      }
+
+      // 各種初期化処理
+      this.setupDirectories();
+      this.initializeCore();
+      this.services = this.initializeServices();
+      this.controllers = this.initializeControllers();
       this.setupMiddleware();
       this.setupRoutes();
       this.setupErrorHandler();
 
-      if (!CONFIG.app.isTest) {
-        this.app.listen(this.port, CONFIG.app.host, () => {
-          this.logServerStartup();
-        });
+      // インスタンスタイプに応じた設定
+      if (this.instanceType === 'Lightsail/Other') {
+        logger.info('Running on Lightsail - using local storage configuration');
+        CONFIG.storage.useS3 = false;
+      } else {
+        logger.info('Running on EC2 - using S3 storage configuration');
+        CONFIG.storage.useS3 = true;
       }
-    } catch (err) {
-      logger.error('Application startup error:', { error: err });
-      process.exit(1);
+
+      // サーバー起動
+      const port = CONFIG.app.port;
+      const host = CONFIG.app.host;
+      
+      this.server = this.app.listen(port, host, () => {
+        this.logServerStartup();
+      });
+
+      return this.server;
+    } catch (error) {
+      logger.error('Failed to start application:', error);
+      throw error;
     }
   }
 
@@ -496,7 +545,7 @@ class Application {
     logger.info('Server Information', {
       environment: CONFIG.app.env,
       storage: this.storageConfig.isEnabled() ? 'S3' : 'Local',
-      server: `http://${CONFIG.app.host}:${this.port}`
+      server: `http://${CONFIG.app.host}:${CONFIG.app.port}`
     });
   }
 

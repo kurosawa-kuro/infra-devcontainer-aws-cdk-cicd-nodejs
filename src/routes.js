@@ -4,16 +4,37 @@ const path = require('path');
 const { isAuthenticated, forwardAuthenticated, isAdmin, handle404Error, handle500Error } = require('./middleware');
 const fs = require('fs');
 const csrf = require('csurf');
+const cookieParser = require('cookie-parser');
+const session = require('express-session');
 
 function setupRoutes(app, controllers, fileUploader) {
   const { auth, profile, micropost, system, dev, admin, category, like, notification } = controllers;
 
+  // セッションとクッキーの設定
+  app.use(cookieParser());
+  app.use(session({
+    secret: process.env.SESSION_SECRET || 'your-secret-key',
+    resave: false,
+    saveUninitialized: false,
+    cookie: {
+      secure: process.env.NODE_ENV === 'production',
+      httpOnly: true,
+      maxAge: 24 * 60 * 60 * 1000 // 24時間
+    }
+  }));
+
   // CSRFミドルウェアの設定
   const csrfProtection = csrf({
-    cookie: {
-      key: 'XSRF-TOKEN',
-      secure: process.env.NODE_ENV === 'production'
-    }
+    cookie: true
+  });
+
+  // グローバルにCSRF保護を適用
+  app.use(csrfProtection);
+
+  // すべてのレスポンスにCSRFトークンを追加
+  app.use((req, res, next) => {
+    res.locals.csrfToken = req.csrfToken();
+    next();
   });
 
   // ===================================
