@@ -14,7 +14,7 @@ const { StorageConfig, FileUploader } = require('./middleware/upload');
 const InitializationMiddleware = require('./middleware/initialization');
 
 // Services
-const { PassportService } = require('./services');
+const { PassportService, MicropostService } = require('./services');
 
 // Routes
 const routes = require('./routes');
@@ -33,6 +33,7 @@ class Application {
       const storageConfig = new StorageConfig();
       const fileUploader = new FileUploader(storageConfig);
       const passportService = new PassportService(this.prisma, logger);
+      const micropostService = new MicropostService(this.prisma, logger);
 
       // サステムサービスの初期化
       const systemService = {
@@ -76,7 +77,7 @@ class Application {
       const services = {
         auth: passportService,
         profile: prismaService,
-        micropost: prismaService,
+        micropost: micropostService,
         system: systemService,
         category: prismaService,
         like: prismaService,
