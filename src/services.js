@@ -799,11 +799,25 @@ class ProfileService extends BaseService {
   // ユーティリティメソッド
   async findUserByIdentifier(identifier) {
     try {
+      let user = null;
+
       if (identifier.match(/^[0-9]+$/)) {
-        return await this.getUserProfile(parseInt(identifier, 10));
+        user = await this.getUserProfile(parseInt(identifier, 10));
+      } else if (identifier.includes('@')) {
+        user = await this.prisma.user.findUnique({
+          where: { email: identifier },
+          include: {
+            profile: true,
+            userRoles: {
+              include: { role: true }
+            }
+          }
+        });
       } else {
-        return await this.getUserProfileByName(identifier);
+        user = await this.getUserProfileByName(identifier);
       }
+
+      return user;
     } catch (error) {
       this.handleError(error, { context: 'Find user by identifier', identifier });
     }

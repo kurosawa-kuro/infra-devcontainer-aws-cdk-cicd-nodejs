@@ -113,3 +113,23 @@ class Application {
 }
 
 module.exports = Application;
+
+// Server startup code
+if (require.main === module) {
+  const PORT = process.env.PORT || 8080;
+  const app = new Application();
+  
+  (async () => {
+    try {
+      const expressApp = await app.initialize();
+      if (process.env.NODE_ENV !== 'test') {
+        expressApp.listen(PORT, () => {
+          console.log(`Server is running on port ${PORT}`);
+        });
+      }
+    } catch (error) {
+      console.error('Failed to start server:', error);
+      process.exit(1);
+    }
+  })();
+}
