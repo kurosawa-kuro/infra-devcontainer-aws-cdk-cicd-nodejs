@@ -3,6 +3,7 @@ const passport = require('passport');
 const flash = require('connect-flash');
 const csrf = require('csurf');
 const { ErrorHandler } = require('../error');
+const { PassportService } = require('../../services');
 
 // 認証状態チェックミドルウェア
 const isAuthenticated = (req, res, next) => {
@@ -133,11 +134,22 @@ const setupCSRF = (app) => {
   });
 };
 
+function setupAuthMiddleware(app, config) {
+  const passportService = new PassportService(app.get('prisma'), app.get('logger'));
+  const passport = passportService.getPassport();
+  
+  app.use(passport.initialize());
+  app.use(passport.session());
+  
+  // ... other auth middleware setup ...
+}
+
 module.exports = {
   isAuthenticated,
   forwardAuthenticated,
   isAdmin,
   canManageUser,
   setupSession,
-  setupCSRF
+  setupCSRF,
+  setupAuthMiddleware
 }; 

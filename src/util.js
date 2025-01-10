@@ -60,6 +60,21 @@ class FileUploader {
     this.uploader = this.createUploader();
   }
 
+  setupDirectories() {
+    const dirs = [
+      path.join(__dirname, 'public'),
+      path.join(__dirname, 'public', 'uploads'),
+      path.join(__dirname, 'public', 'css')
+    ];
+
+    dirs.forEach(dir => {
+      if (!fs.existsSync(dir)) {
+        fs.mkdirSync(dir, { recursive: true });
+      }
+      fs.chmodSync(dir, '755');
+    });
+  }
+
   createFileFilter() {
     return (req, file, cb) => {
       const allowedMimeTypes = this.storageConfig.getUploadLimits().allowedMimeTypes;

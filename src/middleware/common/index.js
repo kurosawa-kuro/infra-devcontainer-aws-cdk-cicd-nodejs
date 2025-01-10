@@ -5,7 +5,7 @@ const helmet = require('helmet');
 const xss = require('xss-clean');
 const rateLimit = require('express-rate-limit');
 const cookieParser = require('cookie-parser');
-const logger = require('../../logger');
+const { logger, logging } = require('../logging');
 
 // 基本的なミドルウェアのセットアップ
 const setupBasic = (app) => {
@@ -94,7 +94,7 @@ const addLocals = (req, res, next) => {
       res.locals.categories = categories;
       next();
     }).catch(err => {
-      logger.logDatabaseError('fetch_categories', err, {
+      logging.database('fetch_categories', err, {
         user: req.user ? { id: req.user.id } : null
       });
       res.locals.categories = [];

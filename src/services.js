@@ -995,71 +995,64 @@ class LogUploader extends BaseService {
 
 // パスポート関連サービス
 class PassportService extends BaseService {
-  configurePassport(passport) {
-    passport.use(new LocalStrategy(
-      { 
+  constructor(prisma, logger) {
+    super(prisma, logger);
+    this.passport = require('passport');
+    this.LocalStrategy = require('passport-local').Strategy;
+  }
+
+  configurePassport() {
+    this.passport.use(new this.LocalStrategy(
+      {
         usernameField: 'email',
-        passwordField: 'password',
+        passwordField: 'password'
       },
       async (email, password, done) => {
         try {
           const user = await this.prisma.user.findUnique({
-            where: { email: email },
-            include: {
-              profile: true,
-              userRoles: {
-                include: {
-                  role: true,
-                },
-              },
-            },
+            where: { email: email }
           });
 
           if (!user) {
-            return done(null, false, { message: 'ユーザーが見つかりません' });
+            return done(null, false, { message: 'メールアドレスまたはパスワードが正しくありません。' });
           }
 
-          const isMatch = await bcrypt.compare(password, user.password);
-          
-          if (!isMatch) {
-            return done(null, false, { message: 'パスワードが間違っています' });
+          const isValid = await this.validatePassword(password, user.password);
+          if (!isValid) {
+            return done(null, false, { message: 'メールアドレスまたはパスワードが正しくありません。' });
           }
 
           return done(null, user);
-        } catch (err) {
-          console.error('Authentication error:', err);
-          return done(err);
+        } catch (error) {
+          this.logger.error('Passport authentication error:', error);
+          return done(error);
         }
-      },
+      }
     ));
 
-    passport.serializeUser((user, done) => {
+    this.passport.serializeUser((user, done) => {
       done(null, user.id);
     });
 
-    passport.deserializeUser(async (id, done) => {
+    this.passport.deserializeUser(async (id, done) => {
       try {
         const user = await this.prisma.user.findUnique({
-          where: { id: id },
-          include: {
-            profile: true,
-            userRoles: {
-              include: {
-                role: true,
-              },
-            },
-          },
+          where: { id: id }
         });
-        if (!user) {
-          return done(null, false);
-        }
         done(null, user);
-      } catch (err) {
-        console.error('Deserialization error:', err);
-        done(err);
+      } catch (error) {
+        done(error);
       }
     });
+
+    return this.passport;
   }
+
+  getPassport() {
+    return this.passport;
+  }
+
+  // ... existing methods ...
 }
 
 // いいね関連サービス

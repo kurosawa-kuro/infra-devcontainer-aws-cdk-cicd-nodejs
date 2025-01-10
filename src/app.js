@@ -1,15 +1,16 @@
 const express = require('express');
-const path = require('path');
-const multer = require('multer');
 const { PrismaClient } = require('@prisma/client');
-const { S3Client } = require('@aws-sdk/client-s3');
-const multerS3 = require('multer-s3');
-const fs = require('fs');
 require('dotenv').config();
-const passport = require('passport');
-const logger = require('./logger');
+
+// Internal dependencies
+const { logger } = require('./middleware/logging');
 const { Util, StorageConfig, FileUploader } = require('./util');
-const { ErrorHandler, handleCSRFError, handle404Error, handle500Error } = require('./error');
+const {
+  ErrorHandler,
+  handleCSRFError,
+  handle404Error,
+  handle500Error
+} = require('./middleware/error');
 
 const setupRoutes = require('./routes');
 const {
@@ -19,6 +20,8 @@ const {
   setupErrorLogging,
   setupSecurity,
 } = require('./middleware');
+
+// Services
 const {
   AuthService,
   ProfileService,
@@ -31,6 +34,8 @@ const {
   NotificationService,
   FollowService
 } = require('./services');
+
+// Controllers
 const {
   AuthController,
   ProfileController,
@@ -44,7 +49,7 @@ const {
   NotificationController
 } = require('./controllers');
 
-// Constants and Configuration
+// Application Configuration
 const CONFIG = {
   app: {
     port: process.env.APP_PORT || 8080,
@@ -55,7 +60,10 @@ const CONFIG = {
   }
 };
 
-// メインのアプリケーションクラス
+/**
+ * メインのアプリケーションクラス
+ * アプリケーションの初期化と実行を管理
+ */
 class Application {
   constructor() {
     this.app = express();
@@ -66,24 +74,10 @@ class Application {
     this.instanceType = null;
   }
 
-  setupDirectories() {
-    const dirs = [
-      path.join(__dirname, 'public'),
-      path.join(__dirname, 'public', 'uploads'),
-      path.join(__dirname, 'public', 'css')
-    ];
-
-    dirs.forEach(dir => {
-      if (!fs.existsSync(dir)) {
-        fs.mkdirSync(dir, { recursive: true });
-      }
-      fs.chmodSync(dir, '755');
-    });
-  }
-
+  // Initialization Methods
   initializeCore() {
     const passportService = new PassportService(this.prisma, logger);
-    passportService.configurePassport(passport);
+    passportService.configurePassport();
   }
 
   initializeServices() {
@@ -105,7 +99,7 @@ class Application {
     return {
       auth: new AuthController(this.services.auth, this.errorHandler, logger),
       profile: new ProfileController(
-        { 
+        {
           profile: this.services.profile,
           micropost: this.services.micropost,
           follow: this.services.follow
@@ -114,10 +108,10 @@ class Application {
         logger
       ),
       micropost: new MicropostController(
-        { 
-          micropost: this.services.micropost, 
+        {
+          micropost: this.services.micropost,
           like: this.services.like,
-          comment: this.services.comment 
+          comment: this.services.comment
         },
         this.fileUploader,
         this.errorHandler,
@@ -125,7 +119,7 @@ class Application {
       ),
       system: new SystemController(this.services.system, this.errorHandler, logger),
       dev: new DevController(
-        { 
+        {
           system: this.services.system,
           profile: this.services.profile,
           micropost: this.services.micropost
@@ -141,11 +135,13 @@ class Application {
     };
   }
 
+  // Middleware Setup Methods
   setupMiddleware() {
     setupBasicMiddleware(this.app);
     setupAuthMiddleware(this.app, CONFIG);
     setupRequestLogging(this.app, logger);
     setupErrorLogging(this.app, logger);
+    setupSecurity(this.app);
     this.app.use(handleCSRFError(this.errorHandler));
   }
 
@@ -158,48 +154,57 @@ class Application {
     this.app.use(handle500Error);
   }
 
+  // Application Lifecycle Methods
   async start() {
     try {
-      // インスタンスタイプの確認（エラーハンドリングを強化）
-      try {
-        this.instanceType = await Util.checkInstanceType();
-        logger.info(`Starting application on ${this.instanceType}`);
-      } catch (instanceTypeError) {
-        logger.warn('Failed to determine instance type, defaulting to Lightsail/Other:', instanceTypeError);
-        this.instanceType = 'Lightsail/Other';
-      }
-
-      // 各種初期化処理
-      this.setupDirectories();
-      this.initializeCore();
-      this.services = this.initializeServices();
-      this.controllers = this.initializeControllers();
-      this.setupMiddleware();
-      this.setupRoutes();
-      this.setupErrorHandler();
-
-      // インスタンスタイプに応じた設定
-      if (this.instanceType === 'Lightsail/Other') {
-        logger.info('Running on Lightsail - using local storage configuration');
-        process.env.USE_S3 = 'false';
-      } else {
-        logger.info('Running on EC2 - using S3 storage configuration');
-        process.env.USE_S3 = 'true';
-      }
-
-      // サーバー起動
-      const port = CONFIG.app.port;
-      const host = CONFIG.app.host;
-      
-      this.server = this.app.listen(port, host, () => {
-        this.logServerStartup();
-      });
-
+      await this.initializeApplication();
+      await this.startServer();
       return this.server;
     } catch (error) {
       logger.error('Failed to start application:', error);
       throw error;
     }
+  }
+
+  async initializeApplication() {
+    await this.detectInstanceType();
+    this.fileUploader.setupDirectories();
+    this.initializeCore();
+    this.services = this.initializeServices();
+    this.controllers = this.initializeControllers();
+    this.setupMiddleware();
+    this.setupRoutes();
+    this.setupErrorHandler();
+    this.configureStorageType();
+  }
+
+  async detectInstanceType() {
+    try {
+      this.instanceType = await Util.checkInstanceType();
+      logger.info(`Starting application on ${this.instanceType}`);
+    } catch (instanceTypeError) {
+      logger.warn('Failed to determine instance type, defaulting to Lightsail/Other:', instanceTypeError);
+      this.instanceType = 'Lightsail/Other';
+    }
+  }
+
+  configureStorageType() {
+    if (this.instanceType === 'Lightsail/Other') {
+      logger.info('Running on Lightsail - using local storage configuration');
+      process.env.USE_S3 = 'false';
+    } else {
+      logger.info('Running on EC2 - using S3 storage configuration');
+      process.env.USE_S3 = 'true';
+    }
+  }
+
+  async startServer() {
+    const port = CONFIG.app.port;
+    const host = CONFIG.app.host;
+    
+    this.server = this.app.listen(port, host, () => {
+      this.logServerStartup();
+    });
   }
 
   logServerStartup() {
@@ -215,6 +220,7 @@ class Application {
   }
 }
 
+// Application Instance and Process Handlers
 const app = new Application();
 app.start().catch(err => {
   logger.error('Failed to start application:', { error: err });
