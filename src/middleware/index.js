@@ -1,15 +1,7 @@
 const { logger, middleware: loggingMiddleware } = require('./core/logging');
 const { ErrorHandler, middleware: errorMiddleware } = require('./core/error');
 const { isAuthenticated, forwardAuthenticated, isAdmin, setupSecurity } = require('./core/security');
-const InitializationMiddleware = require('./setup/initialize');
-
-// Combine all middleware functions
-const middleware = {
-  ...loggingMiddleware,
-  ...errorMiddleware,
-  notFound: errorMiddleware.notFound,
-  error: errorMiddleware.error
-};
+const InitializationMiddleware = require('./initialization');
 
 // Static file serving setup
 const setupStaticMiddleware = (app) => {
@@ -89,9 +81,8 @@ module.exports = {
 
   // Setup functions
   setupSecurity,
-  setupApplication: InitializationMiddleware.setupApplication.bind(InitializationMiddleware),
-  setupDirectories: InitializationMiddleware.setupDirectories.bind(InitializationMiddleware),
-  setupBasicMiddleware: InitializationMiddleware.setupBasicMiddleware.bind(InitializationMiddleware),
+  initialize: InitializationMiddleware.initialize.bind(InitializationMiddleware),
+  setupCore: InitializationMiddleware.setupCore.bind(InitializationMiddleware),
   detectInstanceType: InitializationMiddleware.detectInstanceType.bind(InitializationMiddleware),
   configureStorageType: InitializationMiddleware.configureStorageType.bind(InitializationMiddleware),
 

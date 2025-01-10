@@ -18,7 +18,7 @@ function setupRoutes(app, controllers, fileUploader) {
     profile, 
     micropost, 
     system, 
-    development: dev,
+    development: developmentTools,
     admin, 
     category, 
     like, 
@@ -125,24 +125,24 @@ function setupRoutes(app, controllers, fileUploader) {
   adminRouter.post('/users/:id/roles', asyncHandler((req, res) => admin.updateUserRoles(req, res)));
   app.use('/admin', adminRouter);
 
-  // 開発者ルート
-  const devRouter = express.Router();
+  // 開発者ツールルート
+  const developmentToolsRouter = express.Router();
   
   // 開発ツールのホーム
-  devRouter.get('/', asyncHandler(async (req, res) => {
+  developmentToolsRouter.get('/', asyncHandler(async (req, res) => {
     res.locals.title = '開発ツール';
-    return dev.index(req, res);
+    return developmentTools.index(req, res);
   }));
 
   // クイックログイン
-  devRouter.get('/quick-login/:email', asyncHandler((req, res) => {
+  developmentToolsRouter.get('/quick-login/:email', asyncHandler((req, res) => {
     res.locals.title = 'クイックログイン';
-    return dev.quickLogin(req, res);
+    return developmentTools.quickLogin(req, res);
   }));
 
   // メインパスとエイリアスの設定
-  app.use('/development-tools', devRouter);  // メインパス
-  app.use('/dev', devRouter);               // エイリアス（短縮パス）
+  app.use('/development-tools', developmentToolsRouter);  // メインパス
+  app.use('/dev', developmentToolsRouter);               // エイリアス（短縮パス）
 
   // 通知ルート
   const notificationRouter = express.Router();

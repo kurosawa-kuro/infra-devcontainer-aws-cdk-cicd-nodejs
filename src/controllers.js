@@ -928,10 +928,34 @@ class DevelopmentToolsController extends BaseController {
 
       console.log('3. Response Locals [After Title]:', JSON.stringify(res.locals, null, 2));
       console.log('4. Render Options:', JSON.stringify(renderOptions, null, 2));
-      console.log('5. Template Path: pages/dev/index');
+      console.log('5. Template Path: pages/development-tools/index');
       console.log('=== Development Tools Debug [End] ===\n');
 
-      res.render('pages/dev/index', renderOptions);
+      res.render('pages/development-tools/index', renderOptions);
+    });
+  }
+
+  async quickLogin(req, res) {
+    return this.handleRequest(req, res, async () => {
+      const { email } = req.params;
+      const user = await this.services.profile.prisma.user.findUnique({
+        where: { email }
+      });
+
+      if (!user) {
+        throw new Error('ユーザーが見つかりません');
+      }
+
+      await new Promise((resolve, reject) => {
+        req.logIn(user, (err) => err ? reject(err) : resolve());
+      });
+
+      return this.sendResponse(req, res, {
+        success: true,
+        message: 'クイックログインが完了しました',
+        redirectUrl: '/',
+        data: { userId: user.id }
+      });
     });
   }
 }
@@ -1288,15 +1312,17 @@ class NotificationController extends BaseController {
   }
 }
 
-module.exports = {
-  AuthController,
-  ProfileController,
-  MicropostController,
-  SystemController,
-  DevelopmentToolsController,
-  AdminController,
-  CategoryController,
-  LikeController,
-  CommentController,
-  NotificationController
+module.exports = (services, errorHandler, logger) => {
+  return {
+    auth: new AuthController(services.auth, errorHandler, logger),
+    profile: new ProfileController(services.profile, errorHandler, logger),
+    micropost: new MicropostController(services.micropost, errorHandler, logger),
+    system: new SystemController(services.system, errorHandler, logger),
+    developmentTools: new DevelopmentToolsController(services, errorHandler, logger),
+    admin: new AdminController(services, errorHandler, logger),
+    category: new CategoryController(services.category, errorHandler, logger),
+    like: new LikeController(services, errorHandler, logger),
+    comment: new CommentController(services, errorHandler, logger),
+    notification: new NotificationController(services, errorHandler, logger)
+  };
 }; 
