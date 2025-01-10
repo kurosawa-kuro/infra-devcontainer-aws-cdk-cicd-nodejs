@@ -14,7 +14,7 @@ const { StorageConfig, FileUploader } = require('./middleware/upload');
 const InitializationMiddleware = require('./middleware/initialization');
 
 // Services
-const { PassportService, MicropostService, ProfileService, CommentService, AuthService, LikeService } = require('./services');
+const { PassportService, MicropostService, ProfileService, CommentService, AuthService, LikeService, NotificationService } = require('./services');
 
 // Routes
 const routes = require('./routes');
@@ -38,6 +38,7 @@ class Application {
       const profileService = new ProfileService(this.prisma, logger);
       const commentService = new CommentService(this.prisma, logger);
       const likeService = new LikeService(this.prisma, logger);
+      const notificationService = new NotificationService(this.prisma, logger);
 
       // サステムサービスの初期化
       const systemService = {
@@ -87,7 +88,7 @@ class Application {
         category: prismaService,
         like: likeService,
         comment: commentService,
-        notification: prismaService,
+        notification: notificationService,
         follow: prismaService
       };
 
@@ -105,71 +106,10 @@ class Application {
 
       return this.app;
     } catch (error) {
-      logger.error('Failed to initialize application:', error);
+      logger.error('Application initialization failed:', error);
       throw error;
-    }
-  }
-
-  async start() {
-    try {
-      await this.initialize();
-      
-      const port = process.env.PORT || 8080;
-      const host = '0.0.0.0';  // Listen on all interfaces
-      
-      this.server = this.app.listen(port, host, () => {
-        logger.info('Server Information', {
-          environment: process.env.NODE_ENV || 'development',
-          server: `http://${host}:${port}`,
-          host: host,
-          port: port
-        });
-      });
-
-      // Enable keep-alive
-      this.server.keepAliveTimeout = 65000;
-      this.server.headersTimeout = 66000;
-    } catch (error) {
-      logger.error('Failed to start server:', error);
-      throw error;
-    }
-  }
-
-  async cleanup() {
-    if (this.prisma) {
-      await this.prisma.$disconnect();
-    }
-    if (this.server) {
-      await new Promise((resolve) => {
-        this.server.close(resolve);
-      });
     }
   }
 }
 
-// アプリケーションのインスタンス作成と起動
-const app = new Application();
-
-// 開発環境でない場合は自動起動
-if (process.env.NODE_ENV !== 'test') {
-  app.start().catch(err => {
-    logger.error('Failed to start application:', err);
-    process.exit(1);
-  });
-}
-
-// プロセスシグナルのハンドリング
-process.on('SIGINT', async () => {
-  logger.info('Received SIGINT, cleaning up...');
-  await app.cleanup();
-  process.exit(0);
-});
-
-process.on('SIGTERM', async () => {
-  logger.info('Received SIGTERM, cleaning up...');
-  await app.cleanup();
-  process.exit(0);
-});
-
-// テスト環境用にアプリケーションインスタンスをエクスポート
-module.exports = app;
+module.exports = Application;

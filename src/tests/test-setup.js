@@ -1,266 +1,20 @@
-const { PrismaClient } = require('@prisma/client');
-const http = require('http');
 const request = require('supertest');
-
-// Test user constants
-const TEST_USER = {
-  email: 'test@example.com',
-  password: 'password123',
-  passwordConfirmation: 'password123',
-  name: 'TestUser123',
-  terms: 'on'
-};
-
-const TEST_ADMIN = {
-  email: 'admin@example.com',
-  password: 'admin123',
-  passwordConfirmation: 'admin123',
-  name: 'AdminUser123',
-  terms: 'on'
-};
+const { PrismaClient } = require('@prisma/client');
+const Application = require('../app');
 
 class TestServer {
   constructor() {
     this.prisma = new PrismaClient();
     this.app = null;
     this.server = null;
-    this.baseUrl = null;
-    this.agent = null;
   }
 
-  async createDefaultRoles() {
-    const roles = ['user', 'admin'];
-    const createdRoles = {};
-    
-    for (const roleName of roles) {
-      createdRoles[roleName] = await this.prisma.role.upsert({
-        where: { name: roleName },
-        update: {},
-        create: {
-          name: roleName,
-          description: `${roleName} role`
-        }
-      });
-    }
-
-    return createdRoles;
-  }
-
-  async start() {
-    process.env.NODE_ENV = 'test';
-    const app = require('../app');
-    await app.initialize();
-    this.app = app.app;
-
-    await this.createDefaultRoles();
-
-    this.server = http.createServer(this.app);
-    await new Promise(resolve => {
-      this.server.listen(0, () => {
-        this.baseUrl = `http://localhost:${this.server.address().port}`;
-        console.log(`Test server started on ${this.baseUrl}`);
-        this.agent = request.agent(this.server);
-        resolve();
-      });
-    });
-  }
-
-  async cleanup() {
-    if (this.server) {
-      await new Promise(resolve => this.server.close(resolve));
-      console.log('Test server closed');
-    }
-    await this.prisma.$disconnect();
-  }
-
-  async resetDatabase() {
-    await this.prisma.notification.deleteMany();
-    await this.prisma.like.deleteMany();
-    await this.prisma.comment.deleteMany();
-    await this.prisma.categoryMicropost.deleteMany();
-    await this.prisma.category.deleteMany();
-    await this.prisma.micropost.deleteMany();
-    await this.prisma.userRole.deleteMany();
-    await this.prisma.userProfile.deleteMany();
-    await this.prisma.follow.deleteMany();
-    await this.prisma.user.deleteMany();
-    await this.prisma.role.deleteMany();
-    
-    await this.createDefaultRoles();
-  }
-
-  // Test helper methods
-  async createTestUser(isAdmin = false) {
-    const email = isAdmin ? 'admin@example.com' : 'test@example.com';
-    const password = 'password123';
-    const name = isAdmin ? 'AdminUser123' : 'TestUser123';
-
-    // ユーザー登録
-    const response = await this.agent
-      .post('/auth/signup')
-      .send({
-        email,
-        password,
-        name,
-        terms: 'on',
-        _csrf: 'test-csrf-token'
-      });
-
-    // ユーザー情報の取得
-    const user = await this.prisma.user.findUnique({
-      where: { email },
-      include: {
-        userRoles: {
-          include: { role: true }
-        },
-        profile: true
-      }
-    });
-
-    if (!user) {
-      throw new Error('User not created during signup');
-    }
-
-    if (isAdmin) {
-      // 管理者ロールの追加
-      await this.prisma.userRole.create({
-        data: {
-          user: {
-            connect: {
-              id: user.id
-            }
-          },
-          role: {
-            connect: {
-              name: 'admin'
-            }
-          }
-        }
-      });
-    }
-
-    return { user, response };
-  }
-
-  async loginTestUser(credentials = { 
-    email: TEST_USER.email, 
-    password: TEST_USER.password 
-  }) {
-    // テスト環境では固定のCSRFトークンを使用
-    const response = await request(this.server)
-      .post('/auth/login')
-      .type('form')
-      .send({
-        ...credentials,
-        _csrf: 'test-csrf-token'
-      });
-
-    if (!response.headers['set-cookie']) {
-      throw new Error('No session cookie returned from login');
-    }
-
-    return {
-      response,
-      authCookie: response.headers['set-cookie']
-    };
-  }
-
-  async logoutTestUser(authCookie) {
-    const response = await request(this.server)
-      .get('/auth/logout')
-      .set('Cookie', authCookie);
-
-    expect(response.status).toBe(302);
-    expect(response.header.location).toBe('/auth/login');
-
-    return response;
-  }
-
-  async createTestUserAndLogin(userData = TEST_USER, isAdmin = false) {
-    const { response: signupResponse, user } = await this.createTestUser(userData, isAdmin);
-    const loginResult = await this.loginTestUser({
-      email: userData.email,
-      password: userData.password
-    });
-
-    if (!loginResult.authCookie) {
-      throw new Error('Login failed - no auth cookie');
-    }
-
-    return {
-      ...loginResult,
-      user
-    };
-  }
-
-  async createTestMicroposts(userId, posts = [
-    { title: 'First post' },
-    { title: 'Second post' }
-  ]) {
-    return await this.prisma.micropost.createMany({
-      data: posts.map(post => ({ ...post, userId }))
-    });
-  }
-
-  async setupTestEnvironment(options = {}) {
-    const {
-      createUser = true,
-      isAdmin = false,
-      createMicroposts = false,
-      createCategories = false
-    } = options;
-
-    let testUser;
-    let authCookie;
-
-    if (createUser) {
-      const result = await this.createTestUserAndLogin(undefined, isAdmin);
-      testUser = result.user;
-      authCookie = result.authCookie;
-    }
-
-    if (createMicroposts && testUser) {
-      await this.createTestMicroposts(testUser.id);
-    }
-
-    if (createCategories) {
-      await this.prisma.category.createMany({
-        data: [
-          { name: 'プログラミング' },
-          { name: 'インフラ' },
-          { name: 'セキュリティ' }
-        ]
-      });
-    }
-
-    return { testUser, authCookie };
-  }
-
-  authenticatedRequest(authCookie) {
-    return {
-      get: (url) => request(this.server).get(url).set('Cookie', authCookie),
-      post: (url, data) => request(this.server).post(url).set('Cookie', authCookie).send(data),
-      put: (url, data) => request(this.server).put(url).set('Cookie', authCookie).send(data),
-      delete: (url) => request(this.server).delete(url).set('Cookie', authCookie)
-    };
-  }
-
-  async createOtherTestUser(email = 'other@example.com', name = 'OtherUser') {
-    return await this.prisma.user.create({
-      data: {
-        email,
-        password: '$2b$10$77777777777777777777777777777777777777777777777777',
-        name,
-        profile: {
-          create: {
-            avatarPath: '/uploads/default_avatar.png'
-          }
-        }
-      },
-      include: {
-        profile: true
-      }
-    });
+  async initialize() {
+    console.log('Initializing test server...');
+    const application = new Application();
+    this.app = application;
+    this.server = await application.initialize();
+    console.log('Test server initialized');
   }
 
   getServer() {
@@ -271,33 +25,189 @@ class TestServer {
     return this.prisma;
   }
 
-  getBaseUrl() {
-    return this.baseUrl;
+  async cleanDatabase() {
+    console.log('\n=== Database Cleanup Start ===');
+    try {
+      // 依存関係の順序に従って削除
+      // 1. 通知関連
+      await this.prisma.notification.deleteMany();
+      console.log('Cleaned notifications');
+
+      // 2. いいね関連
+      await this.prisma.like.deleteMany();
+      console.log('Cleaned likes');
+
+      // 3. コメント関連
+      await this.prisma.comment.deleteMany();
+      console.log('Cleaned comments');
+
+      // 4. マイクロポストとカテゴリーの関連
+      await this.prisma.categoryMicropost.deleteMany();
+      console.log('Cleaned category-micropost relations');
+
+      // 5. マイクロポスト
+      await this.prisma.micropost.deleteMany();
+      console.log('Cleaned microposts');
+
+      // 6. カテゴリー
+      await this.prisma.category.deleteMany();
+      console.log('Cleaned categories');
+
+      // 7. ユーザープロフィール
+      await this.prisma.userProfile.deleteMany();
+      console.log('Cleaned user profiles');
+
+      // 8. フォロー関係
+      await this.prisma.follow.deleteMany();
+      console.log('Cleaned follows');
+
+      // 9. ユーザーロール
+      await this.prisma.userRole.deleteMany();
+      console.log('Cleaned user roles');
+
+      // 10. ロール
+      await this.prisma.role.deleteMany();
+      console.log('Cleaned roles');
+
+      // 11. ユーザー
+      await this.prisma.user.deleteMany();
+      console.log('Cleaned users');
+
+      // デフォルトロールの作成
+      await this.setupDefaultRoles();
+
+      console.log('=== Database Cleanup Complete ===\n');
+    } catch (error) {
+      console.error('Database cleanup failed:', error);
+      throw error;
+    }
   }
 
-  getApp() {
-    return this.app;
+  async setupDefaultRoles() {
+    console.log('\n=== Setting up default roles ===');
+    try {
+      const roles = [
+        { name: 'user', description: 'Regular user role' },
+        { name: 'admin', description: 'Administrator role' },
+        { name: 'read-only-admin', description: 'Read-only administrator role' }
+      ];
+
+      for (const role of roles) {
+        await this.prisma.role.upsert({
+          where: { name: role.name },
+          update: {},
+          create: role
+        });
+      }
+
+      console.log('Default roles created:', roles.map(r => r.name));
+      console.log('=== Role setup complete ===\n');
+    } catch (error) {
+      console.error('Failed to setup default roles:', error);
+      throw error;
+    }
+  }
+
+  async setupTestEnvironment({ createUser = false } = {}) {
+    console.log('Setting up test environment...');
+    let testUser;
+    let authCookie;
+
+    if (createUser) {
+      // テストユーザーの作成
+      testUser = await this.prisma.user.create({
+        data: {
+          email: 'admin@example.com',
+          password: '$2b$10$K.0HwpsoPDGaB/atHp0.YOYZWGqxRm6hK3o3tgB.4kBSDGZEQw0iK', // 'password'のハッシュ
+          name: 'AdminUser123',
+          profile: {
+            create: {
+              avatarPath: '/uploads/default-avatar.png'
+            }
+          },
+          userRoles: {
+            create: {
+              role: {
+                connect: { name: 'user' }
+              }
+            }
+          }
+        },
+        include: {
+          profile: true,
+          userRoles: {
+            include: { role: true }
+          }
+        }
+      });
+
+      // ログインリクエストの実行
+      const loginResponse = await request(this.server)
+        .post('/auth/login')
+        .send({
+          email: 'admin@example.com',
+          password: 'password'
+        });
+
+      // Cookieの取得
+      authCookie = loginResponse.headers['set-cookie'];
+      console.log('Login response status:', loginResponse.status);
+      console.log('Auth cookie received:', !!authCookie);
+    }
+
+    return { testUser, authCookie };
+  }
+
+  authenticatedRequest(authCookie) {
+    return request.agent(this.server).set('Cookie', authCookie);
+  }
+
+  async createOtherTestUser() {
+    return await this.prisma.user.create({
+      data: {
+        email: 'other@example.com',
+        password: '$2b$10$K.0HwpsoPDGaB/atHp0.YOYZWGqxRm6hK3o3tgB.4kBSDGZEQw0iK',
+        name: 'OtherUser',
+        profile: {
+          create: {
+            avatarPath: '/uploads/default-avatar.png'
+          }
+        },
+        userRoles: {
+          create: {
+            role: {
+              connect: { name: 'user' }
+            }
+          }
+        }
+      }
+    });
+  }
+
+  async cleanup() {
+    if (this.prisma) {
+      await this.prisma.$disconnect();
+    }
+    console.log('Test server closed');
   }
 }
 
-// シングルトンインスタンス
-const testServer = new TestServer();
+let testServer;
 
-// Jest のグローバルセットアップ
-beforeAll(async () => {
-  await testServer.start();
-}, 30000);
-
-afterEach(async () => {
-  await testServer.resetDatabase();
-}, 30000);
+function getTestServer() {
+  if (!testServer) {
+    testServer = new TestServer();
+    testServer.initialize();
+  }
+  return testServer;
+}
 
 afterAll(async () => {
-  await testServer.cleanup();
-}, 30000);
+  if (testServer) {
+    await testServer.cleanup();
+  }
+});
 
 module.exports = {
-  getTestServer: () => testServer,
-  TEST_USER,
-  TEST_ADMIN
+  getTestServer
 }; 
