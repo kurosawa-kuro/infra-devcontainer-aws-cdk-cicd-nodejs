@@ -297,8 +297,8 @@ class MicropostController extends BaseController {
 
   async index(req, res) {
     return this.handleRequest(req, res, async () => {
-
       try {
+        console.log('Starting micropost index request');
         const [microposts, categories] = await Promise.all([
           this.micropostService.getAllMicroposts(),
           this.micropostService.prisma.category.findMany({
@@ -312,6 +312,9 @@ class MicropostController extends BaseController {
             }
           })
         ]);
+
+        console.log('Retrieved microposts:', microposts);
+        console.log('Retrieved categories:', categories);
 
         const micropostsWithLikes = await Promise.all(
           microposts.map(async (micropost) => {
@@ -331,8 +334,10 @@ class MicropostController extends BaseController {
           })
         );
 
+        console.log('Microposts with likes:', micropostsWithLikes);
+
         try {
-          res.render('pages/public/microposts/index', { 
+          const templateData = { 
             microposts: micropostsWithLikes,
             categories,
             title: '投稿一覧',
@@ -341,7 +346,10 @@ class MicropostController extends BaseController {
             csrfToken: res.locals.csrfToken,
             currentPage: 1,
             totalPages: 1
-          });
+          };
+
+          console.log('Rendering template with data:', templateData);
+          res.render('pages/public/microposts/index', templateData);
         } catch (renderError) {
           console.error('Template rendering error:', {
             error: renderError.message,

@@ -135,7 +135,7 @@ class TestServer {
       });
     }
 
-    return user;
+    return { user, response };
   }
 
   async loginTestUser(credentials = { 

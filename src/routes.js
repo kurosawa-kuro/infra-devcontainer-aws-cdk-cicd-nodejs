@@ -112,6 +112,12 @@ function setupRoutes(app, controllers, fileUploader) {
   
   // マイクロポスト
   const micropostRouter = express.Router();
+  
+  // パブリックアクセス可能なルート
+  micropostRouter.get('/', asyncHandler((req, res) => micropost.index(req, res)));
+  micropostRouter.get('/:id', asyncHandler((req, res) => micropost.show(req, res)));
+
+  // 認証が必要なルート
   micropostRouter.use(isAuthenticated);
   
   // マルチパートフォームデータの処理を createMultipartMiddleware で置き換え

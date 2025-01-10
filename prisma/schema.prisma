@@ -102,22 +102,26 @@ model Role {
 
 model Micropost {
   // Core fields
-  id         Int                 @id @default(autoincrement())
-  title      String
-  imageUrl   String?
-  userId     Int
+  id        Int      @id @default(autoincrement())
+  title     String
+  userId    Int
+  viewCount Int      @default(0)
 
   // Timestamps
-  createdAt  DateTime            @default(now())
-  updatedAt  DateTime            @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   // Relations
-  user       User                @relation(fields: [userId], references: [id])
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   categories CategoryMicropost[]
-  likes      Like[]
-  views      MicropostView[]
-  comments   Comment[]
+  likes     Like[]
+  comments  Comment[]
+  views     MicropostView[]
   notifications Notification[]
+
+  // Indexes
+  @@index([userId])
+  @@index([createdAt])
 }
 
 model Category {
@@ -193,16 +197,15 @@ model MicropostView {
   id          Int      @id @default(autoincrement())
   micropostId Int
   ipAddress   String
-
-  // Timestamp
-  viewedAt    DateTime @default(now())
+  createdAt   DateTime @default(now())
 
   // Relations
   micropost   Micropost @relation(fields: [micropostId], references: [id], onDelete: Cascade)
 
-  // Constraints and indexes
-  @@unique([micropostId, ipAddress])
+  // Indexes
   @@index([micropostId])
+  @@index([ipAddress])
+  @@index([createdAt])
 }
 
 //==================================

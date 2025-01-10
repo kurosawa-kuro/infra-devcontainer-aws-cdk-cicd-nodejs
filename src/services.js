@@ -894,24 +894,37 @@ class MicropostService extends BaseService {
   async trackView(micropostId, ipAddress) {
     try {
       const validMicropostId = this.validateId(micropostId);
-      return await this.executeTransaction(async (prisma) => {
-        return prisma.micropostView.upsert({
-          where: {
-            micropostId_ipAddress: {
-              micropostId: validMicropostId,
-              ipAddress
-            }
-          },
-          create: {
+
+      // 最後の24時間以内の同じIPからのビューを確認
+      const recentView = await this.prisma.micropostView.findFirst({
+        where: {
+          micropostId: validMicropostId,
+          ipAddress: ipAddress,
+          createdAt: {
+            gte: new Date(Date.now() - 24 * 60 * 60 * 1000) // 24時間前
+          }
+        }
+      });
+
+      // 同じIPからの最近のビューがない場合のみカウント
+      if (!recentView) {
+        await this.prisma.micropostView.create({
+          data: {
             micropostId: validMicropostId,
-            ipAddress,
-            viewedAt: new Date()
-          },
-          update: {
-            viewedAt: new Date()
+            ipAddress: ipAddress
           }
         });
-      });
+
+        // ビュー数を更新
+        await this.prisma.micropost.update({
+          where: { id: validMicropostId },
+          data: {
+            viewCount: {
+              increment: 1
+            }
+          }
+        });
+      }
     } catch (error) {
       this.handleError(error, { context: 'Track view', micropostId, ipAddress });
     }
