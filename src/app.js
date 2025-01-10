@@ -1,7 +1,8 @@
 const express = require('express');
 const { PrismaClient } = require('@prisma/client');
 const { Util } = require('./util');
-const { logger } = require('./middleware/core/logging');
+const { logger } = require('./middleware/logging');
+const { ErrorHandler } = require('./middleware/error');
 const { PassportService } = require('./services');
 const { StorageConfig, FileUploader } = require('./middleware/upload');
 const InitializationMiddleware = require('./middleware/initialization');
@@ -12,6 +13,7 @@ class Application {
     this.app = express();
     this.prisma = new PrismaClient();
     this.app.set('prisma', this.prisma);
+    this.errorHandler = new ErrorHandler();
   }
 
   async initialize() {
@@ -21,10 +23,25 @@ class Application {
       const fileUploader = new FileUploader(storageConfig);
       const passportService = new PassportService(this.prisma, logger);
 
+      // サービスの初期化
+      const services = {
+        auth: passportService,
+        profile: this.prisma,
+        micropost: this.prisma,
+        system: this.prisma,
+        category: this.prisma,
+        like: this.prisma,
+        comment: this.prisma,
+        notification: this.prisma
+      };
+
+      // コントローラーの初期化
+      const controllers = require('./controllers')(services, this.errorHandler, logger);
+
       // アプリケーションの初期化
       await InitializationMiddleware.initialize(this.app, {
         routes,
-        controllers: require('./controllers'),
+        controllers,
         fileUploader,
         passportService,
         util: Util

@@ -13,12 +13,36 @@ const {
 const cookieParser = require('cookie-parser');
 
 function setupRoutes(app, controllers, fileUploader) {
+  // コントローラーの存在確認
+  if (!controllers) {
+    throw new Error('Controllers object is required');
+  }
+
+  // 必要なコントローラーの存在確認
+  const requiredControllers = [
+    'auth',
+    'profile',
+    'micropost',
+    'system',
+    'developmentTools',
+    'admin',
+    'category',
+    'like',
+    'notification',
+    'comment'
+  ];
+
+  const missingControllers = requiredControllers.filter(name => !controllers[name]);
+  if (missingControllers.length > 0) {
+    throw new Error(`Missing required controllers: ${missingControllers.join(', ')}`);
+  }
+
   const { 
     auth, 
     profile, 
     micropost, 
     system, 
-    development: developmentTools,
+    developmentTools,
     admin, 
     category, 
     like, 

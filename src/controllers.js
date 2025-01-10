@@ -109,6 +109,41 @@ class BaseController {
 class AuthController extends BaseController {
   constructor(services, errorHandler, logger) {
     super(services, errorHandler, logger);
+    
+    // 必要なサービスの存在確認
+    const requiredServices = ['auth', 'profile'];
+    const missingServices = requiredServices.filter(service => !services[service]);
+    
+    if (missingServices.length > 0) {
+      throw new Error(`Missing required services for AuthController: ${missingServices.join(', ')}`);
+    }
+
+    this.authService = services.auth;
+    this.profileService = services.profile;
+  }
+
+  async getLoginPage(req, res) {
+    return this.handleRequest(req, res, async () => {
+      this.logger.debug('Login Page Debug [Start]', {
+        method: req.method,
+        path: req.path,
+        headers: req.headers,
+        cookies: req.cookies,
+        session: req.session
+      });
+
+      const renderOptions = {
+        title: 'ログイン',
+        path: req.path,
+        layout: 'layouts/auth'
+      };
+
+      this.logger.debug('Login Page Debug [End]', {
+        renderOptions
+      });
+
+      return res.render('pages/auth/login', renderOptions);
+    });
   }
 
   getSignupPage(req, res) {
@@ -119,17 +154,9 @@ class AuthController extends BaseController {
     });
   }
 
-  getLoginPage(req, res) {
-    return this.handleRequest(req, res, async () => {
-      this.renderWithUser(req, res, 'pages/auth/login', { 
-        title: 'ログイン'
-      });
-    });
-  }
-
   async signup(req, res) {
     return this.handleRequest(req, res, async () => {
-      const user = await this.services.signup(req.body);
+      const user = await this.authService.signup(req.body);
       await new Promise((resolve, reject) => {
         req.logIn(user, (err) => err ? reject(err) : resolve());
       });
@@ -151,7 +178,7 @@ class AuthController extends BaseController {
   async login(req, res) {
     return this.handleRequest(req, res, async () => {
       try {
-        const user = await this.services.login(req, res);
+        const user = await this.authService.login(req, res);
         
         this.logger.info('User login successful', {
           userId: user.id,
@@ -204,7 +231,7 @@ class AuthController extends BaseController {
     return this.handleRequest(req, res, async () => {
       try {
         const userId = req.user?.id;
-        await this.services.logout(req);
+        await this.authService.logout(req);
 
         this.logger.info('User logout successful', { userId });
 
@@ -241,12 +268,16 @@ class AuthController extends BaseController {
 }
 
 class MicropostController extends BaseController {
-  constructor(services, fileUploader, errorHandler, logger) {
-    super(services, errorHandler, logger);
-    this.fileUploader = fileUploader;
-    this.micropostService = services.micropost;
-    this.likeService = services.like;
-    this.commentService = services.comment;
+  constructor(micropostService, likeService, commentService, errorHandler, logger) {
+    super({ micropost: micropostService, like: likeService, comment: commentService }, errorHandler, logger);
+    
+    if (!micropostService || !likeService || !commentService) {
+      throw new Error('Required services are not initialized in MicropostController');
+    }
+
+    this.micropostService = micropostService;
+    this.likeService = likeService;
+    this.commentService = commentService;
   }
 
   async index(req, res) {
@@ -874,9 +905,17 @@ class DevelopmentToolsController extends BaseController {
   constructor(services, errorHandler, logger) {
     super(services, errorHandler, logger);
     
-    if (!services || !services.system || !services.profile) {
-      throw new Error('Required services are not initialized in DevelopmentToolsController');
+    // 必要なサービスの存在確認
+    const requiredServices = ['system', 'profile', 'micropost'];
+    const missingServices = requiredServices.filter(service => !services[service]);
+    
+    if (missingServices.length > 0) {
+      throw new Error(`Missing required services for DevelopmentToolsController: ${missingServices.join(', ')}`);
     }
+
+    this.systemService = services.system;
+    this.profileService = services.profile;
+    this.micropostService = services.micropost;
   }
 
   async index(req, res) {
@@ -890,9 +929,9 @@ class DevelopmentToolsController extends BaseController {
       });
 
       const [health, dbHealth, recentUsers, recentMicroposts] = await Promise.all([
-        this.services.system.getHealth(),
-        this.services.system.getDbHealth(),
-        this.services.profile.prisma.user.findMany({
+        this.systemService.getHealth(),
+        this.systemService.getDbHealth(),
+        this.profileService.prisma.user.findMany({
           take: 10,
           orderBy: { createdAt: 'desc' },
           include: {
@@ -903,7 +942,7 @@ class DevelopmentToolsController extends BaseController {
             }
           }
         }),
-        this.services.micropost.prisma.micropost.findMany({
+        this.micropostService.prisma.micropost.findMany({
           take: 10,
           orderBy: { createdAt: 'desc' },
           include: {
@@ -1322,10 +1361,23 @@ class NotificationController extends BaseController {
 }
 
 module.exports = (services, errorHandler, logger) => {
-  return {
-    auth: new AuthController(services.auth, errorHandler, logger),
-    profile: new ProfileController(services.profile, errorHandler, logger),
-    micropost: new MicropostController(services.micropost, errorHandler, logger),
+  if (!services) {
+    throw new Error('Services object is required');
+  }
+
+  // 必要なサービスの存在確認
+  const requiredServices = ['auth', 'profile', 'micropost', 'system'];
+  const missingServices = requiredServices.filter(service => !services[service]);
+  
+  if (missingServices.length > 0) {
+    throw new Error(`Missing required services: ${missingServices.join(', ')}`);
+  }
+
+  // 各コントローラーのインスタンス化
+  const controllers = {
+    auth: new AuthController(services, errorHandler, logger),
+    profile: new ProfileController(services, errorHandler, logger),
+    micropost: new MicropostController(services.micropost, services.like, services.comment, errorHandler, logger),
     system: new SystemController(services.system, errorHandler, logger),
     developmentTools: new DevelopmentToolsController(services, errorHandler, logger),
     admin: new AdminController(services, errorHandler, logger),
@@ -1334,4 +1386,13 @@ module.exports = (services, errorHandler, logger) => {
     comment: new CommentController(services, errorHandler, logger),
     notification: new NotificationController(services, errorHandler, logger)
   };
+
+  // 各コントローラーの初期化確認
+  Object.entries(controllers).forEach(([name, controller]) => {
+    if (!controller) {
+      throw new Error(`Failed to initialize ${name} controller`);
+    }
+  });
+
+  return controllers;
 }; 
