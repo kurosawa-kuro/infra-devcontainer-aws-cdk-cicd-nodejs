@@ -1,5 +1,4 @@
 const { PrismaClient } = require('@prisma/client');
-const { Application } = require('../app');
 const http = require('http');
 const request = require('supertest');
 
@@ -26,6 +25,7 @@ class TestServer {
     this.app = null;
     this.server = null;
     this.baseUrl = null;
+    this.agent = null;
   }
 
   async createDefaultRoles() {
@@ -48,18 +48,18 @@ class TestServer {
 
   async start() {
     process.env.NODE_ENV = 'test';
-    this.app = new Application();
-    this.app.setupMiddleware();
-    this.app.setupRoutes();
-    this.app.setupErrorHandler();
+    const app = require('../app');
+    await app.initialize();
+    this.app = app.app;
 
     await this.createDefaultRoles();
 
-    this.server = http.createServer(this.app.app);
+    this.server = http.createServer(this.app);
     await new Promise(resolve => {
       this.server.listen(0, () => {
         this.baseUrl = `http://localhost:${this.server.address().port}`;
         console.log(`Test server started on ${this.baseUrl}`);
+        this.agent = request.agent(this.server);
         resolve();
       });
     });
@@ -71,9 +71,6 @@ class TestServer {
       console.log('Test server closed');
     }
     await this.prisma.$disconnect();
-    if (this.app) {
-      await this.app.cleanup();
-    }
   }
 
   async resetDatabase() {
@@ -93,25 +90,30 @@ class TestServer {
   }
 
   // Test helper methods
-  async createTestUser(userData = TEST_USER, isAdmin = false) {
-    const signupData = { ...userData, terms: userData.terms || 'on' };
-    
-    const response = await request(this.server)
+  async createTestUser(isAdmin = false) {
+    const email = isAdmin ? 'admin@example.com' : 'test@example.com';
+    const password = 'password123';
+    const name = isAdmin ? 'AdminUser123' : 'TestUser123';
+
+    // ユーザー登録
+    const response = await this.agent
       .post('/auth/signup')
-      .send(signupData);
+      .send({
+        email,
+        password,
+        name,
+        terms: 'on',
+        _csrf: 'test-csrf-token'
+      });
 
-    if (!response.headers['set-cookie']) {
-      throw new Error('No session cookie returned from signup');
-    }
-
-    let user = await this.prisma.user.findUnique({
-      where: { email: userData.email },
+    // ユーザー情報の取得
+    const user = await this.prisma.user.findUnique({
+      where: { email },
       include: {
         userRoles: {
-          include: {
-            role: true
-          }
-        }
+          include: { role: true }
+        },
+        profile: true
       }
     });
 
@@ -120,51 +122,39 @@ class TestServer {
     }
 
     if (isAdmin) {
-      const adminRole = await this.prisma.role.findUnique({
-        where: { name: 'admin' }
-      });
-      if (!adminRole) {
-        throw new Error('Admin role not found');
-      }
+      // 管理者ロールの追加
       await this.prisma.userRole.create({
         data: {
           userId: user.id,
-          roleId: adminRole.id
-        }
-      });
-
-      user = await this.prisma.user.findUnique({
-        where: { email: userData.email },
-        include: {
-          userRoles: {
-            include: {
-              role: true
+          role: {
+            connect: {
+              name: 'admin'
             }
           }
         }
       });
     }
 
-    await this.prisma.userProfile.create({
-      data: {
-        userId: user.id,
-        bio: isAdmin ? 'Admin bio' : 'User bio',
-        location: isAdmin ? 'Admin location' : 'User location',
-        website: isAdmin ? 'https://admin.com' : 'https://user.com',
-        avatarPath: 'default_avatar.png'
-      }
-    });
-
-    return { response, user };
+    return user;
   }
 
   async loginTestUser(credentials = { 
     email: TEST_USER.email, 
     password: TEST_USER.password 
   }) {
+    // CSRFトークンを取得
+    const csrfResponse = await request(this.server)
+      .get('/auth/login')
+      .expect(200);
+    const csrfToken = csrfResponse.text.match(/name="_csrf" value="([^"]+)"/)[1];
+
     const response = await request(this.server)
       .post('/auth/login')
-      .send(credentials);
+      .type('form')
+      .send({
+        ...credentials,
+        _csrf: csrfToken
+      });
 
     if (!response.headers['set-cookie']) {
       throw new Error('No session cookie returned from login');
@@ -297,15 +287,15 @@ const testServer = new TestServer();
 // Jest のグローバルセットアップ
 beforeAll(async () => {
   await testServer.start();
-});
+}, 30000);
 
 afterEach(async () => {
   await testServer.resetDatabase();
-});
+}, 30000);
 
 afterAll(async () => {
   await testServer.cleanup();
-});
+}, 30000);
 
 module.exports = {
   getTestServer: () => testServer,

@@ -154,7 +154,8 @@ class AuthController extends BaseController {
 
   async signup(req, res) {
     return this.handleRequest(req, res, async () => {
-      const user = await this.authService.signup(req.body);
+      const { email, password, name, terms } = req.body;
+      const user = await this.authService.signup({ email, password, name, terms });
       await new Promise((resolve, reject) => {
         req.logIn(user, (err) => err ? reject(err) : resolve());
       });
