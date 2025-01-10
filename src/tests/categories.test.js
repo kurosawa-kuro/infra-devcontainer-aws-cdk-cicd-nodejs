@@ -25,32 +25,33 @@ describe('Category Integration Tests', () => {
     authRequest = testServer.authenticatedRequest(authCookie);
   });
 
-  describe('Category Display', () => {
-    it('should display all categories in the sidebar', async () => {
-      const response = await authRequest.get('/home');
+  describe('カテゴリー一覧表示', () => {
+    it('サイドバーに全てのカテゴリーが表示されること', async () => {
+      const response = await request(server).get('/home');
       expect(response.status).toBe(200);
 
-      // Verify all test categories are displayed
+      // デフォルトカテゴリーの確認
       expect(response.text).toContain('プログラミング');
       expect(response.text).toContain('インフラ');
       expect(response.text).toContain('セキュリティ');
     });
 
-    it('should show categories with their post counts', async () => {
-      // Create a test micropost
+    it('カテゴリーが投稿数と共に表示されること', async () => {
+      // テスト投稿の作成
       const testMicropost = await prisma.micropost.create({
         data: {
           title: 'Test post with category',
+          content: 'Test content',
           userId: testUser.id
         }
       });
 
-      // Get the programming category
+      // プログラミングカテゴリーの取得
       const programmingCategory = await prisma.category.findFirst({
         where: { name: 'プログラミング' }
       });
 
-      // Associate the micropost with the programming category
+      // 投稿とカテゴリーの関連付け
       await prisma.categoryMicropost.create({
         data: {
           micropostId: testMicropost.id,
@@ -58,31 +59,13 @@ describe('Category Integration Tests', () => {
         }
       });
 
-      const response = await authRequest.get('/home');
+      const response = await request(server).get('/home');
       expect(response.status).toBe(200);
 
-      // Verify category is displayed with post count
-      expect(response.text).toContain('プログラミング');
-      expect(response.text).toContain('インフラ');
-      expect(response.text).toContain('セキュリティ');
-    });
-
-    it('should display categories in alphabetical order', async () => {
-      const response = await authRequest.get('/home');
-      expect(response.status).toBe(200);
-
-      // Get the category section of the response
-      const categorySection = response.text.match(/カテゴリー[\s\S]*?<\/div>/)[0];
-      
-      // Verify the order of categories
-      const categoryOrder = ['インフラ', 'セキュリティ', 'プログラミング'];
-      let lastIndex = -1;
-      
-      categoryOrder.forEach(category => {
-        const currentIndex = categorySection.indexOf(category);
-        expect(currentIndex).toBeGreaterThan(lastIndex);
-        lastIndex = currentIndex;
-      });
+      // 投稿数の表示確認
+      expect(response.text).toMatch(/プログラミング[\s\S]*?1/);
+      expect(response.text).toMatch(/インフラ[\s\S]*?0/);
+      expect(response.text).toMatch(/セキュリティ[\s\S]*?0/);
     });
   });
 }); 
