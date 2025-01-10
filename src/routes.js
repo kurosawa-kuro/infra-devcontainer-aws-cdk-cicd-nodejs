@@ -1,14 +1,26 @@
 const express = require('express');
 const asyncHandler = require('express-async-handler');
 const path = require('path');
-const { isAuthenticated, forwardAuthenticated, isAdmin, handle404Error, handle500Error } = require('./middleware');
+const { isAuthenticated, forwardAuthenticated, isAdmin, handleNotFound, handleError } = require('./middleware');
 const fs = require('fs');
 const csrf = require('csurf');
 const cookieParser = require('cookie-parser');
 const session = require('express-session');
 
 function setupRoutes(app, controllers, fileUploader) {
-  const { auth, profile, micropost, system, dev, admin, category, like, notification } = controllers;
+  const { 
+    auth, 
+    profile, 
+    micropost, 
+    system, 
+    development: dev,  // developmentをdevとしてエイリアス
+    admin, 
+    category, 
+    like, 
+    notification 
+  } = controllers;
+
+  console.log('\n=== Middleware Setup Start ===');
 
   /**
    * Middleware Order is Critical:
@@ -19,19 +31,70 @@ function setupRoutes(app, controllers, fileUploader) {
    */
 
   // 1. Cookie Parser - Required for sessions
-  app.use(cookieParser());
+  app.use((req, res, next) => {
+    console.log('\n=== Middleware Execution Order ===');
+    console.log('1. Cookie Parser');
+    cookieParser()(req, res, next);
+  });
 
-  // 2. Session Configuration - Must come before CSRF
-  app.use(session({
-    secret: process.env.SESSION_SECRET || 'your-secret-key',
-    resave: false,
-    saveUninitialized: false,
-    cookie: {
-      secure: process.env.NODE_ENV === 'production',
-      httpOnly: true,
-      maxAge: 24 * 60 * 60 * 1000 // 24時間
-    }
-  }));
+  // 2. Session Configuration
+  app.use((req, res, next) => {
+    console.log('2. Session Middleware');
+    session({
+      secret: process.env.SESSION_SECRET || 'your-secret-key',
+      resave: false,
+      saveUninitialized: false,
+      cookie: {
+        secure: process.env.NODE_ENV === 'production',
+        httpOnly: true,
+        maxAge: 24 * 60 * 60 * 1000
+      }
+    })(req, res, next);
+  });
+
+  // レイアウトのデバッグ用ミドルウェア
+  app.use((req, res, next) => {
+    const originalRender = res.render;
+    res.render = function(view, options, callback) {
+      console.log('\n=== Express-EJS-Layouts Render Process ===');
+      console.log('1. Original View:', view);
+      console.log('2. Original Options:', {
+        ...options,
+        _locals: undefined,
+        cache: undefined,
+        settings: undefined
+      });
+
+      const wrappedCallback = function(err, html) {
+        console.log('\n=== Layout Render Callback ===');
+        console.log('3. Error:', err);
+        console.log('4. Has HTML:', !!html);
+        if (callback) {
+          callback(err, html);
+        }
+      };
+
+      try {
+        return originalRender.call(this, view, options, wrappedCallback);
+      } catch (error) {
+        console.error('\n=== Render Error ===');
+        console.error('5. Error:', error);
+        throw error;
+      }
+    };
+    next();
+  });
+
+  // デフォルトのレスポンス変数を設定
+  app.use((req, res, next) => {
+    console.log('3. Default Response Variables');
+    console.log('Path:', req.path);
+    console.log('Method:', req.method);
+    res.locals.title = 'ページ';
+    res.locals.user = req.user;
+    res.locals.path = req.path;
+    next();
+  });
 
   // デバッグ: リクエストヘッダーとセッション情報をログ
   app.use((req, res, next) => {
@@ -139,25 +202,46 @@ function setupRoutes(app, controllers, fileUploader) {
 
   // Root and Home
   app.get('/', (req, res) => res.redirect('/home'));
-  app.get('/home', asyncHandler((req, res) => micropost.index(req, res)));
+  app.get('/home', asyncHandler(async (req, res) => {
+    res.locals.title = 'ホーム';
+    await micropost.index(req, res);
+  }));
 
   // System Health
-  app.get('/health', asyncHandler((req, res) => system.getHealth(req, res)));
-  app.get('/health-db', asyncHandler((req, res) => system.getDbHealth(req, res)));
+  app.get('/health', asyncHandler((req, res) => {
+    res.locals.title = 'システム状態';
+    return system.getHealth(req, res);
+  }));
+  app.get('/health-db', asyncHandler((req, res) => {
+    res.locals.title = 'データベース状態';
+    return system.getDbHealth(req, res);
+  }));
 
   // Categories
   const categoryRouter = express.Router();
-  categoryRouter.get('/', asyncHandler((req, res) => category.index(req, res)));
-  categoryRouter.get('/:id([0-9]+)', asyncHandler((req, res) => category.show(req, res)));  // 数字のIDのみマッチ
+  categoryRouter.get('/', asyncHandler((req, res) => {
+    res.locals.title = 'カテゴリー一覧';
+    return category.index(req, res);
+  }));
+  categoryRouter.get('/:id([0-9]+)', asyncHandler((req, res) => {
+    res.locals.title = 'カテゴリー詳細';
+    return category.show(req, res);
+  }));
   app.use('/categories', categoryRouter);
 
   // ===================================
   // Authentication Routes
   // ===================================
   const authRouter = express.Router();
-  authRouter.get('/signup', forwardAuthenticated, (req, res) => auth.getSignupPage(req, res));
+  authRouter.get('/signup', forwardAuthenticated, (req, res) => {
+    res.locals.title = 'ユーザー登録';
+    return auth.getSignupPage(req, res);
+  });
   authRouter.post('/signup', forwardAuthenticated, asyncHandler((req, res) => auth.signup(req, res)));
-  authRouter.get('/login', forwardAuthenticated, (req, res) => auth.getLoginPage(req, res));
+  authRouter.get('/login', forwardAuthenticated, (req, res) => {
+    res.locals.title = 'ログイン';
+    return auth.getLoginPage(req, res);
+  });
   authRouter.post('/login', forwardAuthenticated, asyncHandler((req, res) => auth.login(req, res)));
   authRouter.get('/logout', isAuthenticated, asyncHandler((req, res) => auth.logout(req, res)));
   app.use('/auth', authRouter);
@@ -304,7 +388,7 @@ function setupRoutes(app, controllers, fileUploader) {
   // Development Routes
   // ===================================
   const devRouter = express.Router();
-  devRouter.get('/', asyncHandler((req, res) => dev.index(req, res)));
+  devRouter.get('/', asyncHandler(async (req, res) => dev.index(req, res)));
   devRouter.get('/quick-login/:email', asyncHandler((req, res) => dev.quickLogin(req, res)));
   app.use('/dev', devRouter);
 
@@ -333,8 +417,8 @@ function setupRoutes(app, controllers, fileUploader) {
   // ===================================
   // Error Handlers
   // ===================================
-  app.use(handle404Error);
-  app.use(handle500Error);
+  app.use(handleNotFound);
+  app.use(handleError);
 
   return app;
 }

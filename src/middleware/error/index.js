@@ -100,6 +100,22 @@ class ErrorHandler {
   }
 
   handleInternalError(req, res, error) {
+    console.log('\n=== Internal Error Handler Debug ===');
+    console.log('1. Error Details:', {
+      name: error.name,
+      message: error.message,
+      stack: error.stack,
+      code: error.code
+    });
+
+    console.log('2. Request Details:', {
+      method: req.method,
+      path: req.path,
+      query: req.query,
+      body: req.body,
+      headers: req.headers
+    });
+
     this.logger.error('Internal Server Error', {
       error,
       path: req.path,
@@ -110,6 +126,12 @@ class ErrorHandler {
       ? 'サーバーエラーが発生しました'
       : error.message;
 
+    console.log('3. Response Preparation:', {
+      message,
+      isDevelopment: process.env.NODE_ENV !== 'production',
+      isApiRequest: this.isApiRequest(req)
+    });
+
     if (this.isApiRequest(req)) {
       return res.status(500).json({
         success: false,
@@ -118,11 +140,50 @@ class ErrorHandler {
       });
     }
 
+    console.log('4. Rendering Error Page');
     return res.status(500).render('pages/errors/500', {
       message,
       error: process.env.NODE_ENV !== 'production' ? error : {},
       path: req.path,
-      user: req.user
+      user: req.user,
+      title: 'エラーが発生しました'
+    });
+  }
+
+  handleError(err, req, res, next) {
+    console.log('\n=== Error Handler Debug ===');
+    console.log('1. Original Error:', {
+      name: err.name,
+      message: err.message,
+      stack: err.stack
+    });
+    console.log('2. Request Details:', {
+      method: req.method,
+      path: req.path,
+      headers: req.headers
+    });
+
+    // エラーの種類に応じたレスポンス
+    const statusCode = err.statusCode || 500;
+    const errorMessage = err.message || 'Internal Server Error';
+
+    console.log('3. Response Details:', {
+      statusCode,
+      errorMessage
+    });
+
+    if (req.xhr || req.headers.accept?.includes('application/json')) {
+      return res.status(statusCode).json({
+        success: false,
+        message: errorMessage
+      });
+    }
+
+    console.log('4. Rendering Error Page');
+    res.status(statusCode);
+    res.render('pages/errors/500', {
+      message: errorMessage,
+      error: req.app.get('env') === 'development' ? err : {}
     });
   }
 }

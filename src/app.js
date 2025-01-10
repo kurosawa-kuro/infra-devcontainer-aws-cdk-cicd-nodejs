@@ -7,15 +7,15 @@ const { logger } = require('./middleware/logging');
 const { Util, StorageConfig, FileUploader } = require('./util');
 const {
   ErrorHandler,
-  handleCSRFError,
-  handle404Error,
-  handle500Error
+  handleNotFound,
+  handleError
 } = require('./middleware/error');
 
 const setupRoutes = require('./routes');
 const {
   setupBasic,
   setupAuthMiddleware,
+  setupSession
 } = require('./middleware');
 const { middleware: loggingMiddleware } = require('./middleware/logging');
 const { setupSecurity } = require('./middleware/security');
@@ -40,7 +40,7 @@ const {
   ProfileController,
   MicropostController,
   SystemController,
-  DevController,
+  DevelopmentToolsController,
   AdminController,
   CategoryController,
   LikeController,
@@ -117,7 +117,7 @@ class Application {
         logger
       ),
       system: new SystemController(this.services.system, this.errorHandler, logger),
-      dev: new DevController(
+      development: new DevelopmentToolsController(
         {
           system: this.services.system,
           profile: this.services.profile,
@@ -136,20 +136,49 @@ class Application {
 
   // Middleware Setup Methods
   setupMiddleware() {
+    console.log('\n=== Middleware Setup Start ===');
+    console.log('1. Setting up basic middleware');
     setupBasic(this.app);
+    
+    console.log('2. Setting up session middleware');
+    setupSession(this.app);
+    
+    console.log('3. Setting up auth middleware');
     setupAuthMiddleware(this.app, CONFIG);
+    
+    console.log('4. Setting up logging middleware');
     this.app.use(loggingMiddleware.request);
+    
+    console.log('5. Setting up security middleware');
     setupSecurity(this.app);
-    this.app.use(handleCSRFError(this.errorHandler));
+    console.log('=== Middleware Setup Complete ===\n');
   }
 
   setupRoutes() {
+    console.log('\n=== Routes Setup Start ===');
+    console.log('1. Controllers available:', Object.keys(this.controllers));
+    console.log('2. Setting up routes with controllers');
     setupRoutes(this.app, this.controllers, this.fileUploader);
+    console.log('=== Routes Setup Complete ===\n');
   }
 
   setupErrorHandler() {
-    this.app.use(handle404Error);
-    this.app.use(handle500Error);
+    console.log('\n=== Error Handler Setup ===');
+    console.log('1. Setting up 404 handler');
+    this.app.use(handleNotFound);
+    
+    console.log('2. Setting up error handler');
+    this.app.use((err, req, res, next) => {
+      console.log('\n=== Error Caught ===');
+      console.log('Error:', {
+        name: err.name,
+        message: err.message,
+        stack: err.stack
+      });
+      handleError(err, req, res, next);
+    });
+    
+    console.log('=== Error Handler Setup Complete ===\n');
   }
 
   // Application Lifecycle Methods
@@ -165,15 +194,44 @@ class Application {
   }
 
   async initializeApplication() {
+    console.log('\n=== Application Initialization Start ===');
+    console.log('1. Starting initialization process');
+
     await this.detectInstanceType();
+    console.log('2. Instance type detected:', this.instanceType);
+
     this.fileUploader.setupDirectories();
+    console.log('3. Directories setup complete');
+
+    console.log('4. Initializing core components');
     this.initializeCore();
+    console.log('5. Core initialization complete');
+
+    console.log('6. Initializing services');
     this.services = this.initializeServices();
+    console.log('7. Services initialized:', Object.keys(this.services));
+
+    console.log('8. Initializing controllers');
     this.controllers = this.initializeControllers();
+    console.log('9. Controllers initialized:', Object.keys(this.controllers));
+
+    console.log('10. Setting up middleware');
     this.setupMiddleware();
+    console.log('11. Middleware setup complete');
+
+    console.log('12. Setting up routes');
     this.setupRoutes();
+    console.log('13. Routes setup complete');
+
+    console.log('14. Setting up error handlers');
     this.setupErrorHandler();
+    console.log('15. Error handlers setup complete');
+
+    console.log('16. Configuring storage type');
     this.configureStorageType();
+    console.log('17. Storage type configured');
+
+    console.log('=== Application Initialization Complete ===\n');
   }
 
   async detectInstanceType() {

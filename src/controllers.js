@@ -870,13 +870,24 @@ class SystemController extends BaseController {
   }
 }
 
-class DevController extends BaseController {
+class DevelopmentToolsController extends BaseController {
   constructor(services, errorHandler, logger) {
     super(services, errorHandler, logger);
   }
 
   async index(req, res) {
     return this.handleRequest(req, res, async () => {
+      console.log('\n=== Development Tools Debug [Start] ===');
+      console.log('1. Request Details:', {
+        method: req.method,
+        path: req.path,
+        headers: JSON.stringify(req.headers, null, 2),
+        cookies: JSON.stringify(req.cookies, null, 2),
+        session: JSON.stringify(req.session, null, 2)
+      });
+
+      console.log('2. Response Locals [Before]:', JSON.stringify(res.locals, null, 2));
+
       const health = await this.services.system.getHealth();
       const dbHealth = await this.services.system.getDbHealth();
 
@@ -905,7 +916,7 @@ class DevController extends BaseController {
         }
       });
 
-      res.render('pages/dev/index', {
+      const renderOptions = {
         title: '開発支援機能',
         path: req.path,
         health,
@@ -913,47 +924,14 @@ class DevController extends BaseController {
         recentUsers,
         recentMicroposts,
         layout: 'layouts/dev'
-      });
-    });
-  }
+      };
 
-  async quickLogin(req, res) {
-    return this.handleRequest(req, res, async () => {
-      const { email } = req.params;
-      const user = await this.services.profile.prisma.user.findUnique({
-        where: { email },
-        include: {
-          userRoles: {
-            include: {
-              role: true
-            }
-          }
-        }
-      });
+      console.log('3. Response Locals [After Title]:', JSON.stringify(res.locals, null, 2));
+      console.log('4. Render Options:', JSON.stringify(renderOptions, null, 2));
+      console.log('5. Template Path: pages/dev/index');
+      console.log('=== Development Tools Debug [End] ===\n');
 
-      if (!user) {
-        const defaultUsers = {
-          'user@example.com': '一般ユーザー',
-          'admin@example.com': '管理者'
-        };
-        const userType = defaultUsers[email] || 'ユーザー';
-        return this.sendResponse(req, res, {
-          message: `${userType}アカウント（${email}）が存在しません。\nデータベースのセットアップを実行してください。`,
-          redirectUrl: '/dev'
-        });
-      }
-
-      await new Promise((resolve, reject) => {
-        req.logIn(user, (err) => err ? reject(err) : resolve());
-      });
-
-      const isAdmin = user.userRoles.some(ur => ur.role.name === 'admin');
-      const userType = isAdmin ? '管理者' : '一般ユーザー';
-
-      this.sendResponse(req, res, {
-        message: `${userType}としてログインしました`,
-        redirectUrl: '/dev'
-      });
+      res.render('pages/dev/index', renderOptions);
     });
   }
 }
@@ -1315,7 +1293,7 @@ module.exports = {
   ProfileController,
   MicropostController,
   SystemController,
-  DevController,
+  DevelopmentToolsController,
   AdminController,
   CategoryController,
   LikeController,

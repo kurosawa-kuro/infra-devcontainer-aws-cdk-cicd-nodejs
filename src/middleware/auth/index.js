@@ -137,10 +137,7 @@ const setupCSRF = (app) => {
 
 function setupAuthMiddleware(app, config) {
   const passportService = new PassportService(app.get('prisma'), logger);
-  const passport = passportService.getPassport();
-  
-  app.use(passport.initialize());
-  app.use(passport.session());
+  passportService.configurePassport();
   
   // ... other auth middleware setup ...
 }
