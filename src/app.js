@@ -1,26 +1,22 @@
 const express = require('express');
 const { PrismaClient } = require('@prisma/client');
 require('dotenv').config();
-const session = require('express-session');
-const passport = require('passport');
 
 // Internal dependencies
-const { logger } = require('./middleware/logging');
-const { Util, StorageConfig, FileUploader } = require('./util');
 const {
+  logger,
   ErrorHandler,
   handleNotFound,
-  handleError
-} = require('./middleware/error');
-
-const setupRoutes = require('./routes');
-const {
-  setupBasic,
-  setupAuthMiddleware,
-  setupSession
+  handleError,
+  setupSecurity,
+  setupApplication,
+  setupDirectories,
+  detectInstanceType,
+  configureStorageType
 } = require('./middleware');
-const { middleware: loggingMiddleware } = require('./middleware/logging');
-const { setupSecurity } = require('./middleware/security');
+
+const { Util, StorageConfig, FileUploader } = require('./util');
+const setupRoutes = require('./routes');
 
 // Services
 const {
@@ -71,14 +67,27 @@ class Application {
     this.prisma = new PrismaClient();
     this.storageConfig = new StorageConfig();
     this.fileUploader = new FileUploader(this.storageConfig);
-    this.errorHandler = new ErrorHandler(this.storageConfig.getUploadLimits());
+    this.errorHandler = new ErrorHandler();
     this.instanceType = null;
   }
 
   // Initialization Methods
-  initializeCore() {
+  async initializeCore() {
     const passportService = new PassportService(this.prisma, logger);
-    passportService.configurePassport();
+    
+    // セキュリティ設定を適用
+    setupSecurity(this.app);
+    
+    // アプリケーションのセットアップ（ルーティングを含む）
+    await setupApplication(
+      this.app,
+      setupRoutes,
+      {
+        passport: passportService,
+        ...this.controllers  // 全てのコントローラーを渡す
+      },
+      this.fileUploader
+    );
   }
 
   initializeServices() {
@@ -136,44 +145,6 @@ class Application {
     };
   }
 
-  // Middleware Setup Methods
-  setupMiddleware() {
-    console.log('\n=== Middleware Setup Start ===');
-    
-    // 1. Basic middleware setup (body parsers, etc.)
-    setupBasic(this.app);
-    console.log('1. Basic middleware setup complete');
-
-    // 2. Session setup (before security and auth)
-    setupSession(this.app);
-    console.log('2. Session setup complete');
-
-    // 3. Passport initialization
-    this.app.use(passport.initialize());
-    this.app.use(passport.session());
-    console.log('3. Passport initialization complete');
-
-    // 4. Security middleware (after session, before routes)
-    setupSecurity(this.app);
-    console.log('4. Security middleware setup complete');
-
-    // 5. Routes setup
-    this.setupRoutes();
-    console.log('5. Routes setup complete');
-
-    // 6. Error handlers
-    this.setupErrorHandler();
-    console.log('6. Error handlers setup complete');
-  }
-
-  setupRoutes() {
-    console.log('\n=== Routes Setup Start ===');
-    console.log('1. Controllers available:', Object.keys(this.controllers));
-    console.log('2. Setting up routes with controllers');
-    setupRoutes(this.app, this.controllers, this.fileUploader);
-    console.log('=== Routes Setup Complete ===\n');
-  }
-
   setupErrorHandler() {
     console.log('\n=== Error Handler Setup ===');
     console.log('1. Setting up 404 handler');
@@ -224,55 +195,22 @@ class Application {
 
   async initializeApplication() {
     console.log('\n=== Application Initialization Start ===');
-    console.log('1. Starting initialization process');
 
-    await this.detectInstanceType();
-    console.log('2. Instance type detected:', this.instanceType);
-
-    this.fileUploader.setupDirectories();
-    console.log('3. Directories setup complete');
-
-    console.log('4. Initializing core components');
-    this.initializeCore();
-    console.log('5. Core initialization complete');
-
-    console.log('6. Initializing services');
+    this.instanceType = await detectInstanceType(Util);
+    await setupDirectories(this.fileUploader);
+    
+    // サービスとコントローラーを先に初期化
     this.services = this.initializeServices();
-    console.log('7. Services initialized:', Object.keys(this.services));
-
-    console.log('8. Initializing controllers');
     this.controllers = this.initializeControllers();
-    console.log('9. Controllers initialized:', Object.keys(this.controllers));
-
-    console.log('10. Setting up middleware');
-    this.setupMiddleware();
-    console.log('11. Middleware setup complete');
-
-    console.log('12. Configuring storage type');
-    this.configureStorageType();
-    console.log('13. Storage type configured');
+    
+    // セキュリティとアプリケーションのセットアップ
+    await this.initializeCore();
+    
+    // エラーハンドラーとストレージの設定
+    this.setupErrorHandler();
+    configureStorageType(this.instanceType);
 
     console.log('=== Application Initialization Complete ===\n');
-  }
-
-  async detectInstanceType() {
-    try {
-      this.instanceType = await Util.checkInstanceType();
-      logger.info(`Starting application on ${this.instanceType}`);
-    } catch (instanceTypeError) {
-      logger.warn('Failed to determine instance type, defaulting to Lightsail/Other:', instanceTypeError);
-      this.instanceType = 'Lightsail/Other';
-    }
-  }
-
-  configureStorageType() {
-    if (this.instanceType === 'Lightsail/Other') {
-      logger.info('Running on Lightsail - using local storage configuration');
-      process.env.USE_S3 = 'false';
-    } else {
-      logger.info('Running on EC2 - using S3 storage configuration');
-      process.env.USE_S3 = 'true';
-    }
   }
 
   async cleanup() {

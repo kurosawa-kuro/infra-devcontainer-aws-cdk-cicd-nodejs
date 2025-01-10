@@ -72,37 +72,22 @@ const performanceMetrics = {
   }
 };
 
-// ログフォーマットの設定
-const logFormat = format.printf(({ level, message, timestamp, ...metadata }) => {
-  const maskedMetadata = maskSensitiveData(metadata);
-  return JSON.stringify({
-    timestamp,
-    level,
-    message,
-    traceId: metadata.traceId,
-    ...maskedMetadata
-  });
-});
-
-// 環境に基づいたログレベルの設定
-const getLogLevel = () => {
-  switch (process.env.NODE_ENV) {
-    case 'production':
-      return LOG_LEVELS.INFO;
-    case 'test':
-      return LOG_LEVELS.DEBUG;
-    default:
-      return LOG_LEVELS.DEBUG;
-  }
-};
-
 // Winstonロガーの設定
 const logger = winston.createLogger({
-  level: getLogLevel(),
+  level: process.env.NODE_ENV === 'production' ? LOG_LEVELS.INFO : LOG_LEVELS.DEBUG,
   format: format.combine(
     format.timestamp({ format: 'YYYY-MM-DDTHH:mm:ss.SSSZ' }),
     format.metadata({ fillExcept: ['message', 'level', 'timestamp'] }),
-    logFormat
+    format.printf(({ level, message, timestamp, ...metadata }) => {
+      const maskedMetadata = maskSensitiveData(metadata);
+      return JSON.stringify({
+        timestamp,
+        level,
+        message,
+        traceId: metadata.traceId,
+        ...maskedMetadata
+      });
+    })
   ),
   transports: [
     new winston.transports.DailyRotateFile({
@@ -133,117 +118,79 @@ if (process.env.NODE_ENV !== 'production') {
   }));
 }
 
-// HTTPリクエストのログ記録
-const logRequest = (req, res, responseTime) => {
-  const logData = {
-    method: req.method,
-    url: req.url,
-    status: res.statusCode,
-    responseTime: `${responseTime}ms`,
-    userAgent: req.get('user-agent'),
-    userId: req.user?.id,
-    ip: req.ip,
-    traceId: req.traceId,
-    referer: req.get('referer'),
-    contentLength: res.get('content-length'),
-    protocol: req.protocol
-  };
-
-  performanceMetrics.requestCount++;
-  if (responseTime > 1000) {
-    performanceMetrics.slowRequests++;
-  }
-
-  if (res.statusCode >= 400) {
-    performanceMetrics.errorCount++;
-    logger.warn('HTTP Request Error', logData);
-  } else {
-    logger.info('HTTP Request', logData);
-  }
-};
-
-// エキュリティイベントのログ記録
-const logSecurityEvent = (event, req = null, context = {}) => {
-  const logData = {
-    event,
-    timestamp: new Date().toISOString(),
-    ip: req?.ip,
-    userId: req?.user?.id,
-    userAgent: req?.get('user-agent'),
-    ...context
-  };
-
-  logger.warn('Security Event', logData);
-};
-
-// エラーログの記録
-const logError = (error, req = null) => {
-  const logData = {
-    error: {
-      name: error.name,
-      message: error.message,
-      code: error.code,
-      stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
-    },
-    traceId: req?.traceId
-  };
-
-  if (req) {
-    logData.request = {
+// デバッグミドルウェア
+const debugMiddleware = (req, res, next) => {
+  if (process.env.NODE_ENV === 'development') {
+    console.log(`[${new Date().toISOString()}] ${req.method} ${req.path}`);
+    
+    // リクエストの詳細をデバッグ
+    logger.debug('Request Details', {
       method: req.method,
-      url: req.url,
+      path: req.path,
+      query: req.query,
+      body: maskSensitiveData(req.body),
       headers: maskSensitiveData(req.headers),
-      query: maskSensitiveData(req.query),
-      userId: req.user?.id,
       ip: req.ip
-    };
+    });
   }
-
-  logger.error('Error occurred', logData);
-};
-
-// データベースログの記録
-const logDatabase = (operation, error = null, context = {}) => {
-  const logData = {
-    operation,
-    timestamp: new Date().toISOString(),
-    context: maskSensitiveData(context),
-    traceId: context.traceId
-  };
-
-  if (error) {
-    logData.error = {
-      name: error.name,
-      message: error.message,
-      code: error.code,
-      stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
-    };
-    logger.error('Database Error', logData);
-  } else {
-    logger.info('Database Operation', logData);
-  }
+  next();
 };
 
 // リクエストロギングミドルウェア
 const requestLogger = (req, res, next) => {
-  // トレースIDの生成
   req.traceId = require('crypto').randomUUID();
   const startTime = Date.now();
   
-  // レスポンス終了時にログを記録
-  const originalEnd = res.end;
-  res.end = function(...args) {
+  res.on('finish', () => {
     const responseTime = Date.now() - startTime;
-    logRequest(req, res, responseTime);
-    originalEnd.apply(res, args);
-  };
+    const logData = {
+      method: req.method,
+      url: req.url,
+      status: res.statusCode,
+      responseTime: `${responseTime}ms`,
+      userAgent: req.get('user-agent'),
+      userId: req.user?.id,
+      ip: req.ip,
+      traceId: req.traceId
+    };
+
+    performanceMetrics.requestCount++;
+    if (responseTime > 1000) {
+      performanceMetrics.slowRequests++;
+    }
+
+    if (res.statusCode >= 400) {
+      performanceMetrics.errorCount++;
+      logger.warn('HTTP Request Error', logData);
+    } else {
+      logger.info('HTTP Request', logData);
+    }
+  });
   
   next();
 };
 
 // エラーロギングミドルウェア
 const errorLogger = (err, req, res, next) => {
-  logError(err, req);
+  const logData = {
+    error: {
+      name: err.name,
+      message: err.message,
+      stack: process.env.NODE_ENV === 'development' ? err.stack : undefined
+    },
+    request: {
+      method: req.method,
+      url: req.url,
+      headers: maskSensitiveData(req.headers),
+      query: maskSensitiveData(req.query),
+      body: maskSensitiveData(req.body),
+      userId: req.user?.id,
+      ip: req.ip,
+      traceId: req.traceId
+    }
+  };
+
+  logger.error('Error occurred', logData);
   next(err);
 };
 
@@ -258,11 +205,9 @@ module.exports = {
   logger,
   LOG_LEVELS,
   middleware: {
+    debug: debugMiddleware,
     request: requestLogger,
     error: errorLogger
   },
-  logError,
-  logDatabase,
-  logSecurityEvent,
   getMetrics: () => performanceMetrics.getMetrics()
 }; 

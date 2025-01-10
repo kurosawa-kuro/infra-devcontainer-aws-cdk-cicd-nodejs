@@ -1,8 +1,7 @@
-const { logger } = require('../logging');
+const { logger } = require('./logging');
 
 class ErrorHandler {
-  constructor(uploadLimits) {
-    this.uploadLimits = uploadLimits;
+  constructor() {
     this.logger = logger;
   }
 
@@ -27,7 +26,6 @@ class ErrorHandler {
       ...details
     };
 
-    // 開発環境でのデバッグ出力を強化
     if (process.env.NODE_ENV !== 'production') {
       console.log('\n=== Error Debug Information ===');
       console.log('Error Type:', type);
@@ -42,7 +40,6 @@ class ErrorHandler {
         user: req.user
       });
       console.log('Error Details:', details);
-      console.log('Stack Trace:', details.error?.stack || 'No stack trace available');
       console.log('=== End Error Debug ===\n');
     }
 
@@ -50,16 +47,6 @@ class ErrorHandler {
   }
 
   sendErrorResponse(req, res, { status, message, details = {} }) {
-    // デバッグ情報の出力
-    if (process.env.NODE_ENV !== 'production') {
-      console.log('\n=== Error Response Debug ===');
-      console.log('Status:', status);
-      console.log('Message:', message);
-      console.log('Is API Request:', this.isApiRequest(req));
-      console.log('Response Details:', details);
-      console.log('=== End Response Debug ===\n');
-    }
-
     if (this.isApiRequest(req)) {
       return res.status(status).json({
         success: false,
@@ -91,13 +78,6 @@ class ErrorHandler {
   }
 
   handleValidationError(req, res, message = 'バリデーションエラーが発生しました', details = {}) {
-    if (process.env.NODE_ENV !== 'production') {
-      console.log('\n=== Validation Error Debug ===');
-      console.log('Validation Details:', details);
-      console.log('Request Body:', req.body);
-      console.log('=== End Validation Debug ===\n');
-    }
-
     this.logError('warn', 'ValidationError', req, { details });
     return this.sendErrorResponse(req, res, {
       status: 400,
@@ -107,13 +87,6 @@ class ErrorHandler {
   }
 
   handleAuthError(req, res, message = '認証が必要です') {
-    if (process.env.NODE_ENV !== 'production') {
-      console.log('\n=== Auth Error Debug ===');
-      console.log('User Session:', req.session);
-      console.log('Auth Headers:', req.headers.authorization);
-      console.log('=== End Auth Debug ===\n');
-    }
-
     this.logError('warn', 'AuthError', req);
     return this.sendErrorResponse(req, res, {
       status: 401,
@@ -122,14 +95,6 @@ class ErrorHandler {
   }
 
   handlePermissionError(req, res, message = '権限がありません') {
-    if (process.env.NODE_ENV !== 'production') {
-      console.log('\n=== Permission Error Debug ===');
-      console.log('User:', req.user);
-      console.log('Required Permissions:', req.requiredPermissions);
-      console.log('Current Permissions:', req.user?.permissions);
-      console.log('=== End Permission Debug ===\n');
-    }
-
     this.logError('warn', 'PermissionError', req);
     return this.sendErrorResponse(req, res, {
       status: 403,
@@ -138,14 +103,6 @@ class ErrorHandler {
   }
 
   handleNotFoundError(req, res, message = 'リソースが見つかりません') {
-    if (process.env.NODE_ENV !== 'production') {
-      console.log('\n=== Not Found Error Debug ===');
-      console.log('Requested Path:', req.path);
-      console.log('Route Params:', req.params);
-      console.log('Query Params:', req.query);
-      console.log('=== End Not Found Debug ===\n');
-    }
-
     this.logError('warn', 'NotFound', req);
     return this.sendErrorResponse(req, res, {
       status: 404,
@@ -154,15 +111,6 @@ class ErrorHandler {
   }
 
   handleDatabaseError(req, res, error, message = 'データベースエラーが発生しました') {
-    if (process.env.NODE_ENV !== 'production') {
-      console.log('\n=== Database Error Debug ===');
-      console.log('Error:', error);
-      console.log('SQL Query:', error.sql);
-      console.log('Parameters:', error.parameters);
-      console.log('Stack:', error.stack);
-      console.log('=== End Database Debug ===\n');
-    }
-
     this.logError('error', 'DatabaseError', req, { error });
     return this.sendErrorResponse(req, res, {
       status: 500,
@@ -173,23 +121,6 @@ class ErrorHandler {
   handleInternalError(req, res, error) {
     const isDevelopment = process.env.NODE_ENV !== 'production';
     const message = isDevelopment ? error.message : 'サーバーエラーが発生しました';
-
-    if (isDevelopment) {
-      console.log('\n=== Internal Server Error Debug ===');
-      console.log('Error Name:', error.name);
-      console.log('Error Message:', error.message);
-      console.log('Error Code:', error.code);
-      console.log('Stack Trace:', error.stack);
-      console.log('Request Details:', {
-        method: req.method,
-        path: req.path,
-        headers: req.headers,
-        body: req.body,
-        query: req.query,
-        params: req.params
-      });
-      console.log('=== End Internal Error Debug ===\n');
-    }
 
     this.logError('error', 'InternalServerError', req, {
       error: {
@@ -212,38 +143,16 @@ class ErrorHandler {
 
 // エラーハンドリングミドルウェア
 const handleNotFound = (req, res) => {
-  if (process.env.NODE_ENV !== 'production') {
-    console.log('\n=== 404 Middleware Debug ===');
-    console.log('Path:', req.path);
-    console.log('Method:', req.method);
-    console.log('=== End 404 Debug ===\n');
-  }
-
   const errorHandler = new ErrorHandler();
   return errorHandler.handleNotFoundError(req, res);
 };
 
 const handleError = (err, req, res, next) => {
-  if (process.env.NODE_ENV !== 'production') {
-    console.log('\n=== Global Error Handler Debug ===');
-    console.log('Original Error:', err);
-    console.log('Stack Trace:', err.stack);
-    console.log('=== End Global Error Debug ===\n');
-  }
-
   const errorHandler = new ErrorHandler();
   return errorHandler.handleInternalError(req, res, err);
 };
 
 const handleCSRFError = (err, req, res, next) => {
-  if (process.env.NODE_ENV !== 'production') {
-    console.log('\n=== CSRF Error Debug ===');
-    console.log('Error Code:', err.code);
-    console.log('Token:', req.csrfToken?.());
-    console.log('Headers:', req.headers);
-    console.log('=== End CSRF Debug ===\n');
-  }
-
   if (err.code === 'EBADCSRFTOKEN') {
     const errorHandler = new ErrorHandler();
     return errorHandler.handleValidationError(
@@ -257,7 +166,9 @@ const handleCSRFError = (err, req, res, next) => {
 
 module.exports = {
   ErrorHandler,
-  handleNotFound,
-  handleError,
-  handleCSRFError
+  middleware: {
+    notFound: handleNotFound,
+    error: handleError,
+    csrf: handleCSRFError
+  }
 }; 
