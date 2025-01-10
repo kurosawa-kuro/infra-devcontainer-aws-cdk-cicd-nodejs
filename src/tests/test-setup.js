@@ -185,6 +185,34 @@ class TestServer {
     }
     console.log('Test server closed');
   }
+
+  async createTestMicropost(userId, data = {}) {
+    console.log('Creating test micropost...');
+    const defaultData = {
+      title: 'Test Post',
+      ...data
+    };
+
+    const micropost = await this.prisma.micropost.create({
+      data: {
+        ...defaultData,
+        userId: userId
+      },
+      include: {
+        user: true,
+        likes: true,
+        comments: true
+      }
+    });
+
+    console.log('Created test micropost:', {
+      id: micropost.id,
+      title: micropost.title,
+      userId: micropost.userId
+    });
+
+    return micropost;
+  }
 }
 
 async function getTestServer() {
