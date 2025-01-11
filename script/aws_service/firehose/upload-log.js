@@ -3,7 +3,7 @@ const dotenv = require('dotenv');
 const path = require('path');
 
 // 環境変数の読み込み
-dotenv.config({ path: path.resolve(__dirname, '../../.env') });
+dotenv.config({ path: path.resolve(__dirname, '../../../.env') });
 
 // 環境変数のマッピング
 process.env.AWS_ACCESS_KEY_ID = process.env._AWS_ACCESS_KEY_ID;
