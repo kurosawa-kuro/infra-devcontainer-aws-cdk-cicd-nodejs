@@ -2,6 +2,7 @@ const request = require('supertest');
 const { PrismaClient } = require('@prisma/client');
 const Application = require('../app');
 const bcrypt = require('bcrypt');
+const { logger, closeLogger } = require('../middleware/core/logging');
 
 class TestDatabase {
   constructor(prisma) {
@@ -180,10 +181,24 @@ class TestServer {
   }
 
   async cleanup() {
+    console.log('Test server closed');
+    if (this.server) {
+      if (this.server.close) {
+        await this.server.close();
+      } else if (this.app && this.app.server) {
+        await new Promise((resolve) => {
+          this.app.server.close(() => {
+            resolve();
+          });
+        });
+      }
+    }
+    
     if (this.prisma) {
       await this.prisma.$disconnect();
     }
-    console.log('Test server closed');
+    
+    await closeLogger();
   }
 
   async createTestMicropost(userId, data = {}) {

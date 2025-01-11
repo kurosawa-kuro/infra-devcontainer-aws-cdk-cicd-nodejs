@@ -322,7 +322,6 @@ class AuthService extends BaseService {
       }
 
       const isValid = await this._validatePassword(password, user.password);
-      console.log('Password validation:', { isValid });
 
       if (!isValid) {
         console.log('Authentication failed: Invalid password');
@@ -339,11 +338,6 @@ class AuthService extends BaseService {
         }
       });
 
-      console.log('Authentication successful:', {
-        id: userWithRoles.id,
-        email: userWithRoles.email,
-        roles: userWithRoles.userRoles.map(ur => ur.role.name)
-      });
 
       return userWithRoles;
     } catch (error) {

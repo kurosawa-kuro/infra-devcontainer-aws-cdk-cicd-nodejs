@@ -104,7 +104,7 @@ const logger = winston.createLogger({
   ),
   transports: [
     new winston.transports.DailyRotateFile({
-      filename: 'logs/error-%DATE%.log',
+      filename: 'src/logs/error-%DATE%.log',
       datePattern: 'YYYY-MM-DD',
       level: LOG_LEVELS.ERROR,
       maxSize: '20m',
@@ -112,7 +112,7 @@ const logger = winston.createLogger({
       zippedArchive: true
     }),
     new winston.transports.DailyRotateFile({
-      filename: 'logs/combined-%DATE%.log',
+      filename: 'src/logs/combined-%DATE%.log',
       datePattern: 'YYYY-MM-DD',
       maxSize: '20m',
       maxFiles: '14d',
@@ -122,7 +122,8 @@ const logger = winston.createLogger({
 });
 
 // CloudWatchトランスポートの追加
-if (process.env.USE_CLOUDWATCH === 'true') {
+let cloudWatchTransport = null;
+if (process.env.USE_CLOUDWATCH === 'true' && process.env.NODE_ENV === 'production') {
   const cloudwatchConfig = {
     logGroupName: process.env.CLOUDWATCH_LOG_GROUP,
     logStreamName: `${process.env.NODE_ENV}-${new Date().toISOString().split('T')[0]}`,
@@ -138,7 +139,8 @@ if (process.env.USE_CLOUDWATCH === 'true') {
     }
   };
 
-  logger.add(new WinstonCloudWatch(cloudwatchConfig));
+  cloudWatchTransport = new WinstonCloudWatch(cloudwatchConfig);
+  logger.add(cloudWatchTransport);
   logger.info('CloudWatch logging enabled');
 }
 
@@ -247,6 +249,20 @@ if (process.env.NODE_ENV !== 'test') {
   }, 60 * 60 * 1000); // 1時間
 }
 
+// ロガーのクローズ関数を追加
+const closeLogger = async () => {
+  if (cloudWatchTransport) {
+    await new Promise((resolve) => {
+      cloudWatchTransport.kthxbye(() => {
+        resolve();
+      });
+    });
+  }
+  
+  // 他のトランスポートも終了
+  await logger.close();
+};
+
 module.exports = {
   logger,
   LOG_LEVELS,
@@ -255,5 +271,6 @@ module.exports = {
     request: requestLogger,
     error: errorLogger
   },
-  getMetrics: () => performanceMetrics.getMetrics()
+  getMetrics: () => performanceMetrics.getMetrics(),
+  closeLogger
 }; 
