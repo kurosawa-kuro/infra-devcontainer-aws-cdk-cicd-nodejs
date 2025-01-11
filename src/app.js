@@ -29,10 +29,28 @@ class Application {
 
   async initialize() {
     try {
-      // ロギングミドルウェアのセットアップ
-      this.app.use(middleware.debug);    // デバッグログ（開発環境のみ）
-      this.app.use(middleware.request);  // リクエストログ（全環境）
-      this.app.use(middleware.error);    // エラーログ（全環境）
+      // ヘルスチェックのルートを最初に定義
+      this.app.get('/health', (req, res) => {
+        res.status(200).send('OK');
+      });
+
+      // ロギングミドルウェアの設定
+      this.app.use((req, res, next) => {
+        if (req.path === '/health') {
+          return next();
+        }
+        middleware.debug(req, res, next);
+      });
+
+      this.app.use((req, res, next) => {
+        if (req.path === '/health') {
+          return next();
+        }
+        middleware.request(req, res, next);
+      });
+
+      // エラーログは全てキャプチャ
+      this.app.use(middleware.error);
 
       // 初期化に必要なサービスとコンポーネントの準備
       const storageConfig = new StorageConfig();
