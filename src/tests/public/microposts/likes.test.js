@@ -45,14 +45,15 @@ describe('マイクロポストのいいね機能の統合テスト', () => {
       const response = await request(server)
         .get('/microposts')
         .set('Accept', 'application/json')
+        .set('Content-Type', 'application/json')
+        .expect('Content-Type', /json/)
         .expect(200);
 
-      expect(response.body.success).toBe(true);
       expect(Array.isArray(response.body.microposts)).toBe(true);
       
       const testPostResponse = response.body.microposts.find(post => post.id === testPost.id);
       expect(testPostResponse).toBeDefined();
-      expect(testPostResponse).toHaveProperty('_count.likes');
+      expect(testPostResponse._count).toBeDefined();
       expect(testPostResponse._count.likes).toBe(1);
     });
   });

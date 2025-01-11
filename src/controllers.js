@@ -1019,27 +1019,33 @@ class CategoryController extends BaseController {
       });
 
       try {
-        const categories = await this.categoryService.getAllCategories();
+        const categories = await this.categoryService.prisma.category.findMany({
+          include: {
+            _count: {
+              select: {
+                microposts: true
+              }
+            }
+          }
+        });
         
         // データを整形
         const formattedCategories = categories.map(category => ({
           id: category.id,
           name: category.name,
-          description: category.description,
-          micropostsCount: category._count.microposts,
-          recentMicroposts: category.microposts
-            .slice(0, 5)
-            .map(mc => ({
-              id: mc.micropost.id,
-              title: mc.micropost.title,
-              user: mc.micropost.user,
-              stats: {
-                likes: mc.micropost._count.likes,
-                comments: mc.micropost._count.comments,
-                views: mc.micropost._count.views
-              }
-            }))
+          micropostsCount: category._count.microposts
         }));
+
+        const isApiRequest = req.xhr || 
+          req.headers.accept?.includes('application/json') || 
+          req.headers['content-type']?.includes('application/json');
+
+        if (isApiRequest) {
+          return res.json({
+            success: true,
+            categories: formattedCategories
+          });
+        }
 
         this.logger.info('Category index processed successfully', {
           count: formattedCategories.length,
@@ -1050,11 +1056,14 @@ class CategoryController extends BaseController {
           }))
         });
 
-        res.render('pages/public/categories/index', {
+        return res.render('pages/public/categories/index', {
           categories: formattedCategories,
           title: 'カテゴリー一覧',
           path: req.path,
-          user: req.user
+          user: req.user,
+          currentPage: 1,
+          totalPages: 1,
+          csrfToken: req.csrfToken()
         });
       } catch (error) {
         this.logger.error('Error in category index', {
