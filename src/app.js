@@ -108,7 +108,7 @@ if (require.main === module) {
           const protocol = process.env.NODE_ENV === 'production' ? 'https' : 'http';
           console.log(`Server is running on port ${PORT}`);
           console.log(`🚀 アプリケーションにアクセスするには以下のURLを開いてください：`);
-          console.log(`${protocol}://${HOST}:${PORT}`);
+          console.log(`${protocol}://${HOST}:${PORT}/dev`);
         });
       }
     } catch (error) {
