@@ -121,38 +121,47 @@ const logger = winston.createLogger({
   ]
 });
 
-// CloudWatchトランスポートの追加
-let cloudWatchTransport = null;
-if (process.env.USE_CLOUDWATCH === 'true' && process.env.NODE_ENV === 'production') {
+// CloudWatchトランスポートの条件を変更
+if (process.env.USE_CLOUDWATCH === 'true') {  // NODE_ENVの条件を削除
   const cloudwatchConfig = {
     logGroupName: process.env.CLOUDWATCH_LOG_GROUP,
-    logStreamName: `${process.env.NODE_ENV}-${new Date().toISOString().split('T')[0]}`,
+    logStreamName: `${process.env.NODE_ENV || 'development'}-${new Date().toISOString().split('T')[0]}`,
     awsRegion: process.env.CLOUDWATCH_REGION,
     messageFormatter: ({ level, message, ...meta }) => {
       return JSON.stringify({
         level,
         message,
         timestamp: new Date().toISOString(),
-        environment: process.env.NODE_ENV,
+        environment: process.env.NODE_ENV || 'development',
         ...meta
       });
-    }
+    },
+    retentionInDays: 7,  // 検証用に保持期間を短縮
+    batchSize: 10,       // 検証用にバッチサイズを小さく
+    maxRetries: 3,       // 検証用にリトライ回数を減らす
+    retryTimeout: 500    // 検証用にタイムアウトを短縮
   };
 
-  cloudWatchTransport = new WinstonCloudWatch(cloudwatchConfig);
-  logger.add(cloudWatchTransport);
-  logger.info('CloudWatch logging enabled');
+  try {
+    cloudWatchTransport = new WinstonCloudWatch(cloudwatchConfig);
+    logger.add(cloudWatchTransport);
+    logger.info('CloudWatch logging enabled for all environments');
+  } catch (error) {
+    logger.error('CloudWatch initialization failed', { error });
+  }
 }
 
-// 開発環境用のコンソール出力設定
-if (process.env.NODE_ENV !== 'production') {
-  logger.add(new winston.transports.Console({
-    format: format.combine(
-      format.colorize(),
-      format.simple()
-    )
-  }));
-}
+// コンソール出力設定（すべての環境で詳細ログを出力）
+logger.add(new winston.transports.Console({
+  format: format.combine(
+    format.colorize(),
+    format.simple(),
+    format.printf(info => {
+      return `${info.timestamp} [${info.level}] ${info.message} ${JSON.stringify(info.metadata)}`;
+    })
+  ),
+  level: 'debug'  // 検証用に詳細ログを出力
+}));
 
 // デバッグミドルウェア
 const debugMiddleware = (req, res, next) => {
