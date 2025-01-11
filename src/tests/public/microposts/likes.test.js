@@ -51,7 +51,6 @@ describe('マイクロポストのいいね機能の統合テスト', () => {
 
       expect(Array.isArray(response.body.microposts)).toBe(true);
       
-      
       const testPostResponse = response.body.microposts.find(post => post.id === testPost.id);
       expect(testPostResponse).toBeDefined();
       expect(testPostResponse._count).toBeDefined();
