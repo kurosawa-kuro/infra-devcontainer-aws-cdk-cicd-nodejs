@@ -5,49 +5,19 @@ const { logger } = require('./middleware/core/logging');
 
 class Util {
     /**
-     * Check the instance type of the current environment
+     * Check if the current environment is running on Lightsail
      * @returns {Promise<string>} Returns 'EC2' or 'Lightsail/Other'
      */
     static async checkInstanceType() {
-        // インスタンス名が lightsail-dev-app の場合は Lightsail として扱う
-        const instanceName = process.env.INSTANCE_NAME || 'lightsail-dev-app';
-        if (instanceName === 'lightsail-dev-app') {
-            logger.info('Running on Lightsail (detected via instance name)');
+        const USE_LIGHTSAIL = process.env.USE_LIGHTSAIL === 'true';
+        
+        if (USE_LIGHTSAIL) {
+            logger.info('Running on Lightsail environment');
             return 'Lightsail/Other';
         }
 
-        try {
-            const metadata = await new Promise((resolve, reject) => {
-                const req = http.get('http://169.254.169.254/latest/meta-data/tags/instance/aws:lightsail:instancename', {
-                    timeout: 1000
-                }, (res) => {
-                    if (res.statusCode === 404) {
-                        reject(new Error('Not a Lightsail instance'));
-                        return;
-                    }
-                    let data = '';
-                    res.on('data', chunk => data += chunk);
-                    res.on('end', () => resolve(data));
-                });
-                
-                req.on('error', reject);
-                req.on('timeout', () => {
-                    req.destroy();
-                    reject(new Error('Timeout'));
-                });
-            });
-
-            if (metadata) {
-                logger.info('Running on Lightsail (detected via metadata)');
-                return 'Lightsail/Other';
-            }
-        } catch (error) {
-            // デフォルトでLightsailとして扱う
-            logger.warn('Assuming Lightsail environment:', error.message);
-            return 'Lightsail/Other';
-        }
-
-        return 'Lightsail/Other';
+        logger.info('Running on EC2 environment');
+        return 'EC2';
     }
 
     /**
@@ -75,6 +45,74 @@ class Util {
                 logger.error(`Failed to setup directory: ${dir}`, { error });
                 throw error;
             }
+        }
+    }
+
+    /**
+     * Check AWS credentials are properly set when _USE_AWS is true
+     * @returns {Promise<boolean>} Returns true if credentials are properly set
+     * @throws {Error} If credentials are not properly set when _USE_AWS is true
+     */
+    static async checkAwsCredentials() {
+        const useAws = process.env._USE_AWS === 'true';
+        
+        if (!useAws) {
+            logger.info('AWS integration is disabled');
+            return true;
+        }
+
+        const accessKeyId = process.env.AWS_ACCESS_KEY_ID;
+        const secretAccessKey = process.env.AWS_SECRET_ACCESS_KEY;
+
+        // 基本的な環境変数チェック
+        if (!accessKeyId || !secretAccessKey || accessKeyId.trim() === '' || secretAccessKey.trim() === '') {
+            const error = new Error('AWS認証情報が環境変数に正しく設定されていません');
+            logger.error('AWS credential check failed', { error });
+            throw error;
+        }
+
+        // aws configure listによる実際の認証情報の検証
+        try {
+            const { exec } = require('child_process');
+            const awsCheck = new Promise((resolve, reject) => {
+                exec('aws configure list', (error, stdout, stderr) => {
+                    if (error) {
+                        reject(new Error(`AWS CLIコマンドの実行に失敗しました: ${error.message}`));
+                        return;
+                    }
+                    if (stderr) {
+                        reject(new Error(`AWS CLIエラー: ${stderr}`));
+                        return;
+                    }
+                    
+                    // 出力行を解析
+                    const lines = stdout.split('\n');
+                    const accessKeyLine = lines.find(line => line.includes('access_key'));
+                    const secretKeyLine = lines.find(line => line.includes('secret_key'));
+                    
+                    // アクセスキーとシークレットキーの行が存在し、値が設定されているか確認
+                    const hasAccessKey = accessKeyLine && 
+                                      !accessKeyLine.includes('<not set>') && 
+                                      accessKeyLine.includes('****************');
+                    const hasSecretKey = secretKeyLine && 
+                                      !secretKeyLine.includes('<not set>') && 
+                                      secretKeyLine.includes('****************');
+                    
+                    if (!hasAccessKey || !hasSecretKey) {
+                        reject(new Error('AWS CLIに認証情報が設定されていません'));
+                        return;
+                    }
+                    
+                    resolve(true);
+                });
+            });
+
+            await awsCheck;
+            logger.info('AWS認証情報が正しく設定されています');
+            return true;
+        } catch (error) {
+            logger.error('AWS認証情報の検証に失敗しました', { error });
+            throw error;
         }
     }
 }

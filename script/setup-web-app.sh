@@ -88,47 +88,7 @@ update_credentials() {
     local source_file="/home/ec2-user/secret/from"
     local env_file="$(cd "$SCRIPT_DIR/.." && pwd)/.env"
     
-    log_info "Updating credentials from $source_file"
     
-    if [ ! -f "$source_file" ]; then
-        log_error "Source file $source_file not found"
-    fi
-    
-    # Create backup of current .env file
-    if [ -f "$env_file" ]; then
-        cp "$env_file" "${env_file}.backup_$(date +%Y%m%d_%H%M%S)"
-    fi
-    
-    # Update AWS credentials
-    if grep -q "AWS_ACCESS_KEY_ID=" "$source_file"; then
-        sed -i "s|^AWS_ACCESS_KEY_ID=.*|$(grep "^AWS_ACCESS_KEY_ID=" "$source_file")|" "$env_file"
-    fi
-    
-    if grep -q "AWS_SECRET_ACCESS_KEY=" "$source_file"; then
-        sed -i "s|^AWS_SECRET_ACCESS_KEY=.*|$(grep "^AWS_SECRET_ACCESS_KEY=" "$source_file")|" "$env_file"
-    fi
-    
-    # Update Storage CDN URL
-    if grep -q "STORAGE_CDN_URL=" "$source_file"; then
-        sed -i "s|^STORAGE_CDN_URL=.*|$(grep "EnvVarCdnUrl" "$source_file" | cut -d'=' -f2-)|" "$env_file"
-    fi
-    
-    # Update CloudFront Distribution ID
-    if grep -q "STORAGE_CDN_DISTRIBUTION_ID=" "$source_file"; then
-        sed -i "s|^STORAGE_CDN_DISTRIBUTION_ID=.*|$(grep "EnvVarCdnDistributionId" "$source_file" | cut -d'=' -f2-)|" "$env_file"
-    fi
-    
-    # Update S3 Bucket
-    if grep -q "STORAGE_S3_BUCKET=" "$source_file"; then
-        sed -i "s|^STORAGE_S3_BUCKET=.*|$(grep "EnvVarS3Bucket" "$source_file" | cut -d'=' -f2-)|" "$env_file"
-    fi
-    
-    # Update Slack Webhook URL
-    if grep -q "SLACK_WEBHOOK_URL=" "$source_file"; then
-        sed -i "s|^SLACK_WEBHOOK_URL=.*|$(grep "^SLACK_WEBHOOK_URL=" "$source_file")|" "$env_file"
-    fi
-    
-    log_info "Credentials updated successfully"
     
     # Secure the .env file
     chmod 600 "$env_file"
@@ -169,11 +129,11 @@ main() {
     
     # プロジェクトの依存関係インストール
     log_info "Installing Project Dependencies"
-    rm -rf node_modules package-lock.json
-    npm install --no-fund --no-audit
+    # rm -rf node_modules package-lock.json
+    # npm install --no-fund --no-audit
     
     # Prismaセットアップ
-    setup_prisma
+    # setup_prisma
     
     # AWS認証情報の更新
     update_credentials

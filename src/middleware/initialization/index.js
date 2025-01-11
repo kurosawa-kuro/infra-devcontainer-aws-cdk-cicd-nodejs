@@ -19,17 +19,20 @@ class InitializationMiddleware {
    */
   static async initialize(app, { routes, controllers, fileUploader, passportService, util }) {
     try {
-      // 1. インスタンスタイプの検出と環境設定
+      // 1. AWS認証情報の確認
+      await util.checkAwsCredentials();
+
+      // 2. インスタンスタイプの検出と環境設定
       const instanceType = await this.detectInstanceType(util);
       this.configureStorageType(instanceType);
 
-      // 2. 必要なディレクトリの作成
+      // 3. 必要なディレクトリの作成
       await util.setupDirectories();
 
-      // 3. 基本的なミドルウェアのセットアップ
+      // 4. 基本的なミドルウェアのセットアップ
       await this.setupCore(app, passportService);
    
-      // 4. ルートの設定
+      // 5. ルートの設定
       routes(app, controllers, fileUploader);   
     } catch (error) {
       logger.error('Failed to initialize application:', error);
