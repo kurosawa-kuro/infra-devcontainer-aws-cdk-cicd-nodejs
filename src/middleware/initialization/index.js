@@ -19,12 +19,15 @@ class InitializationMiddleware {
    */
   static async initialize(app, { routes, controllers, fileUploader, passportService, util }) {
     try {
-      // 1. AWS認証情報の確認
-      await util.checkAwsCredentials();
 
-      // 2. インスタンスタイプの検出と環境設定
-      const instanceType = await this.detectInstanceType(util);
-      this.configureStorageType(instanceType);
+      // 1. AWS設定の確認 2. インスタンスタイプの検出と環境設定はtestの場合はスキップ
+      if (process.env.NODE_ENV !== 'test') {
+        // 1. AWS設定の確認
+        const awsConfig = await util.checkAwsConfiguration();
+
+        // 2. インスタンスタイプの検出と環境設定
+        this.configureStorageType(awsConfig.instanceType);
+      }
 
       // 3. 必要なディレクトリの作成
       await util.setupDirectories();
@@ -87,9 +90,8 @@ class InitializationMiddleware {
    */
   static async detectInstanceType(util) {
     try {
-      const instanceType = await util.checkInstanceType();
-      logger.info(`Starting application on ${instanceType}`);
-      return instanceType;
+      logger.info(`Starting application on ${process.env.INSTANCE_TYPE || 'Lightsail/Other'}`);
+      return process.env.INSTANCE_TYPE || 'Lightsail/Other';
     } catch (error) {
       logger.warn('Failed to determine instance type, defaulting to Lightsail/Other:', error);
       return 'Lightsail/Other';

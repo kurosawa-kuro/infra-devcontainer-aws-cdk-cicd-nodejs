@@ -1,113 +1,164 @@
 #!/bin/bash
 
-# 共通の変数定義
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-NPM_GLOBAL_DIR="$HOME/.npm-global"
-ENV_FILE="$(cd "$SCRIPT_DIR/.." && pwd)/.env"
-TIMESTAMP=$(date +%Y%m%d_%H%M%S)
-BACKUP_DIR="$SCRIPT_DIR/config"
+#######################################
+# 1. Configuration Management
+#######################################
+declare -r SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+declare -r NPM_GLOBAL_DIR="$HOME/.npm-global"
+declare -r ENV_FILE="$(cd "$SCRIPT_DIR/.." && pwd)/.env"
+declare -r TIMESTAMP=$(date +%Y%m%d_%H%M%S)
+declare -r BACKUP_DIR="$SCRIPT_DIR/config"
 
-# コマンドラインオプションの処理
-ONLY_UPDATE_CREDENTIALS=false
+# スクリプトの動作モード設定
+declare -r ONLY_UPDATE_CREDENTIALS=true  # クレデンシャルの更新のみを行う場合はtrue
 
-while getopts "u" opt; do
-    case $opt in
-        u)
-            ONLY_UPDATE_CREDENTIALS=true
-            ;;
-        \?)
-            echo "Invalid option: -$OPTARG" >&2
-            exit 1
-            ;;
-    esac
-done
+#######################################
+# 2. Logging System
+#######################################
+declare -r LOG_INFO="\033[0;34m"  # Blue color for info
+declare -r LOG_ERROR="\033[0;31m" # Red color for errors
+declare -r LOG_RESET="\033[0m"    # Reset color
 
-# ヘルプメッセージの表示
-show_usage() {
-    echo "Usage: $0 [-u]"
-    echo "Options:"
-    echo "  -u    Only update credentials"
-    exit 1
-}
-
-# ログ関数
 log_info() {
-    echo -e "\n=== $1 ==="
+    echo -e "${LOG_INFO}\n=== $1 ===${LOG_RESET}"
 }
 
 log_error() {
-    echo "Error: $1"
+    echo -e "${LOG_ERROR}Error: $1${LOG_RESET}"
     exit 1
 }
 
-# npmグローバルディレクトリのセットアップ
+#######################################
+# 3. NPM Environment Manager
+#######################################
+setup_npm_environment() {
+    setup_npm_global
+    install_required_packages
+}
+
 setup_npm_global() {
     if [ ! -d "$NPM_GLOBAL_DIR" ]; then
         log_info "Creating npm global directory"
         mkdir "$NPM_GLOBAL_DIR"
         npm config set prefix "$NPM_GLOBAL_DIR"
-        if ! grep -q "NPM_CONFIG_PREFIX" "$HOME/.profile"; then
-            echo "export PATH=$NPM_GLOBAL_DIR/bin:\$PATH" >> "$HOME/.profile"
-            echo "export NPM_CONFIG_PREFIX=$NPM_GLOBAL_DIR" >> "$HOME/.profile"
-        fi
+        configure_npm_profile
     fi
     export PATH="$NPM_GLOBAL_DIR/bin:$PATH"
     export NPM_CONFIG_PREFIX="$NPM_GLOBAL_DIR"
 }
 
-# グローバルパッケージのインストール
+configure_npm_profile() {
+    if ! grep -q "NPM_CONFIG_PREFIX" "$HOME/.profile"; then
+        {
+            echo "export PATH=$NPM_GLOBAL_DIR/bin:\$PATH"
+            echo "export NPM_CONFIG_PREFIX=$NPM_GLOBAL_DIR"
+        } >> "$HOME/.profile"
+    fi
+}
+
+install_required_packages() {
+    declare -a packages=("nodemon" "pm2")
+    for package in "${packages[@]}"; do
+        install_global_package "$package"
+    done
+}
+
 install_global_package() {
     local package_name=$1
     if ! command -v "$package_name" &> /dev/null; then
         log_info "Installing $package_name globally"
         npm install -g "$package_name" || sudo npm install -g "$package_name"
-        if ! command -v "$package_name" &> /dev/null; then
-            log_error "Failed to install $package_name. Please check permissions and try again."
-        fi
+        verify_package_installation "$package_name"
     else
         echo "$package_name is already installed"
     fi
 }
 
-# 環境変数ファイルの設定
-setup_env_file() {
+verify_package_installation() {
+    local package_name=$1
+    if ! command -v "$package_name" &> /dev/null; then
+        log_error "Failed to install $package_name. Please check permissions and try again."
+    fi
+}
+
+#######################################
+# 4. Environment File Manager
+#######################################
+manage_env_file() {
+    backup_existing_env
+    create_new_env
+    update_credentials
+}
+
+backup_existing_env() {
     if [ -f .env ]; then
         local backup_file="$BACKUP_DIR/.env.backup_$TIMESTAMP"
         log_info "Backing up existing .env file"
         cp .env "$backup_file"
         echo "Backup created at $backup_file"
     fi
-    
+}
+
+create_new_env() {
     log_info "Creating .env file from example"
     cp "$SCRIPT_DIR/config/.env.example" .env
     echo ".env file created/updated successfully."
 }
 
-# 環境変数情報の更新
+check_aws_sdk_dependencies() {
+    log_info "Checking AWS SDK dependencies"
+    if ! npm list @aws-sdk/client-secrets-manager --json | grep -q "client-secrets-manager"; then
+        log_info "Installing @aws-sdk/client-secrets-manager"
+        npm install --save @aws-sdk/client-secrets-manager
+    fi
+}
+
 update_credentials() {
     local source_file="/home/ec2-user/secret/from"
     local env_file="$(cd "$SCRIPT_DIR/.." && pwd)/.env"
     
     
+    log_info "Updating credentials using update-key.js"
+    if ! node "$SCRIPT_DIR/amazon-linux-2023/update-key.js"; then
+        log_error "Failed to update credentials using update-key.js"
+    fi
     
-    # Secure the .env file
     chmod 600 "$env_file"
 }
 
-# Prismaのセットアップ
-setup_prisma() {
+#######################################
+# 5. Database Manager
+#######################################
+setup_database() {
     log_info "Setting up Prisma"
     npx prisma generate
 
     if [ "$NODE_ENV" != "production" ]; then
-        echo "Running database migrations..."
-        npx prisma migrate dev
-        echo "Running database seeder..."
-        npx prisma db seed
+        run_database_migrations
     fi
 }
 
-# メイン実行フロー
+run_database_migrations() {
+    log_info "Running database migrations"
+    npx prisma migrate dev
+    log_info "Running database seeder"
+    npm run db:seed
+}
+
+#######################################
+# 6. Project Dependencies Manager
+#######################################
+setup_project_dependencies() {
+    if [ "$ONLY_UPDATE_CREDENTIALS" = false ]; then
+        log_info "Installing Project Dependencies"
+        rm -rf node_modules package-lock.json
+        npm install --no-fund --no-audit
+    fi
+}
+
+#######################################
+# Main Execution Flow
+#######################################
 main() {
     if [ "$ONLY_UPDATE_CREDENTIALS" = true ]; then
         log_info "Running only credentials update"
@@ -117,29 +168,13 @@ main() {
 
     log_info "Starting Web App Setup"
     
-    # NPMグローバル設定
-    setup_npm_global
-    
-    # グローバルパッケージのインストール
-    install_global_package "nodemon"
-    install_global_package "pm2"
-    
-    # 環境変数の設定
-    setup_env_file
-    
-    # プロジェクトの依存関係インストール
-    log_info "Installing Project Dependencies"
-    # rm -rf node_modules package-lock.json
-    # npm install --no-fund --no-audit
-    
-    # Prismaセットアップ
-    # setup_prisma
-    
-    # AWS認証情報の更新
-    update_credentials
+    setup_npm_environment
+    setup_project_dependencies
+    manage_env_file
+    setup_database
     
     log_info "Setup completed successfully"
 }
 
-# スクリプトの実行
+# Script execution
 main 
