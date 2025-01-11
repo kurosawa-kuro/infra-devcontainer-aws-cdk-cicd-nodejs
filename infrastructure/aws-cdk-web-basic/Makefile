@@ -96,4 +96,5 @@ destroy:
 test-slack-notification:
 	$(call log_section,Testing Slack Notification Lambda)
 	$(call send_notification,"[TEST] From AWS CDK Web Basic Stack Notification Test: Success 🎉")
+	$(call log_section,Testing Slack Notification Lambda completed)
 	$(call log_end_section)

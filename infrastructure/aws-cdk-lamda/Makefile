@@ -14,8 +14,8 @@ first-deploy:
 reset-deploy:
 	npm install
 	npm run build
-	cdk destroy -c functionName=$(FUNCTION_NAME) --force
-	cdk deploy -c functionName=$(FUNCTION_NAME)
+	cdk destroy -c functionName=$(FUNCTION_NAME) --force --require-approval never
+	cdk deploy -c functionName=$(FUNCTION_NAME) --require-approval never
 
 # スタックの削除
 destroy:
