@@ -123,6 +123,7 @@ const logger = winston.createLogger({
 
 // CloudWatchトランスポートの条件を変更
 if (process.env.USE_CLOUDWATCH === 'true') {  // NODE_ENVの条件を削除
+  
   const cloudwatchConfig = {
     logGroupName: process.env.CLOUDWATCH_LOG_GROUP,
     logStreamName: `${process.env.NODE_ENV || 'development'}-${new Date().toISOString().split('T')[0]}`,
