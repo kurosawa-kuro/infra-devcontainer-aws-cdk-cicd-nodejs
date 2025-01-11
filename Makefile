@@ -87,9 +87,9 @@ db-migrate:
 	@echo "=== Creating Database Migration ==="
 	npm run db:migrate
 
-db-reset:
+db-seed:
 	@echo "=== Resetting Database ==="
-	npm run db:reset
+	npm run db:seed
 
 db-generate:
 	@echo "=== Generating Prisma Client ==="

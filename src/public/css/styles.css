@@ -1670,6 +1670,11 @@ p:is(.dark *) {
   padding-bottom: 0px;
 }
 
+.hover\:border-rose-500:hover {
+  --tw-border-opacity: 1;
+  border-color: rgb(244 63 94 / var(--tw-border-opacity, 1));
+}
+
 .hover\:bg-blue-700:hover {
   --tw-bg-opacity: 1;
   background-color: rgb(29 78 216 / var(--tw-bg-opacity, 1));
@@ -1937,6 +1942,11 @@ p:is(.dark *) {
 .dark\:file\:text-rose-400:is(.dark *)::file-selector-button {
   --tw-text-opacity: 1;
   color: rgb(251 113 133 / var(--tw-text-opacity, 1));
+}
+
+.dark\:hover\:border-rose-500:hover:is(.dark *) {
+  --tw-border-opacity: 1;
+  border-color: rgb(244 63 94 / var(--tw-border-opacity, 1));
 }
 
 .dark\:hover\:bg-gray-700:hover:is(.dark *) {

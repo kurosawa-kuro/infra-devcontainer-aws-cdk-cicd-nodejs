@@ -47,19 +47,12 @@ describe('投稿機能の統合テスト', () => {
         headers: response.headers
       });
 
-      // data-microposts属性から投稿データを取得して検証
-      const micropostsData = response.text.match(/data-microposts="([^"]*)"/);
-      expect(micropostsData).toBeTruthy();
+      // テスト投稿のタイトルがHTMLに含まれていることを確認
+      expect(response.text).toContain('Test Post Title');
       
-      const decodedData = decodeURIComponent(micropostsData[1]);
-      const microposts = JSON.parse(decodedData);
-      
-      expect(Array.isArray(microposts)).toBe(true);
-      expect(microposts.length).toBeGreaterThan(0);
-      
-      const foundPost = microposts.find(post => post.title === 'Test Post Title');
-      expect(foundPost).toBeTruthy();
-      expect(foundPost.title).toBe('Test Post Title');
+      // レスポンスが正しいHTMLフォーマットであることを確認
+      expect(response.text).toContain('マイクロポスト一覧');
+      expect(response.text).toContain('最新の投稿をチェックする');
 
       console.log('--- 投稿一覧取得テスト完了 ---\n');
     });
