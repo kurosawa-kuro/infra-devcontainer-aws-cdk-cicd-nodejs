@@ -309,148 +309,69 @@ class MicropostController extends BaseController {
 
   async index(req, res) {
     return this.handleRequest(req, res, async () => {
-      try {
-        const [microposts, categories] = await Promise.all([
-          this.micropostService.getAllMicroposts(),
-          this.micropostService.prisma.category.findMany({
-            orderBy: { name: 'asc' },
-            include: {
-              _count: {
-                select: {
-                  microposts: true
-                }
+      const [microposts, categories] = await Promise.all([
+        this.services.micropost.getAllMicroposts(),
+        this.services.micropost.prisma.category.findMany({
+          orderBy: { name: 'asc' },
+          include: {
+            _count: {
+              select: {
+                microposts: true
               }
             }
-          })
-        ]);
+          }
+        })
+      ]);
 
+      const isApiRequest = req.xhr || 
+        req.headers.accept?.includes('application/json') || 
+        req.headers['content-type']?.includes('application/json');
 
-        const micropostsWithLikes = await Promise.all(
-          microposts.map(async (micropost) => {
-            try {
-              const [isLiked, likeCount] = await Promise.all([
-                req.user ? this.likeService.isLiked(req.user.id, micropost.id) : false,
-                this.likeService.getLikeCount(micropost.id)
-              ]);
-              return { ...micropost, isLiked, likeCount };
-            } catch (error) {
-              console.error('Error processing likes for micropost:', {
-                micropostId: micropost.id,
-                error: error.message
-              });
-              return { ...micropost, isLiked: false, likeCount: 0 };
-            }
-          })
-        );
-
-
-        try {
-          const templateData = { 
-            microposts: micropostsWithLikes,
-            categories,
-            title: '投稿一覧',
-            path: req.path,
-            user: req.user,
-            csrfToken: res.locals.csrfToken,
-            currentPage: 1,
-            totalPages: 1
-          };
-
-          res.render('pages/public/microposts/index', templateData);
-        } catch (renderError) {
-          console.error('Template rendering error:', {
-            error: renderError.message,
-            stack: renderError.stack,
-            templatePath: 'pages/public/microposts/index'
-          });
-          throw renderError;
-        }
-      } catch (error) {
-        console.error('Error in micropost index:', {
-          error: error.message,
-          stack: error.stack,
-          path: req.path,
-          query: req.query,
-          user: req.user ? { id: req.user.id } : null
+      if (isApiRequest) {
+        return res.json({
+          success: true,
+          microposts: microposts
         });
-        throw error;
       }
+
+      return this.renderWithUser(req, res, 'pages/public/microposts/index', {
+        title: '投稿一覧',
+        microposts: microposts,
+        categories: categories
+      });
     });
   }
 
   async show(req, res) {
     return this.handleRequest(req, res, async () => {
+      const { id } = req.params;
+      const micropost = await this.services.micropost.getMicropost(id);
 
-      const micropostId = parseInt(req.params.id, 10);
-      if (isNaN(micropostId)) {
-        console.error('Invalid micropost ID:', req.params.id);
+      if (!micropost) {
         return this.errorHandler.handleNotFoundError(req, res, '投稿が見つかりません');
       }
 
-      // Get client's IP address
-      const ipAddress = req.headers['x-forwarded-for']?.split(',')[0].trim() || 
-                       req.socket.remoteAddress;
+      const isApiRequest = req.xhr || 
+        req.headers.accept?.includes('application/json') || 
+        req.headers['content-type']?.includes('application/json');
 
-      try {
-        // Track the view
-        await this.micropostService.trackView(micropostId, ipAddress);
-
-        // Get micropost with updated view count and check if user has liked it
-        const [micropost, isLiked, likeCount, comments, likedUsers] = await Promise.all([
-          this.micropostService.getMicropostWithViews(micropostId),
-          req.user ? this.likeService.isLiked(req.user.id, micropostId) : false,
-          this.likeService.getLikeCount(micropostId),
-          this.commentService.getCommentsByMicropostId(micropostId),
-          this.likeService.getLikedUsers(micropostId)
-        ]);
-
-        if (!micropost) {
-          console.error('Micropost not found:', micropostId);
-          return this.errorHandler.handleNotFoundError(req, res, '投稿が見つかりません');
-        }
-
-
-
-        const templateData = {
-          micropost,
-          isLiked,
-          likeCount,
-          comments,
-          likedUsers,
-          title: micropost.title,
-          path: req.path,
-          user: req.user,
-          csrfToken: req.csrfToken(),
-          currentPage: 1,
-          totalPages: 1,
-          categories: micropost.categories.map(mc => mc.category)
-        };
-
-        try {
-          await res.render('pages/public/microposts/show', templateData);
-        } catch (renderError) {
-          console.error('Template rendering error:', {
-            error: renderError.message,
-            stack: renderError.stack,
-            templatePath: 'pages/public/microposts/show',
-            templateData: JSON.stringify(templateData, (key, value) => {
-              if (key === 'comments' || key === 'categories' || key === 'likedUsers') {
-                return `[Array(${value.length})]`;
-              }
-              return value;
-            })
-          });
-          throw renderError;
-        }
-      } catch (error) {
-        console.error('Error in show method:', {
-          error: error.message,
-          stack: error.stack,
-          micropostId,
-          userId: req.user?.id
+      if (isApiRequest) {
+        return res.json({
+          success: true,
+          micropost: {
+            ...micropost,
+            likeCount: micropost.likeCount,
+            likedUsers: micropost.likedUsers
+          }
         });
-        throw error;
       }
+
+      return this.renderWithUser(req, res, 'pages/public/microposts/show', {
+        title: '投稿詳細',
+        micropost,
+        likeCount: micropost.likeCount,
+        likedUsers: micropost.likedUsers
+      });
     });
   }
 
@@ -1236,101 +1157,99 @@ class LikeController extends BaseController {
     super(services, errorHandler, logger);
   }
 
-  async like(req, res) {
-    return this.handleRequest(req, res, async () => {
-      if (!req.user) {
-        return this.errorHandler.handlePermissionError(req, res, 'ログインが必要です');
-      }
-
-      const micropostId = req.params.id;
-      await this.services.like(req.user.id, micropostId);
-      const likeCount = await this.services.getLikeCount(micropostId);
-
-      this.sendResponse(req, res, {
-        status: 200,
-        success: true,
-        message: 'いいねしました',
-        data: { likeCount }
-      });
-    });
-  }
-
-  async unlike(req, res) {
-    return this.handleRequest(req, res, async () => {
-      if (!req.user) {
-        return this.errorHandler.handlePermissionError(req, res, 'ログインが必要です');
-      }
-
-      const micropostId = req.params.id;
-      await this.services.unlike(req.user.id, micropostId);
-      const likeCount = await this.services.getLikeCount(micropostId);
-
-      this.sendResponse(req, res, {
-        status: 200,
-        success: true,
-        message: 'いいねを取り消しました',
-        data: { likeCount }
-      });
-    });
-  }
-
   async getLikedUsers(req, res) {
-    return this.handleRequest(req, res, async () => {
-      const micropostId = req.params.id;
-      const likedUsers = await this.services.getLikedUsers(micropostId);
-      
-      this.sendResponse(req, res, {
-        status: 200,
-        data: { likedUsers }
+    try {
+      const { id } = req.params;
+      this.logger.debug('Getting liked users', { 
+        micropostId: id,
+        path: req.path,
+        method: req.method
       });
-    });
+
+      const users = await this.services.like.getLikedUsers(id);
+      
+      this.logger.debug('Liked users response', { 
+        micropostId: id,
+        userCount: users.length,
+        users: users.map(user => ({
+          id: user.id,
+          name: user.name
+        }))
+      });
+
+      return this.success(res, { likes: users });
+    } catch (error) {
+      this.logger.error('Error in getLikedUsers controller', {
+        error: error.message,
+        stack: error.stack,
+        params: req.params
+      });
+      return this.handleError(error, res);
+    }
   }
 
-  async getUserLikes(req, res) {
-    return this.handleRequest(req, res, async () => {
-      if (!req.user) {
-        return this.errorHandler.handlePermissionError(req, res, 'ログインが必要です');
-      }
-
-      const userId = req.params.id;
-      const likes = await this.services.getUserLikes(userId);
-      
-      this.sendResponse(req, res, {
-        status: 200,
-        data: { likes }
+  async getLikeCount(req, res) {
+    try {
+      const { id } = req.params;
+      this.logger.debug('Getting like count', { 
+        micropostId: id,
+        path: req.path,
+        method: req.method
       });
-    });
+
+      const count = await this.services.like.getLikeCount(id);
+      
+      this.logger.debug('Like count response', { 
+        micropostId: id,
+        count
+      });
+
+      return this.success(res, { count });
+    } catch (error) {
+      this.logger.error('Error in getLikeCount controller', {
+        error: error.message,
+        stack: error.stack,
+        params: req.params
+      });
+      return this.handleError(error, res);
+    }
   }
 }
 
 class CommentController extends BaseController {
   constructor(services, errorHandler, logger) {
     super(services, errorHandler, logger);
+    this.commentService = services.comment;
+  }
+
+  async index(req, res) {
+    return this.handleRequest(req, res, async () => {
+      const micropostId = parseInt(req.params.micropostId, 10);
+      const comments = await this.commentService.getCommentsByMicropostId(micropostId);
+      
+      return res.status(200).json({
+        success: true,
+        comments
+      });
+    });
   }
 
   async create(req, res) {
     return this.handleRequest(req, res, async () => {
       const { content } = req.body;
+      const userId = req.user.id;
       const micropostId = parseInt(req.params.micropostId, 10);
 
-      if (!content?.trim()) {
-        throw this.errorHandler.createValidationError('コメント内容を入力してください', {
-          code: 'EMPTY_CONTENT',
-          field: 'content',
-          value: content,
-          constraint: 'required'
-        });
-      }
-
-      await this.services.comment.createComment({
-        content: content.trim(),
-        userId: req.user.id,
+      const comment = await this.commentService.createComment({
+        content,
+        userId,
         micropostId
       });
 
-      this.sendResponse(req, res, {
+      return this.sendResponse(req, res, {
+        success: true,
         message: 'コメントを投稿しました',
-        redirectUrl: `/microposts/${micropostId}`
+        data: { comment }
       });
     });
   }

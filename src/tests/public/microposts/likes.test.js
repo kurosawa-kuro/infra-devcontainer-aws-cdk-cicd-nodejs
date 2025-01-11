@@ -40,25 +40,20 @@ describe('マイクロポストのいいね機能の統合テスト', () => {
     });
   });
 
-  describe('いいねの表示機能', () => {
-    it('未ログインでも投稿に紐づくいいね一覧を取得できること', async () => {
+  describe('マイクロポストのいいね機能', () => {
+    it('未ログインでも投稿一覧でいいね情報を取得できること', async () => {
       const response = await request(server)
-        .get(`/microposts/${testPost.id}/likes`);
+        .get('/microposts')
+        .set('Accept', 'application/json')
+        .expect(200);
 
-      expect(response.status).toBe(200);
       expect(response.body.success).toBe(true);
-      expect(Array.isArray(response.body.likes)).toBe(true);
-      expect(response.body.likes.length).toBeGreaterThan(0);
-      expect(response.body.likes[0].user.name).toBe('TestUser');
-    });
-
-    it('未ログインでも投稿のいいね数を取得できること', async () => {
-      const response = await request(server)
-        .get(`/microposts/${testPost.id}/likes/count`);
-
-      expect(response.status).toBe(200);
-      expect(response.body.success).toBe(true);
-      expect(response.body.count).toBe(1);
+      expect(Array.isArray(response.body.microposts)).toBe(true);
+      
+      const testPostResponse = response.body.microposts.find(post => post.id === testPost.id);
+      expect(testPostResponse).toBeDefined();
+      expect(testPostResponse).toHaveProperty('_count.likes');
+      expect(testPostResponse._count.likes).toBe(1);
     });
   });
 

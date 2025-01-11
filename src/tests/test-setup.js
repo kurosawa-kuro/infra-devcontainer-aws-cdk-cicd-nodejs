@@ -242,6 +242,35 @@ class TestServer {
 
     return micropost;
   }
+
+  async createTestComment(userId, micropostId, data = {}) {
+    console.log('Creating test comment...');
+    const defaultData = {
+      content: 'Test comment content',
+      ...data
+    };
+
+    const comment = await this.prisma.comment.create({
+      data: {
+        ...defaultData,
+        userId,
+        micropostId
+      },
+      include: {
+        user: true,
+        micropost: true
+      }
+    });
+
+    console.log('Created test comment:', {
+      id: comment.id,
+      content: comment.content,
+      userId: comment.userId,
+      micropostId: comment.micropostId
+    });
+
+    return comment;
+  }
 }
 
 async function getTestServer() {

@@ -1032,6 +1032,46 @@ class MicropostService extends BaseService {
       this.handleError(error, { context: 'Get view count', micropostId });
     }
   }
+
+  async getMicropost(id) {
+    try {
+      const micropost = await this.prisma.micropost.findUnique({
+        where: { id: parseInt(id) },
+        include: {
+          user: {
+            include: {
+              profile: true
+            }
+          },
+          likes: {
+            include: {
+              user: {
+                select: {
+                  id: true,
+                  name: true
+                }
+              }
+            }
+          }
+        }
+      });
+
+      if (!micropost) return null;
+
+      return {
+        ...micropost,
+        likeCount: micropost.likes.length,
+        likedUsers: micropost.likes.map(like => like.user)
+      };
+    } catch (error) {
+      this.logger.error('Error fetching micropost with likes', {
+        error: error.message,
+        stack: error.stack,
+        micropostId: id
+      });
+      throw error;
+    }
+  }
 }
 
 // カテゴリ関連サービス
@@ -1310,174 +1350,62 @@ class SystemService extends BaseService {
 
 // いいね関連サービス
 class LikeService extends BaseService {
-  // いいね操作メソッド
-  async like(userId, micropostId) {
-    try {
-      const validUserId = this.validateId(userId);
-      const validMicropostId = this.validateId(micropostId);
-
-      return await this.executeTransaction(async (prisma) => {
-        // いいねの作成
-        await prisma.like.createMany({
-          data: {
-            userId: validUserId,
-            micropostId: validMicropostId
-          },
-          skipDuplicates: true
-        });
-
-        // 投稿の作成者を取得
-        const micropost = await prisma.micropost.findUnique({
-          where: { id: validMicropostId },
-          select: { userId: true }
-        });
-
-        // 自分の投稿以外にいいねした場合のみ通知を作成
-        if (micropost && micropost.userId !== validUserId) {
-          await this.createNotification(
-            CONSTANTS.NOTIFICATION_TYPES.LIKE,
-            micropost.userId,
-            validUserId,
-            { micropostId: validMicropostId }
-          );
-        }
-
-        return prisma.like.findUnique({
-          where: {
-            userId_micropostId: {
-              userId: validUserId,
-              micropostId: validMicropostId
-            }
-          }
-        });
-      });
-    } catch (error) {
-      this.handleError(error, {
-        context: 'Like micropost',
-        userId,
-        micropostId
-      });
-    }
+  constructor(prisma, logger) {
+    super(prisma, logger);
   }
 
-  async unlike(userId, micropostId) {
-    try {
-      const validUserId = this.validateId(userId);
-      const validMicropostId = this.validateId(micropostId);
-
-      const like = await this.prisma.like.findUnique({
-        where: {
-          userId_micropostId: {
-            userId: validUserId,
-            micropostId: validMicropostId
-          }
-        }
-      });
-
-      if (!like) {
-        return null;
-      }
-
-      return await this.prisma.like.delete({
-        where: {
-          userId_micropostId: {
-            userId: validUserId,
-            micropostId: validMicropostId
-          }
-        }
-      });
-    } catch (error) {
-      this.handleError(error, {
-        context: 'Unlike micropost',
-        userId,
-        micropostId
-      });
-    }
-  }
-
-  // いいね状態確認メソッド
-  async isLiked(userId, micropostId) {
-    try {
-      const validUserId = this.validateId(userId);
-      const validMicropostId = this.validateId(micropostId);
-
-      const like = await this.prisma.like.findUnique({
-        where: {
-          userId_micropostId: {
-            userId: validUserId,
-            micropostId: validMicropostId
-          }
-        }
-      });
-      return !!like;
-    } catch (error) {
-      this.handleError(error, {
-        context: 'Check like status',
-        userId,
-        micropostId
-      });
-    }
-  }
-
-  // いいね数取得メソッド
-  async getLikeCount(micropostId) {
-    try {
-      return await this.prisma.like.count({
-        where: { micropostId: this.validateId(micropostId) }
-      });
-    } catch (error) {
-      this.handleError(error, {
-        context: 'Get like count',
-        micropostId
-      });
-    }
-  }
-
-  // いいねしたユーザー取得メソッド
   async getLikedUsers(micropostId) {
+    this.logger.debug('Getting liked users from database', { micropostId });
+
     try {
-      return await this.prisma.like.findMany({
-        where: { micropostId },
+      const likes = await this.prisma.like.findMany({
+        where: { micropostId: parseInt(micropostId) },
         include: {
-          user: {
-            include: {
-              profile: true
-            }
-          }
-        },
-        orderBy: {
-          createdAt: 'desc'
+          user: true
         }
       });
+
+      this.logger.debug('Database query result for liked users', {
+        micropostId,
+        likeCount: likes.length,
+        likes: likes.map(like => ({
+          userId: like.userId,
+          userName: like.user.name
+        }))
+      });
+
+      return likes.map(like => like.user);
     } catch (error) {
-      this.handleError(error, {
-        context: 'Get liked users',
+      this.logger.error('Error getting liked users from database', {
+        error: error.message,
+        stack: error.stack,
         micropostId
       });
+      throw error;
     }
   }
 
-  // ユーザーのいいね一覧取得メソッド
-  async getUserLikes(userId) {
+  async getLikeCount(micropostId) {
+    this.logger.debug('Getting like count from database', { micropostId });
+
     try {
-      return await this.prisma.like.findMany({
-        where: { userId: this.validateId(userId) },
-        include: {
-          micropost: {
-            include: {
-              user: true,
-              _count: {
-                select: { likes: true }
-              }
-            }
-          }
-        }
+      const count = await this.prisma.like.count({
+        where: { micropostId: parseInt(micropostId) }
       });
+
+      this.logger.debug('Database query result for like count', {
+        micropostId,
+        count
+      });
+
+      return count;
     } catch (error) {
-      this.handleError(error, {
-        context: 'Get user likes',
-        userId
+      this.logger.error('Error getting like count from database', {
+        error: error.message,
+        stack: error.stack,
+        micropostId
       });
+      throw error;
     }
   }
 }

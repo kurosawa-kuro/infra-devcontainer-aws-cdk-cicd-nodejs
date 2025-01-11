@@ -116,6 +116,11 @@ function setupRoutes(app, controllers, fileUploader) {
   // パブリックアクセス可能なルート
   micropostRouter.get('/', asyncHandler((req, res) => micropost.index(req, res)));
   micropostRouter.get('/:id', asyncHandler((req, res) => micropost.show(req, res)));
+  micropostRouter.get('/:id/likes', asyncHandler((req, res) => like.getLikedUsers(req, res)));
+  micropostRouter.get('/:id/likes/count', asyncHandler((req, res) => like.getLikeCount(req, res)));
+  micropostRouter.get('/:micropostId/comments', asyncHandler((req, res) => {
+    return comment.index(req, res);
+  }));
 
   // 認証が必要なルート
   micropostRouter.use(isAuthenticated);
@@ -125,16 +130,10 @@ function setupRoutes(app, controllers, fileUploader) {
     await micropost.create(req, res);
   }));
   
-  // いいね関連
+  // いいね関連（認証が必要な操作）
   micropostRouter.post('/:id/like', asyncHandler((req, res) => like.like(req, res)));
   micropostRouter.delete('/:id/like', asyncHandler((req, res) => like.unlike(req, res)));
-  micropostRouter.get('/:id/likes', asyncHandler((req, res) => like.getLikedUsers(req, res)));
-  
-  // コメント
-  micropostRouter.post('/:micropostId/comments', asyncHandler((req, res) => {
-    return comment.create(req, res);
-  }));
-  
+
   app.use('/microposts', micropostRouter);
 
   // ===================================
