@@ -86,7 +86,7 @@ const CONFIG: StackConfig = {
     healthCheckPath: '/health',
     ami: 'ami-0391106ef30c99847',
     instanceType: ec2.InstanceType.of(ec2.InstanceClass.T2, ec2.InstanceSize.MICRO),
-    keyName: 'training',
+    keyName: 'aws',
     volumeSize: 10,
   },
   healthCheck: {
