@@ -56,7 +56,7 @@ endef
 # Notification Utility
 define send_notification
 	$(call log_section,Sending notification)
-	@cd ../../script/invoke-lambda && AWS_REGION=$(REGION_TOKYO) node send_notification.js '$(1)'
+	@cd ../../script/lambda && AWS_REGION=$(REGION_TOKYO) node send_notification.js '$(1)'
 	$(call log_end_section)
 endef
 
@@ -95,6 +95,9 @@ destroy:
 # Testing Operations
 test-slack-notification:
 	$(call log_section,Testing Slack Notification Lambda)
+	@echo "Checking if Lambda function exists..."
+	@aws lambda get-function --function-name slack-notification --region $(REGION_TOKYO) || \
+		(echo "Lambda function not found. Please deploy the stack first." && exit 1)
 	$(call send_notification,"[TEST] From AWS CDK Web Basic Stack Notification Test: Success 🎉")
 	$(call log_section,Testing Slack Notification Lambda completed)
 	$(call log_end_section)
