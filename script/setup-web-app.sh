@@ -10,7 +10,7 @@ declare -r TIMESTAMP=$(date +%Y%m%d_%H%M%S)
 declare -r BACKUP_DIR="$SCRIPT_DIR/config"
 
 # スクリプトの動作モード設定
-declare -r ONLY_UPDATE_CREDENTIALS=true  # クレデンシャルの更新のみを行う場合はtrue
+declare -r SKIP_NPM_SETUP=false          # NPMセットアップをスキップする場合はtrue
 
 #######################################
 # 2. Logging System
@@ -149,27 +149,24 @@ run_database_migrations() {
 # 6. Project Dependencies Manager
 #######################################
 setup_project_dependencies() {
-    if [ "$ONLY_UPDATE_CREDENTIALS" = false ]; then
-        log_info "Installing Project Dependencies"
-        rm -rf node_modules package-lock.json
-        npm install --no-fund --no-audit
-    fi
+    log_info "Installing Project Dependencies"
+    rm -rf node_modules package-lock.json
+    npm install --no-fund --no-audit
 }
 
 #######################################
 # Main Execution Flow
 #######################################
 main() {
-    if [ "$ONLY_UPDATE_CREDENTIALS" = true ]; then
-        log_info "Running only credentials update"
-        update_credentials
-        exit 0
-    fi
-
     log_info "Starting Web App Setup"
     
-    setup_npm_environment
-    setup_project_dependencies
+    if [ "$SKIP_NPM_SETUP" = false ]; then
+        setup_npm_environment
+        setup_project_dependencies
+    else
+        log_info "Skipping NPM setup and dependencies installation"
+    fi
+    
     manage_env_file
     setup_database
     

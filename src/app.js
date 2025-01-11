@@ -97,6 +97,7 @@ module.exports = Application;
 // Server startup code
 if (require.main === module) {
   const PORT = process.env.PORT || 8080;
+  const HOST = process.env.HOST || 'localhost';
   const app = new Application();
   
   (async () => {
@@ -104,7 +105,10 @@ if (require.main === module) {
       const expressApp = await app.initialize();
       if (process.env.NODE_ENV !== 'test') {
         expressApp.listen(PORT, () => {
+          const protocol = process.env.NODE_ENV === 'production' ? 'https' : 'http';
           console.log(`Server is running on port ${PORT}`);
+          console.log(`🚀 アプリケーションにアクセスするには以下のURLを開いてください：`);
+          console.log(`${protocol}://${HOST}:${PORT}`);
         });
       }
     } catch (error) {
