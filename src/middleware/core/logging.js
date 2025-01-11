@@ -210,16 +210,25 @@ const requestLogger = (req, res, next) => {
       traceId: req.traceId
     };
 
+    // パフォーマンスメトリクスの更新
     performanceMetrics.requestCount++;
     if (responseTime > 1000) {
       performanceMetrics.slowRequests++;
     }
 
+    // エラーログと通常ログの分岐
     if (res.statusCode >= 400) {
       performanceMetrics.errorCount++;
       logger.warn('HTTP Request Error', logData);
     } else {
-      logger.info('HTTP Request', logData);
+      logger.info('HTTP Request', logData);  // CloudWatchへのログ転送
+      
+      // Firehose送信のデバッグログ
+      console.log('to firehose:', JSON.stringify({
+        ...logData,
+        timestamp: new Date().toISOString(),
+        source: 'request-logger'
+      }));
     }
   });
   
