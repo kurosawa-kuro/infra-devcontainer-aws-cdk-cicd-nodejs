@@ -8,14 +8,13 @@ describe('ユーザープロフィール機能の統合テスト', () => {
 
   beforeAll(async () => {
     console.log('=== Test Setup Start ===');
-    testServer = getTestServer();
-    await testServer.initialize();
+    testServer = await getTestServer();
     server = testServer.getServer();
     console.log('Server initialized successfully');
   });
 
   beforeEach(async () => {
-    await testServer.cleanDatabase();
+    await testServer.database.clean();
     const setup = await testServer.setupTestEnvironment({ createUser: true });
     testUser = setup.testUser;
   });

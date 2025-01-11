@@ -67,15 +67,22 @@ class TestUserFactory {
     this.prisma = prisma;
   }
 
-  async createUser({ email, password, name, roles = ['user'] } = {}) {
+  async createUser(options = {}) {
     try {
-      const hashedPassword = await bcrypt.hash(password || 'password', 10);
+      const {
+        email = 'user@example.com',
+        password = 'password',
+        name = 'TestUser',
+        roles = ['user']
+      } = options || {};
+
+      const hashedPassword = await bcrypt.hash(password, 10);
 
       return await this.prisma.user.create({
         data: {
-          email: email || 'user@example.com',
+          email,
           password: hashedPassword,
-          name: name || 'TestUser',
+          name,
           profile: {
             create: {
               avatarPath: '/uploads/default-avatar.png'
@@ -145,7 +152,7 @@ class TestServer {
     return this.prisma;
   }
 
-  async setupTestEnvironment({ createUser = false, userData = null } = {}) {
+  async setupTestEnvironment({ createUser = false, userData = {} } = {}) {
     let testUser = null;
     let authCookie = null;
 
@@ -181,24 +188,31 @@ class TestServer {
   }
 
   async cleanup() {
-    console.log('Test server closed');
-    if (this.server) {
-      if (this.server.close) {
-        await this.server.close();
-      } else if (this.app && this.app.server) {
-        await new Promise((resolve) => {
-          this.app.server.close(() => {
-            resolve();
+    try {
+      console.log('Cleaning up test server...');
+      
+      if (this.server) {
+        if (typeof this.server.close === 'function') {
+          await new Promise((resolve) => {
+            this.server.close(() => resolve());
           });
-        });
+        } else if (this.app && this.app.server && typeof this.app.server.close === 'function') {
+          await new Promise((resolve) => {
+            this.app.server.close(() => resolve());
+          });
+        }
       }
+      
+      if (this.prisma) {
+        await this.prisma.$disconnect();
+      }
+      
+      await closeLogger();
+      console.log('Test server cleanup completed');
+    } catch (error) {
+      console.error('Error during cleanup:', error);
+      throw error;
     }
-    
-    if (this.prisma) {
-      await this.prisma.$disconnect();
-    }
-    
-    await closeLogger();
   }
 
   async createTestMicropost(userId, data = {}) {

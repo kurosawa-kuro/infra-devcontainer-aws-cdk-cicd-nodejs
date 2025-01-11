@@ -10,14 +10,13 @@ describe('コメントの公開機能の統合テスト', () => {
 
   beforeAll(async () => {
     console.log('=== Test Setup Start ===');
-    testServer = getTestServer();
-    await testServer.initialize();
+    testServer = await getTestServer();
     server = testServer.getServer();
     console.log('Server initialized successfully');
   });
 
   beforeEach(async () => {
-    await testServer.cleanDatabase();
+    await testServer.database.clean();
     const setup = await testServer.setupTestEnvironment({ 
       createUser: true,
       userData: {
@@ -34,8 +33,16 @@ describe('コメントの公開機能の統合テスト', () => {
     });
 
     // テスト用のコメントを作成
-    testComment = await testServer.createTestComment(testUser.id, testPost.id, {
-      content: 'Test comment content'
+    testComment = await testServer.prisma.comment.create({
+      data: {
+        content: 'Test comment content',
+        userId: testUser.id,
+        micropostId: testPost.id
+      },
+      include: {
+        user: true,
+        micropost: true
+      }
     });
   });
 
