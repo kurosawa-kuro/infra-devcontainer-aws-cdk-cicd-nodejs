@@ -62,7 +62,7 @@ interface CloudFrontConfig {
 }
 
 // Stack configuration
-const LOGICAL_PREFIX = 'CdkJavascript01';
+const LOGICAL_PREFIX = 'CdkJavascript02';
 const CONFIG: StackConfig = {
   prefix: LOGICAL_PREFIX.toLowerCase(),
   region: 'ap-northeast-1',
@@ -77,7 +77,7 @@ const CONFIG: StackConfig = {
     cloudfront: `${LOGICAL_PREFIX}Cf`
   },
   vpc: {
-    cidr: '10.1.0.0/16',
+    cidr: '10.2.0.0/16',
     maxAzs: 2,
     subnetMask: 24,
   },

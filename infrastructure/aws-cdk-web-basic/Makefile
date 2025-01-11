@@ -14,7 +14,7 @@ DESTROY_FLAGS = --force --debug
 # ===========================================
 # Stack and Resource Names
 # ===========================================
-PREFIX = CdkJavascript01
+PREFIX = CdkJavascript02
 MAIN_STACK = AwsCdkWebBasicStack
 
 # ===========================================
