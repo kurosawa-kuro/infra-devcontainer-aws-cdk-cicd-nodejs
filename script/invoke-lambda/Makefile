@@ -26,10 +26,6 @@ help:
 
 # 環境変数チェック
 check-env:
-	@if [ -z "$(SLACK_WEBHOOK_URL)" ]; then \
-		echo "エラー: SLACK_WEBHOOK_URL が設定されていません。.env ファイルを確認してください。"; \
-		exit 1; \
-	fi
 	@if [ -z "$(LAMBDA_FUNCTION_NAME)" ]; then \
 		echo "エラー: LAMBDA_FUNCTION_NAME が設定されていません。.env ファイルを確認してください。"; \
 		exit 1; \
