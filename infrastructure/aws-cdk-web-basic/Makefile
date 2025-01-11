@@ -12,16 +12,14 @@ DEPLOY_FLAGS = --require-approval never
 DESTROY_FLAGS = --force --debug
 
 # ===========================================
-# Stack and Resource Names
+# Stack Names
 # ===========================================
-PREFIX = CdkJavascript02
 MAIN_STACK = AwsCdkWebBasicStack
 
 # ===========================================
 # Notification Messages
 # ===========================================
 NOTIFY_PREFIX = [INFO]
-NOTIFY_TEST = [TEST]_Notification_system_check
 NOTIFY_DEPLOY = $(NOTIFY_PREFIX)_Deployment_completed
 NOTIFY_DESTROY = $(NOTIFY_PREFIX)_Stack_destruction_completed
 NOTIFY_FIRST_DEPLOY = $(NOTIFY_PREFIX)_First_deployment_completed
@@ -65,25 +63,17 @@ endef
 # ===========================================
 # Main Commands
 # ===========================================
-.PHONY: deploy destroy notify-test bootstrap check-stacks first-deploy reset-deploy
-
-# Test notification system
-notify-test:
-	$(call send_notification,$(NOTIFY_TEST))
-
-# Bootstrap AWS environment
-bootstrap:
-	$(call bootstrap_regions)
-
-# Check failed stacks
-check-stacks:
-	$(call check_failed_stacks)
+.PHONY: first-deploy reset-deploy destroy test-slack-notification
 
 # First time deployment with bootstrap
-first-deploy: bootstrap
+first-deploy:
 	$(call log_section,First time deployment)
+	$(call bootstrap_regions)
 	$(CDK) deploy $(MAIN_STACK) $(DEPLOY_FLAGS)
-	$(call send_notification,$(NOTIFY_FIRST_DEPLOY))
+	cd ../../script/invoke-lambda && \
+		AWS_REGION=$(REGION_TOKYO) \
+		node send_notification.js \
+		"[INFO] First deployment completed successfully 🚀"
 	$(call log_section,First deployment completed successfully)
 	$(call log_end_section)
 
@@ -93,22 +83,36 @@ reset-deploy:
 	$(MAKE) destroy
 	$(call log_section,Starting fresh deployment)
 	$(MAKE) first-deploy
-	$(call send_notification,$(NOTIFY_RESET_DEPLOY))
+	cd ../../script/invoke-lambda && \
+		AWS_REGION=$(REGION_TOKYO) \
+		node send_notification.js \
+		"[INFO] Reset and redeploy completed successfully ♻️"
 	$(call log_section,Reset and redeploy completed successfully)
 	$(call log_end_section)
 
-# Deploy stack
-deploy: bootstrap
-	$(call log_section,Deploying main stack)
-	$(CDK) deploy $(MAIN_STACK) $(DEPLOY_FLAGS)
-	$(call send_notification,$(NOTIFY_DEPLOY))
-	$(call log_section,Deployment completed successfully)
-	$(call log_end_section)
-
 # Destroy stack
-destroy: bootstrap check-stacks
+destroy:
 	$(call log_section,Destroying stacks)
+	$(call bootstrap_regions)
+	$(call check_failed_stacks)
 	-$(CDK) destroy $(MAIN_STACK) $(DESTROY_FLAGS)
-	$(call send_notification,$(NOTIFY_DESTROY))
+	cd ../../script/invoke-lambda && \
+		AWS_REGION=$(REGION_TOKYO) \
+		node send_notification.js \
+		"[INFO] Stack destruction completed successfully 🗑️"
 	$(call log_section,Destroy process completed)
 	$(call log_end_section)
+
+# slack-notificationのテスト
+test-slack-notification:
+	cd ../../script/invoke-lambda && \
+		AWS_REGION=$(REGION_TOKYO) \
+		node send_notification.js \
+		"New Lambda Function Test: Success 🎉"
+
+# slack-notification
+test-slack-notification:
+	cd ../../script/invoke-lambda && \
+		AWS_REGION=$(REGION_TOKYO) \
+		node send_notification.js \
+		"AAAAAAAAA"
