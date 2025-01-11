@@ -5,6 +5,7 @@ describe('ユーザープロフィール機能の統合テスト', () => {
   let testServer;
   let server;
   let testUser;
+  let authCookie;
 
   beforeAll(async () => {
     console.log('=== Test Setup Start ===');
@@ -17,17 +18,19 @@ describe('ユーザープロフィール機能の統合テスト', () => {
     await testServer.database.clean();
     const setup = await testServer.setupTestEnvironment({ createUser: true });
     testUser = setup.testUser;
+    authCookie = setup.authCookie;
   });
 
   describe('プロフィール表示', () => {
-    it('プロフィール情報を取得できること', async () => {
+    it('未認証ユーザーでもプロフィール情報を取得できること', async () => {
       const response = await request(server)
-        .get(`/users/${testUser.id}/profile`);
+        .get(`/users/${testUser.name}`)
+        .set('Accept', 'application/json');
 
       expect(response.status).toBe(200);
       expect(response.body.success).toBe(true);
       expect(response.body.profile).toBeTruthy();
-      expect(response.body.profile.userId).toBe(testUser.id);
+      expect(response.body.profile.user.name).toBe(testUser.name);
     });
   });
 

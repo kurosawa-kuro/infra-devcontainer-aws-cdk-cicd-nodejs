@@ -491,8 +491,7 @@ class ProfileController extends BaseController {
   constructor(services, errorHandler, logger) {
     super(services, errorHandler, logger);
     
-    // 必要なサービスの存在確認
-    const requiredServices = ['profile', 'follow', 'micropost'];
+    const requiredServices = ['profile', 'follow'];
     const missingServices = requiredServices.filter(service => !services[service]);
     
     if (missingServices.length > 0) {
@@ -506,47 +505,61 @@ class ProfileController extends BaseController {
 
   async show(req, res) {
     return this.handleRequest(req, res, async () => {
-      this.logger.debug('Profile show request:', {
-        params: req.params,
-        userId: req.user?.id,
-        path: req.path
-      });
-
-      const profileUser = await this.profileService.getUserProfileByName(req.params.id);
-
-      if (!profileUser) {
-        this.logger.debug('Profile not found:', {
-          params: req.params
-        });
+      console.log('=== Profile Controller Debug ===');
+      console.log('Request params:', req.params);
+      console.log('Username:', req.params.username);
+      console.log('Accept header:', req.headers.accept);
+      
+      const user = await this.profileService.getUserProfileByName(req.params.username);
+      console.log('Found user:', user);
+      
+      if (!user) {
+        console.log('User not found');
         return this.errorHandler.handleNotFoundError(req, res, 'ユーザーが見つかりません');
       }
 
-      this.logger.debug('Profile found:', {
-        profileUserId: profileUser.id,
-        profileUserName: profileUser.name
-      });
-
-      const [microposts, followCounts, isFollowing] = await Promise.all([
-        this.micropostService.getMicropostsByUser(profileUser.id),
-        this.profileService.getFollowCounts(profileUser.id),
-        req.user ? this.profileService.isFollowing(req.user.id, profileUser.id) : false
-      ]);
-
-      this.logger.debug('Profile data loaded:', {
+      const followCounts = await this.profileService.getFollowCounts(user.id);
+      const viewData = {
+        title: `${user.name}のプロフィール`,
+        profileUser: user,
+        userProfile: user.profile,
         followCounts,
-        isFollowing,
-        micropostsCount: microposts.length
-      });
+        microposts: []
+      };
 
-      this.renderWithUser(req, res, 'pages/public/users/profile/show', {
-        title: 'プロフィール',
-        profileUser: profileUser,
-        userProfile: profileUser.profile,
-        microposts: microposts,
-        followCounts,
-        isFollowing,
-        req: req
-      });
+      // マイクロポストの取得は任意
+      if (this.micropostService?.getMicropostsByUserId) {
+        viewData.microposts = await this.micropostService.getMicropostsByUserId(user.id);
+      }
+
+      if (req.user) {
+        viewData.isFollowing = await this.followService.isFollowing(req.user.id, user.id);
+      }
+
+      const isApiRequest = req.xhr || 
+        req.headers.accept?.includes('application/json') || 
+        req.headers['content-type']?.includes('application/json');
+
+      console.log('Is API request:', isApiRequest);
+
+      if (isApiRequest) {
+        return res.json({
+          success: true,
+          profile: {
+            user: {
+              id: user.id,
+              name: user.name,
+              email: user.email,
+              profile: user.profile
+            },
+            followCounts,
+            microposts: viewData.microposts,
+            isFollowing: viewData.isFollowing
+          }
+        });
+      }
+
+      return this.renderWithUser(req, res, 'pages/public/users/profile/show', viewData);
     });
   }
 

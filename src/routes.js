@@ -137,15 +137,36 @@ function setupRoutes(app, controllers, fileUploader) {
   
   app.use('/microposts', micropostRouter);
 
-  // ユーザーアクション
+  // ===================================
+  // ユーザー関連ルート
+  // ===================================
+  
+  // パブリックプロフィール表示（認証不要）
+  app.get('/users/:username([^/]+)', asyncHandler((req, res) => {
+    console.log('=== Public Profile Route Debug ===');
+    console.log('Request params:', req.params);
+    console.log('Username:', req.params.username);
+    return profile.show(req, res);
+  }));
+
+  // 認証が必要なユーザー操作
   const userRouter = express.Router();
   userRouter.use(isAuthenticated);
-  userRouter.get('/:id/following', asyncHandler((req, res) => profile.following(req, res)));
-  userRouter.get('/:id/followers', asyncHandler((req, res) => profile.followers(req, res)));
-  userRouter.post('/:id/follow', asyncHandler((req, res) => profile.follow(req, res)));
-  userRouter.post('/:id/unfollow', asyncHandler((req, res) => profile.unfollow(req, res)));
-  userRouter.get('/:id/likes', asyncHandler((req, res) => like.getUserLikes(req, res)));
+  userRouter.get('/:username/following', asyncHandler((req, res) => profile.following(req, res)));
+  userRouter.get('/:username/followers', asyncHandler((req, res) => profile.followers(req, res)));
+  userRouter.post('/:username/follow', asyncHandler((req, res) => profile.follow(req, res)));
+  userRouter.post('/:username/unfollow', asyncHandler((req, res) => profile.unfollow(req, res)));
+  userRouter.get('/:username/likes', asyncHandler((req, res) => like.getUserLikes(req, res)));
+  userRouter.get('/:username/edit', asyncHandler((req, res) => profile.getEditPage(req, res)));
+  userRouter.post('/:username/edit', createMultipartMiddleware(fileUploader), asyncHandler((req, res) => profile.update(req, res)));
   app.use('/users', userRouter);
+
+  // プロフィール編集ルート（認証必須）
+  const profileRouter = express.Router();
+  profileRouter.use(isAuthenticated);
+  profileRouter.get('/:username/edit', asyncHandler((req, res) => profile.getEditPage(req, res)));
+  profileRouter.post('/:username/edit', createMultipartMiddleware(fileUploader), asyncHandler((req, res) => profile.update(req, res)));
+  app.use('/profile', profileRouter);
 
   // 管理者ルート
   const adminRouter = express.Router();
@@ -183,13 +204,6 @@ function setupRoutes(app, controllers, fileUploader) {
   notificationRouter.get('/', asyncHandler((req, res) => notification.index(req, res)));
   notificationRouter.post('/:id/read', asyncHandler((req, res) => notification.markAsRead(req, res)));
   app.use('/notifications', notificationRouter);
-
-  // プロフィールルート
-  const profileRouter = express.Router();
-  profileRouter.get('/:id', asyncHandler((req, res) => profile.show(req, res)));
-  profileRouter.get('/:id/edit', isAuthenticated, asyncHandler((req, res) => profile.getEditPage(req, res)));
-  profileRouter.post('/:id/edit', isAuthenticated, createMultipartMiddleware(fileUploader), asyncHandler((req, res) => profile.update(req, res)));
-  app.use('/profile', profileRouter);
 
   // 後方互換性のためのルート
   app.get('/users/:id/edit', isAuthenticated, asyncHandler((req, res) => profile.getEditPage(req, res)));
