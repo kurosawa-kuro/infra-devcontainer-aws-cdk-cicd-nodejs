@@ -1,35 +1,31 @@
 # ===========================================
-# AWS and CDK Configuration
+# Configuration Layer
 # ===========================================
-AWS_ACCOUNT_ID = 448049833348
+# AWS Configuration
+AWS_ACCOUNT_ID = 985539793438
 REGION_TOKYO = ap-northeast-1
 
-# ===========================================
-# CDK Command Settings
-# ===========================================
+# CDK Configuration
 CDK = cdk
 DEPLOY_FLAGS = --require-approval never
 DESTROY_FLAGS = --force --debug
 
-# ===========================================
-# Stack and Resource Names
-# ===========================================
-PREFIX = CdkJavascript02
+# Stack Configuration
 MAIN_STACK = AwsCdkWebBasicStack
 
-# ===========================================
-# Notification Messages
-# ===========================================
+# Notification Configuration
 NOTIFY_PREFIX = [INFO]
-NOTIFY_TEST = [TEST]_Notification_system_check
-NOTIFY_DEPLOY = $(NOTIFY_PREFIX)_Deployment_completed
-NOTIFY_DESTROY = $(NOTIFY_PREFIX)_Stack_destruction_completed
-NOTIFY_FIRST_DEPLOY = $(NOTIFY_PREFIX)_First_deployment_completed
-NOTIFY_RESET_DEPLOY = $(NOTIFY_PREFIX)_Reset_and_redeploy_completed
+NOTIFY_MESSAGES = { \
+    deploy: "$(NOTIFY_PREFIX)_Deployment_completed", \
+    destroy: "$(NOTIFY_PREFIX)_Stack_destruction_completed", \
+    first_deploy: "$(NOTIFY_PREFIX)_First_deployment_completed", \
+    reset_deploy: "$(NOTIFY_PREFIX)_Reset_and_redeploy_completed" \
+}
 
 # ===========================================
-# Helper Functions
+# Utility Layer
 # ===========================================
+# Logging Utilities
 define log_section
 	@printf "\033[32m=== $(1) ===\033[0m\n"
 endef
@@ -38,6 +34,7 @@ define log_end_section
 	@printf "\033[32m=============================================\033[0m\n"
 endef
 
+# AWS Operation Utilities
 define bootstrap_regions
 	$(call log_section,Bootstrapping CDK in Tokyo region)
 	$(CDK) bootstrap aws://$(AWS_ACCOUNT_ID)/$(REGION_TOKYO) \
@@ -56,59 +53,48 @@ define check_failed_stacks
 	$(call log_end_section)
 endef
 
+# Notification Utility
 define send_notification
 	$(call log_section,Sending notification)
-	@node ../../script/invoke-lambda/send_notification.js "$(1)"
+	@cd ../../script/invoke-lambda && AWS_REGION=$(REGION_TOKYO) node send_notification.js '$(1)'
 	$(call log_end_section)
 endef
 
 # ===========================================
-# Main Commands
+# Operation Layer
 # ===========================================
-.PHONY: deploy destroy notify-test bootstrap check-stacks first-deploy reset-deploy
+.PHONY: first-deploy reset-deploy destroy test-slack-notification
 
-# Test notification system
-notify-test:
-	$(call send_notification,$(NOTIFY_TEST))
-
-# Bootstrap AWS environment
-bootstrap:
-	$(call bootstrap_regions)
-
-# Check failed stacks
-check-stacks:
-	$(call check_failed_stacks)
-
-# First time deployment with bootstrap
-first-deploy: bootstrap
+# Primary Operations
+first-deploy:
 	$(call log_section,First time deployment)
+	$(call bootstrap_regions)
 	$(CDK) deploy $(MAIN_STACK) $(DEPLOY_FLAGS)
-	$(call send_notification,$(NOTIFY_FIRST_DEPLOY))
+	$(call send_notification,"[INFO] First deployment completed successfully 🚀")
 	$(call log_section,First deployment completed successfully)
 	$(call log_end_section)
 
-# Reset and redeploy all stacks
 reset-deploy:
 	$(call log_section,Starting full reset and redeploy)
 	$(MAKE) destroy
 	$(call log_section,Starting fresh deployment)
 	$(MAKE) first-deploy
-	$(call send_notification,$(NOTIFY_RESET_DEPLOY))
+	$(call send_notification,"[INFO] Reset and redeploy completed successfully ♻️")
 	$(call log_section,Reset and redeploy completed successfully)
 	$(call log_end_section)
 
-# Deploy stack
-deploy: bootstrap
-	$(call log_section,Deploying main stack)
-	$(CDK) deploy $(MAIN_STACK) $(DEPLOY_FLAGS)
-	$(call send_notification,$(NOTIFY_DEPLOY))
-	$(call log_section,Deployment completed successfully)
+destroy:
+	$(call log_section,Destroying stacks)
+	$(call bootstrap_regions)
+	$(call check_failed_stacks)
+	-$(CDK) destroy $(MAIN_STACK) $(DESTROY_FLAGS)
+	$(call send_notification,"[INFO] Stack destruction completed successfully 🗑️")
+	$(call log_section,Destroy process completed)
 	$(call log_end_section)
 
-# Destroy stack
-destroy: bootstrap check-stacks
-	$(call log_section,Destroying stacks)
-	-$(CDK) destroy $(MAIN_STACK) $(DESTROY_FLAGS)
-	$(call send_notification,$(NOTIFY_DESTROY))
-	$(call log_section,Destroy process completed)
+# Testing Operations
+test-slack-notification:
+	$(call log_section,Testing Slack Notification Lambda)
+	$(call send_notification,"[TEST] From AWS CDK Web Basic Stack Notification Test: Success 🎉")
+	$(call log_section,Testing Slack Notification Lambda completed)
 	$(call log_end_section)
