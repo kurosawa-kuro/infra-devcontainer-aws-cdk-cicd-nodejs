@@ -7,6 +7,7 @@ describe('マイクロポストのいいね機能の統合テスト', () => {
   let testUser;
   let testPost;
   let testLike;
+  let authCookie;
 
   beforeAll(async () => {
     console.log('=== Test Setup Start ===');
@@ -19,11 +20,11 @@ describe('マイクロポストのいいね機能の統合テスト', () => {
     await testServer.database.clean();
     const setup = await testServer.setupTestEnvironment({ createUser: true });
     testUser = setup.testUser;
+    authCookie = setup.authCookie;
 
     // テスト用の投稿を作成
     testPost = await testServer.createTestMicropost(testUser.id, {
-      title: 'Test Post',
-      content: 'This is a test post content'
+      title: 'Test Post'
     });
 
     // テスト用のいいねを作成
@@ -36,6 +37,28 @@ describe('マイクロポストのいいね機能の統合テスト', () => {
         user: true,
         micropost: true
       }
+    });
+  });
+
+  describe('いいねの表示機能', () => {
+    it('未ログインでも投稿に紐づくいいね一覧を取得できること', async () => {
+      const response = await request(server)
+        .get(`/microposts/${testPost.id}/likes`);
+
+      expect(response.status).toBe(200);
+      expect(response.body.success).toBe(true);
+      expect(Array.isArray(response.body.likes)).toBe(true);
+      expect(response.body.likes.length).toBeGreaterThan(0);
+      expect(response.body.likes[0].user.name).toBe('TestUser');
+    });
+
+    it('未ログインでも投稿のいいね数を取得できること', async () => {
+      const response = await request(server)
+        .get(`/microposts/${testPost.id}/likes/count`);
+
+      expect(response.status).toBe(200);
+      expect(response.body.success).toBe(true);
+      expect(response.body.count).toBe(1);
     });
   });
 
