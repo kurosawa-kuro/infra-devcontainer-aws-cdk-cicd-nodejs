@@ -2,6 +2,7 @@ const winston = require('winston');
 const { format } = winston;
 require('winston-daily-rotate-file');
 const WinstonCloudWatch = require('winston-cloudwatch');
+const { FirehoseClient, PutRecordCommand } = require('@aws-sdk/client-firehose');
 
 // ログレベルの定義
 const LOG_LEVELS = {
@@ -152,6 +153,32 @@ if (process.env.USE_CLOUDWATCH === 'true') {  // NODE_ENVの条件を削除
   }
 }
 
+// Firehoseクライアントの初期化
+const firehoseClient = new FirehoseClient({
+  region: process.env.AWS_REGION,
+  credentials: {
+    accessKeyId: process.env.AWS_ACCESS_KEY_ID,
+    secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY
+  }
+});
+
+// Firehoseへのログ送信関数
+const sendToFirehose = async (logData) => {
+  try {
+    const params = {
+      DeliveryStreamName: process.env.FIREHOSE_STREAM_NAME || 'cdkjavascript01-stream',
+      Record: {
+        Data: Buffer.from(JSON.stringify(logData))
+      }
+    };
+    
+    const command = new PutRecordCommand(params);
+    await firehoseClient.send(command);
+  } catch (error) {
+    logger.error('Firehose送信エラー', { error });
+  }
+};
+
 // コンソール出力設定（すべての環境で詳細ログを出力）
 logger.add(new winston.transports.Console({
   format: format.combine(
@@ -207,7 +234,8 @@ const requestLogger = (req, res, next) => {
       userAgent: req.get('user-agent'),
       userId: req.user?.id,
       ip: req.ip,
-      traceId: req.traceId
+      traceId: req.traceId,
+      timestamp: new Date().toISOString()
     };
 
     // パフォーマンスメトリクスの更新
@@ -221,14 +249,16 @@ const requestLogger = (req, res, next) => {
       performanceMetrics.errorCount++;
       logger.warn('HTTP Request Error', logData);
     } else {
-      logger.info('HTTP Request', logData);  // CloudWatchへのログ転送
+      logger.info('HTTP Request', logData);
       
-      // Firehose送信のデバッグログ
-      console.log('to firehose:', JSON.stringify({
-        ...logData,
-        timestamp: new Date().toISOString(),
-        source: 'request-logger'
-      }));
+      // Firehoseへのログ送信
+      if (process.env.ENABLE_FIREHOSE === 'true') {
+        sendToFirehose({
+          ...logData,
+          source: 'request-logger',
+          environment: process.env.NODE_ENV || 'development'
+        });
+      }
     }
   });
   
