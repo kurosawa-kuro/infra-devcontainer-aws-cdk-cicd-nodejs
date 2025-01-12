@@ -5,7 +5,7 @@
 const axios = require('axios');
 
 // Lambda handler関数
-async function slackNotification(event, context) {
+async function slack-notification(event, context) {
     console.log('Lambda function started');
     console.log('Event:', JSON.stringify(event));
 
@@ -53,5 +53,5 @@ async function slackNotification(event, context) {
 
 // handlerのエクスポート
 module.exports = {
-    handler: slackNotification
+    handler: slack-notification
 };

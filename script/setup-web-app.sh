@@ -10,7 +10,7 @@ declare -r TIMESTAMP=$(date +%Y%m%d_%H%M%S)
 declare -r BACKUP_DIR="$SCRIPT_DIR/config"
 
 # スクリプトの動作モード設定
-declare -r SKIP_NPM_SETUP=false          # NPMセットアップをスキップする場合はtrue
+declare -r SKIP_NPM_SETUP=true          # NPMセットアップをスキップする場合はtrue
 
 #######################################
 # 2. Logging System

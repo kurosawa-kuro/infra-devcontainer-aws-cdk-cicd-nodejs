@@ -19,4 +19,4 @@ package: clean
 # Deployment
 # ---------
 deploy: install package
-	aws lambda update-function-code --function-name slackNotification --zip-file fileb://function.zip | cat
+	aws lambda update-function-code --function-name slack-notification --zip-file fileb://function.zip | cat

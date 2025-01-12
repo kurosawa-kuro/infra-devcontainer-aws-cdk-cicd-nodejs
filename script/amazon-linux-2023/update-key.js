@@ -47,10 +47,7 @@ const {
           const updatedEnv = currentEnv
               .replace(/^_AWS_ACCESS_KEY_ID=.*/m, `_AWS_ACCESS_KEY_ID=${secrets.AWS_ACCESS_KEY_ID}`)
               .replace(/^_AWS_SECRET_ACCESS_KEY=.*/m, `_AWS_SECRET_ACCESS_KEY=${secrets.AWS_SECRET_ACCESS_KEY}`)
-              .replace(/^_SLACK_WEBHOOK_URL=.*/m, `_SLACK_WEBHOOK_URL=${secrets.SLACK_WEBHOOK_URL}`)
-              .replace(/^AWS_ACCESS_KEY_ID=.*/m, `AWS_ACCESS_KEY_ID=${secrets.AWS_ACCESS_KEY_ID}`)
-              .replace(/^AWS_SECRET_ACCESS_KEY=.*/m, `AWS_SECRET_ACCESS_KEY=${secrets.AWS_SECRET_ACCESS_KEY}`)
-              .replace(/^SLACK_WEBHOOK_URL=.*/m, `SLACK_WEBHOOK_URL=${secrets.SLACK_WEBHOOK_URL}`);
+              .replace(/^_SLACK_WEBHOOK_URL=.*/m, `_SLACK_WEBHOOK_URL=${secrets.SLACK_WEBHOOK_URL}`);
           
           await fs.writeFile(envPath, updatedEnv, 'utf8');
           console.log('Successfully updated specific variables in .env file!');

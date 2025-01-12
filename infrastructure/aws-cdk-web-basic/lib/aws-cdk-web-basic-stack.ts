@@ -574,7 +574,7 @@ export class AwsCdkWebBasicStack extends cdk.Stack {
 
   private addNotificationCommandOutput(): void {
     new cdk.CfnOutput(this, 'NotificationCommand', {
-      value: 'aws lambda invoke --function-name arn:aws:lambda:ap-northeast-1:448049833348:function:slackNotification --payload \'{}\' response.json',
+      value: 'aws lambda invoke --function-name arn:aws:lambda:ap-northeast-1:448049833348:function:slack-notification --payload \'{}\' response.json',
       description: 'Command to invoke Slack notification Lambda',
     });
   }

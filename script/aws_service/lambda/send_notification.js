@@ -3,7 +3,7 @@ const dotenv = require('dotenv');
 const path = require('path');
 
 // 環境変数の読み込み
-dotenv.config({ path: path.resolve(__dirname, '../../.env') });
+dotenv.config({ path: path.resolve(__dirname, '../../../.env') });
 
 // エラーメッセージを整形するヘルパー関数
 function formatErrorMessage(error) {
@@ -67,7 +67,7 @@ async function invokeLambda(message) {
     }
 
     const command = new InvokeCommand({
-        FunctionName: process.env.LAMBDA_FUNCTION_NAME || 'slackNotification',
+        FunctionName: process.env.LAMBDA_SLACK_NOTIFICATION_FUNCTION || 'slack-notification',
         InvocationType: 'RequestResponse',
         Payload: Buffer.from(JSON.stringify(payload))
     });

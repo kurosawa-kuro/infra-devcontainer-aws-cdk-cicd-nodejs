@@ -38,7 +38,7 @@ endef
 define send_notification
 	@printf "\033[32m=== Sending deployment notification ===\033[0m\n"
 	@aws lambda invoke \
-		--function-name arn:aws:lambda:ap-northeast-1:448049833348:function:slackNotification \
+		--function-name arn:aws:lambda:ap-northeast-1:448049833348:function:slack-notification \
 		--payload '{}' \
 		/dev/null
 	@printf "\033[32m=============================================\033[0m\n"
