@@ -4,7 +4,6 @@ require('winston-daily-rotate-file');
 const WinstonCloudWatch = require('winston-cloudwatch');
 const { FirehoseClient, PutRecordCommand } = require('@aws-sdk/client-firehose');
 
-
 // ログレベルの定義
 const LOG_LEVELS = {
   ERROR: 'error',
