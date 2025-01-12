@@ -1,5 +1,5 @@
 # 変数定義
-FUNCTION_NAME := $(shell grep '^LAMBDA_FUNCTION_NAME=' ../../.env | cut -d '=' -f2-)
+FUNCTION_NAME := $(shell grep '^LAMBDA_SLACK_NOTIFICATION_FUNCTION=' ../../.env | cut -d '=' -f2-)
 
 .PHONY: first-deploy reset-deploy destroy
 

@@ -67,7 +67,7 @@ async function invokeLambda(message) {
     }
 
     const command = new InvokeCommand({
-        FunctionName: process.env.LAMBDA_FUNCTION_NAME || 'slack-notification',
+        FunctionName: process.env.LAMBDA_SLACK_NOTIFICATION_FUNCTION || 'slack-notification',
         InvocationType: 'RequestResponse',
         Payload: Buffer.from(JSON.stringify(payload))
     });
