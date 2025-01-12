@@ -21,7 +21,7 @@ export class AwsCdkLamdaStack extends cdk.Stack {
     });
 
     // Create Lambda function
-    const slack-notificationFunction = new lambda.Function(this, 'slack-notificationFunction', {
+    const slackNotificationFunction = new lambda.Function(this, 'slack-notificationFunction', {
       runtime: lambda.Runtime.NODEJS_18_X,
       handler: 'index.handler',
       code: lambda.Code.fromAsset(path.join(__dirname, '../src/slack-notification')),

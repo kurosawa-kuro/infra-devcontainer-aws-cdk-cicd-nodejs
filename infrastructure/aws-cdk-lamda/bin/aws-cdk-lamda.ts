@@ -6,7 +6,7 @@ import { AwsCdkLamdaStack } from '../lib/aws-cdk-lamda-stack';
 const app = new cdk.App();
 
 // Get function name from context or use default
-const functionName = app.node.tryGetContext('functionName') || 'test_nodejs';
+const functionName = app.node.tryGetContext('functionName') || 'slack-notification';
 
 new AwsCdkLamdaStack(app, 'AwsCdkLamdaStack', {
   env: { region: 'ap-northeast-1' },
